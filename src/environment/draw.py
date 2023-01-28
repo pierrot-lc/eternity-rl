@@ -1,11 +1,10 @@
 from itertools import product
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import lines, patches, path
-from PIL import Image
 
 GRAY = 0
 BLACK = 23
@@ -101,7 +100,9 @@ def draw_triangles(ax: plt.Axes, x: int, y: int, tile: np.ndarray):
         ax.add_patch(patch)
 
 
-def draw_instance(instance: np.ndarray, filename: Optional[Path]) -> np.ndarray:
+def draw_instance(
+    instance: np.ndarray, filename: Optional[Union[Path, str]] = None
+) -> np.ndarray:
     _, height, width = instance.shape
 
     # Add padding so that we can draw empty patches.
@@ -110,7 +111,6 @@ def draw_instance(instance: np.ndarray, filename: Optional[Path]) -> np.ndarray:
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    print(instance.shape)
 
     for x, y in product(range(width), range(height)):
         if x in [0, width - 1] or y in [0, height - 1]:
@@ -128,9 +128,6 @@ def draw_instance(instance: np.ndarray, filename: Optional[Path]) -> np.ndarray:
     if filename:
         fig.savefig(str(filename))
 
-    image = Image.frombytes(
-        "RGB",
-        fig.canvas.get_width_height(),
-        fig.canvas.tostring_rgb(),
-    )
-    return np.array(image)
+    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return image

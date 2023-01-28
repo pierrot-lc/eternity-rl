@@ -1,7 +1,7 @@
 import os
 from itertools import product
 from pathlib import Path
-from typing import Optional
+from typing import Union
 
 import einops
 import gymnasium as gym
@@ -38,7 +38,7 @@ class EternityEnv(gym.Env):
 
     def __init__(
         self,
-        instance_path: Path,
+        instance_path: Union[Path, str],
         manual_orient: bool,
         reward_type: str = "win_ratio",
         reward_penalty: float = 0.0,
@@ -97,21 +97,19 @@ class EternityEnv(gym.Env):
             done: Is there still sides that are not matched?
             info: -
         """
+        previous_matches = self.matches
         coords = [(a // self.size, a % self.size) for a in action[:2]]
 
         if self.manual_orient:
             rolls = [a for a in action[2:]]
-
-        previous_matches = self.matches
-
-        # Swap tiles
-        self.swap_tiles(coords[0], coords[1])
-
-        # Reorient the two tiles
-        if self.manual_orient:
             self.roll_tile(coords[0], rolls[0])
             self.roll_tile(coords[1], rolls[1])
-        else:
+
+        # Swap tiles.
+        self.swap_tiles(coords[0], coords[1])
+
+        # Find the best orientation after the swap.
+        if not self.manual_orient:
             self.best_orientation(coords[0])
             self.best_orientation(coords[1])
 
@@ -223,6 +221,9 @@ class EternityEnv(gym.Env):
 
     def best_orientation(self, coords: tuple[int, int]) -> int:
         """Reorient the given tile to maximise the matches.
+        This works for this tile only. If you apply this function
+        to two adjacent tiles, this will greedily search for each
+        tile without taking into account that the two can match together.
 
         Return the number of matches of this tile.
         """
@@ -253,7 +254,7 @@ class EternityEnv(gym.Env):
         self.rng = np.random.default_rng(seed)
 
 
-def read_instance_file(instance_path: Path) -> np.ndarray:
+def read_instance_file(instance_path: Union[Path, str]) -> np.ndarray:
     """Read the instance file and return a matrix containing the ordered elements.
 
     Output
