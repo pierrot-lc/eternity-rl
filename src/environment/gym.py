@@ -90,7 +90,7 @@ class EternityEnv(gym.Env):
         Input
         -----
             action: Id of the tiles to swap and their rolling shift values.
-                In the form of [tile_1_id, tile_2_id, roll_1, roll_2].
+                In the form of [tile_1_id, roll_1, tile_2_id, roll_2].
 
         Output
         ------
@@ -100,12 +100,15 @@ class EternityEnv(gym.Env):
             info: -
         """
         previous_matches = self.matches
-        coords = [(a // self.size, a % self.size) for a in action[:2]]
+        print(action)
 
         if self.manual_orient:
-            rolls = [a for a in action[2:]]
+            rolls = [a for a in action[1::2]]
+            coords = [(a // self.size, a % self.size) for a in action[::2]]
             self.roll_tile(coords[0], rolls[0])
             self.roll_tile(coords[1], rolls[1])
+        else:
+            coords = [(a // self.size, a % self.size) for a in action]
 
         # Swap tiles.
         self.swap_tiles(coords[0], coords[1])

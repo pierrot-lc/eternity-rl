@@ -22,32 +22,30 @@ class CNNPolicy(nn.Module):
 
         self.cnn = nn.Sequential(
             nn.Conv2d(4 * embedding_dim, embedding_dim, 3, padding="same"),
-            nn.BatchNorm2d(embedding_dim),
+            nn.LayerNorm([embedding_dim, board_height, board_width]),
             nn.GELU(),
             nn.Conv2d(embedding_dim, 15, 3, padding="same"),
-            nn.BatchNorm2d(15),
+            nn.LayerNorm([15, board_height, board_width]),
             nn.GELU(),
             nn.Conv2d(15, 15, 3, padding="same"),
+            nn.LayerNorm([15, board_height, board_width]),
             nn.GELU(),
-            nn.BatchNorm2d(15),
             # Flatten.
             nn.Flatten(),
-            nn.LazyLinear(embedding_dim),
+            nn.Linear(15 * board_width * board_height, embedding_dim),
             nn.LayerNorm(embedding_dim),
             nn.GELU(),
         )
 
         self.select_1 = nn.ModuleDict(
             {
-                "width": nn.Linear(embedding_dim, board_width),
-                "height": nn.Linear(embedding_dim, board_height),
+                "tile": nn.Linear(embedding_dim, board_width * board_height),
                 "roll": nn.Linear(embedding_dim, 4),
             }
         )
         self.select_2 = nn.ModuleDict(
             {
-                "width": nn.Linear(embedding_dim, board_width),
-                "height": nn.Linear(embedding_dim, board_height),
+                "tile": nn.Linear(embedding_dim, board_width * board_height),
                 "roll": nn.Linear(embedding_dim, 4),
             }
         )
