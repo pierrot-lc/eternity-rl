@@ -1,12 +1,14 @@
 import os
 from itertools import product
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import einops
 import gymnasium as gym
 import gymnasium.spaces as spaces
 import numpy as np
+
+from .draw import draw_instance
 
 NORTH = 0
 EAST = 1
@@ -82,7 +84,7 @@ class EternityEnv(gym.Env):
         self.reward_type = reward_type
         self.reward_penalty = reward_penalty
 
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, int, bool, dict]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
         """Swap the two chosen tiles and orient them in the best possible way.
 
         Input
@@ -166,12 +168,20 @@ class EternityEnv(gym.Env):
 
         return self.render()
 
-    def render(self, mode: str = "computer") -> np.ndarray:
+    def render(
+        self, mode: str = "computer", output_file: Optional[Union[str, Path]] = None
+    ) -> np.ndarray:
         """Transform the instance into an observation.
 
         The observation is a map of shape [4, size, size].
         """
-        return self.instance
+        match mode:
+            case "computer":
+                return self.instance
+            case "rgb_array":
+                return draw_instance(self.instance, output_file)
+            case _:
+                raise RuntimeError(f"Unknown rendering type: {mode}.")
 
     def count_tile_matches(self, coords: tuple[int, int]) -> int:
         """Count the matches a tile has with its neighbours.
