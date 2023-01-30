@@ -1,12 +1,14 @@
-import numpy as np
+import torch
+from torchinfo import summary
 
-from src.environment.draw import draw_instance
-from src.environment.gym import ENV_DIR, EternityEnv
+from src.model import CNNPolicy
 
-env = EternityEnv(ENV_DIR / "eternity_A.txt", manual_orient=False)
-env.reset()
-
-draw_instance(env.instance, "frame-1.png")
-
-env.step(np.array([0, 3]))
-draw_instance(env.instance, "frame-2.png")
+model = CNNPolicy(10, 64, 4, 4)
+summary(
+    model,
+    input_size=(4, 4, 4),
+    batch_dim=0,
+    dtypes=[
+        torch.long,
+    ],
+)
