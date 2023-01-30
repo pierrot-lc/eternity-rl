@@ -53,7 +53,7 @@ class EternityEnv(gym.Env):
         self.instance = read_instance_file(instance_path)  # Shape is [4, size, size].
 
         self.size = self.instance.shape[-1]
-        self.n_class = self.instance.max()
+        self.n_class = self.instance.max() + 1
         self.n_pieces = self.size * self.size
         self.max_steps = self.n_pieces * 2
         self.best_matches = 2 * self.size * (self.size - 1)
@@ -100,7 +100,6 @@ class EternityEnv(gym.Env):
             info: -
         """
         previous_matches = self.matches
-        print(action)
 
         if self.manual_orient:
             rolls = [a for a in action[1::2]]

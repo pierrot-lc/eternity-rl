@@ -25,10 +25,8 @@ class Reinforce:
         log_actions = []
         for action_name in ["tile", "roll"]:
             logits = tile_1[action_name]
-            print(logits.shape)
             distribution = Categorical(logits=logits)
             action = distribution.sample()
-            print(action)
             actions.append(action.cpu().item())
             log_actions.append(distribution.log_prob(action))
 
