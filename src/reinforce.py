@@ -1,5 +1,8 @@
+from itertools import accumulate
+
 import numpy as np
 import torch
+import torch.optim as optim
 from torch.distributions import Categorical
 
 from .environment.gym import EternityEnv
@@ -16,6 +19,9 @@ class Reinforce:
         self.env = env
         self.model = model
         self.device = device
+
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3)
+        self.gamma = 0.9
 
         self.episodes_history = []
 
@@ -55,11 +61,50 @@ class Reinforce:
             state, reward, done, _ = env.step(action)
             rewards.append(reward)
 
-        rewards = torch.tensor(rewards)  # Shape of [ep_len,].
+        rewards = torch.tensor(rewards, device=device)  # Shape of [ep_len,].
         log_actions = torch.stack(log_actions, dim=0)  # Shape of [ep_len, 4].
 
         # Compute the cumulated returns without discount factor.
         rewards = torch.flip(rewards, dims=(0,))
-        returns = torch.cumsum(rewards, dim=0)
+        # returns = torch.cumsum(rewards, dim=0)
+        returns = list(accumulate(rewards, lambda R, r: r + self.gamma * R))
+        returns = torch.tensor(returns, device=device)
 
         self.episodes_history.append((log_actions, returns))
+
+    def compute_metrics(self) -> dict[str, torch.Tensor]:
+        loss = torch.tensor(0.0, device=self.device)
+        history_returns = torch.zeros(len(self.episodes_history), device=self.device)
+
+        for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
+            history_returns[ep_id] = returns[0]
+            # returns = (returns - returns.mean()) / (returns.std() + 1e-5)
+            loss += -(log_actions * returns.unsqueeze(1)).mean()
+
+        metrics = {
+            "loss": loss,
+            "return": history_returns.mean(),
+        }
+        return metrics
+
+    def launch_training(self):
+        optim = self.optimizer
+        self.model.to(self.device)
+
+        n_batches = 1000
+        n_rollouts = 100
+
+        for _ in range(n_batches):
+            self.episodes_history = []
+            for _ in range(n_rollouts):
+                self.rollout()
+
+            metrics = self.compute_metrics()
+            optim.zero_grad()
+            metrics["loss"].backward()
+            optim.step()
+
+            for metric_name in ["loss", "return"]:
+                value = metrics[metric_name].cpu().item()
+                print(f"{metric_name}: {value:.3f}", end="\t")
+            print("")

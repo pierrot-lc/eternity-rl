@@ -6,7 +6,9 @@ from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
 env = EternityEnv(
-    "./instances/eternity_A.txt", manual_orient=True, reward_type="win_ratio"
+    "./instances/eternity_trivial_A.txt",
+    manual_orient=True,
+    reward_type="delta",
 )
 model = CNNPolicy(
     env.n_class,
@@ -24,5 +26,5 @@ summary(
     device="cpu",
 )
 
-trainer = Reinforce(env, model, "cpu")
-trainer.rollout()
+trainer = Reinforce(env, model, "cuda")
+trainer.launch_training()
