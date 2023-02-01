@@ -12,7 +12,7 @@ env = EternityEnv(
 )
 model = CNNPolicy(
     env.n_class,
-    embedding_dim=32,
+    embedding_dim=4,
     board_width=env.size,
     board_height=env.size,
 )

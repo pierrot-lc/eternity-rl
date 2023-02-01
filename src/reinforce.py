@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.distributions import Categorical
+from torch.nn.utils.clip_grad import clip_grad_norm_
 
 from .environment.gym import EternityEnv
 from .model import CNNPolicy
@@ -20,7 +21,7 @@ class Reinforce:
         self.model = model
         self.device = device
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
         self.gamma = 0.9
 
         self.episodes_history = []
@@ -69,6 +70,7 @@ class Reinforce:
         # returns = torch.cumsum(rewards, dim=0)
         returns = list(accumulate(rewards, lambda R, r: r + self.gamma * R))
         returns = torch.tensor(returns, device=device)
+        returns = torch.flip(returns, dims=(0,))
 
         self.episodes_history.append((log_actions, returns))
 
@@ -78,8 +80,8 @@ class Reinforce:
 
         for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
             history_returns[ep_id] = returns[0]
-            # returns = (returns - returns.mean()) / (returns.std() + 1e-5)
-            loss += -(log_actions * returns.unsqueeze(1)).mean()
+            returns = returns - returns.mean()  # / (returns.std() + 1e-5)
+            loss -= (log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
             "loss": loss,
@@ -91,8 +93,8 @@ class Reinforce:
         optim = self.optimizer
         self.model.to(self.device)
 
-        n_batches = 1000
-        n_rollouts = 100
+        n_batches = 2000
+        n_rollouts = 1000
 
         for _ in range(n_batches):
             self.episodes_history = []
@@ -102,6 +104,7 @@ class Reinforce:
             metrics = self.compute_metrics()
             optim.zero_grad()
             metrics["loss"].backward()
+            clip_grad_norm_(self.model.parameters(), 1)
             optim.step()
 
             for metric_name in ["loss", "return"]:
