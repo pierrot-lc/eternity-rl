@@ -8,7 +8,7 @@ from src.reinforce import Reinforce
 env = EternityEnv(
     "./instances/eternity_trivial_A.txt",
     manual_orient=True,
-    reward_type="delta",
+    reward_type="win",
 )
 model = CNNPolicy(
     env.n_class,

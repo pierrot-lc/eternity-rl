@@ -22,7 +22,7 @@ class Reinforce:
         self.device = device
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
-        self.gamma = 0.9
+        self.gamma = 0.99
 
         self.episodes_history = []
 
@@ -65,9 +65,8 @@ class Reinforce:
         rewards = torch.tensor(rewards, device=device)  # Shape of [ep_len,].
         log_actions = torch.stack(log_actions, dim=0)  # Shape of [ep_len, 4].
 
-        # Compute the cumulated returns without discount factor.
+        # Compute the cumulated returns.
         rewards = torch.flip(rewards, dims=(0,))
-        # returns = torch.cumsum(rewards, dim=0)
         returns = list(accumulate(rewards, lambda R, r: r + self.gamma * R))
         returns = torch.tensor(returns, device=device)
         returns = torch.flip(returns, dims=(0,))
@@ -80,8 +79,8 @@ class Reinforce:
 
         for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
             history_returns[ep_id] = returns[0]
-            returns = returns - returns.mean()  # / (returns.std() + 1e-5)
-            loss -= (log_actions * returns.unsqueeze(1)).mean()
+            returns = returns - returns.mean()
+            loss += -(log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
             "loss": loss,
@@ -94,10 +93,11 @@ class Reinforce:
         self.model.to(self.device)
 
         n_batches = 2000
-        n_rollouts = 1000
+        n_rollouts = 100
 
         for _ in range(n_batches):
             self.episodes_history = []
+
             for _ in range(n_rollouts):
                 self.rollout()
 

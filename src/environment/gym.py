@@ -55,7 +55,7 @@ class EternityEnv(gym.Env):
         self.size = self.instance.shape[-1]
         self.n_class = self.instance.max() + 1
         self.n_pieces = self.size * self.size
-        self.max_steps = self.n_pieces * 2
+        self.max_steps = self.n_pieces * 4
         self.best_matches = 2 * self.size * (self.size - 1)
         self.matches = 0
 
@@ -87,13 +87,13 @@ class EternityEnv(gym.Env):
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
         """Swap the two chosen tiles and orient them in the best possible way.
 
-        Input
-        -----
+        ---
+        Args:
             action: Id of the tiles to swap and their rolling shift values.
                 In the form of [tile_1_id, roll_1, tile_2_id, roll_2].
 
-        Output
-        ------
+        ---
+        Returns:
             observation: Array of observation, output of self.render.
             reward: Number of matching sides.
             done: Is there still sides that are not matched?
