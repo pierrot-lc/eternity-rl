@@ -26,5 +26,5 @@ summary(
     device="cpu",
 )
 
-trainer = Reinforce(env, model, "cuda")
+trainer = Reinforce(env, model, "cpu")
 trainer.launch_training()

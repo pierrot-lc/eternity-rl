@@ -3,7 +3,6 @@ from itertools import accumulate
 import numpy as np
 import torch
 import torch.optim as optim
-from torch.distributions import Categorical
 from torch.nn.utils.clip_grad import clip_grad_norm_
 
 from .environment.gym import EternityEnv
@@ -20,22 +19,29 @@ class Reinforce:
         self.env = env
         self.model = model
         self.device = device
+        self.rng = np.random.default_rng()
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4)
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3)
         self.gamma = 0.99
 
         self.episodes_history = []
 
-    @staticmethod
-    def select_tile(tile_1: dict[str, torch.Tensor]) -> tuple[np.ndarray, torch.Tensor]:
+    def select_tile(
+        self, tile_logits: dict[str, torch.Tensor]
+    ) -> tuple[np.ndarray, torch.Tensor]:
         actions = []
         log_actions = []
         for action_name in ["tile", "roll"]:
-            logits = tile_1[action_name]
-            distribution = Categorical(logits=logits)
-            action = distribution.sample()
-            actions.append(action.cpu().item())
-            log_actions.append(distribution.log_prob(action))
+            logits = tile_logits[action_name]
+            distribution = torch.softmax(logits, dim=-1)
+            action = self.rng.choice(
+                np.arange(logits.shape[1]),
+                size=(1,),
+                p=distribution.cpu().detach().numpy()[0],
+            )
+
+            actions.append(action)
+            log_actions.append(torch.log(distribution[0, action] + 1e-5))
 
         return (np.array(actions), torch.concat(log_actions))
 
@@ -53,8 +59,8 @@ class Reinforce:
         while not done:
             state = torch.LongTensor(state).to(device).unsqueeze(0)
             tile_1, tile_2 = model(state)
-            act_1, log_act_1 = Reinforce.select_tile(tile_1)
-            act_2, log_act_2 = Reinforce.select_tile(tile_2)
+            act_1, log_act_1 = self.select_tile(tile_1)
+            act_2, log_act_2 = self.select_tile(tile_2)
 
             action = np.concatenate((act_1, act_2), axis=0)
             log_actions.append(torch.concat((log_act_1, log_act_2), dim=0))
@@ -77,9 +83,14 @@ class Reinforce:
         loss = torch.tensor(0.0, device=self.device)
         history_returns = torch.zeros(len(self.episodes_history), device=self.device)
 
+        mean_returns = sum(returns.sum() for _, returns in self.episodes_history)
+        mean_returns = mean_returns / sum(
+            len(returns) for _, returns in self.episodes_history
+        )
+
         for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
             history_returns[ep_id] = returns[0]
-            returns = returns - returns.mean()
+            returns = returns - mean_returns
             loss += -(log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
@@ -93,7 +104,7 @@ class Reinforce:
         self.model.to(self.device)
 
         n_batches = 2000
-        n_rollouts = 100
+        n_rollouts = 200
 
         for _ in range(n_batches):
             self.episodes_history = []
