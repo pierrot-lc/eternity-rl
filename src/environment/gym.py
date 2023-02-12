@@ -181,7 +181,7 @@ class EternityEnv(gym.Env):
             case "computer":
                 return self.instance
             case "rgb_array":
-                return draw_instance(self.instance, output_file)
+                return draw_instance(self.instance, self.count_matches(), output_file)
             case _:
                 raise RuntimeError(f"Unknown rendering type: {mode}.")
 

@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import lines, patches, path
+from matplotlib import patches, path
 
 GRAY = 0
 BLACK = 23
@@ -101,7 +101,9 @@ def draw_triangles(ax: plt.Axes, x: int, y: int, tile: np.ndarray):
 
 
 def draw_instance(
-    instance: np.ndarray, filename: Optional[Union[Path, str]] = None
+    instance: np.ndarray,
+    score: float,
+    filename: Optional[Union[Path, str]] = None,
 ) -> np.ndarray:
     _, height, width = instance.shape
 
@@ -120,6 +122,7 @@ def draw_instance(
 
         draw_triangles(ax, x, y, instance[:, y - 1, x - 1])  # Remove the padding.
 
+    fig.suptitle(f"Score: {score:.2f}")
     ax.set_xlim(0, width)
     ax.set_ylim(0, height)
 
@@ -130,4 +133,7 @@ def draw_instance(
 
     image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
     image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+    plt.close(fig)
+
     return image

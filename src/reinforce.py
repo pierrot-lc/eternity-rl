@@ -4,6 +4,9 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.nn.utils.clip_grad import clip_grad_norm_
+from tqdm import tqdm
+
+import wandb
 
 from .environment.gym import EternityEnv
 from .model import CNNPolicy
@@ -15,15 +18,20 @@ class Reinforce:
         env: EternityEnv,
         model: CNNPolicy,
         device: str,
+        learning_rate: float,
+        gamma: float,
+        n_batches: int,
+        batch_size: int,
     ):
         self.env = env
         self.model = model
         self.device = device
         self.rng = np.random.default_rng()
+        self.gamma = gamma
+        self.n_batches = n_batches
+        self.batch_size = batch_size
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3)
-        self.gamma = 0.99
-
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
         self.episodes_history = []
 
     def select_tile(
@@ -82,43 +90,67 @@ class Reinforce:
     def compute_metrics(self) -> dict[str, torch.Tensor]:
         loss = torch.tensor(0.0, device=self.device)
         history_returns = torch.zeros(len(self.episodes_history), device=self.device)
-
-        mean_returns = sum(returns.sum() for _, returns in self.episodes_history)
-        mean_returns = mean_returns / sum(
-            len(returns) for _, returns in self.episodes_history
-        )
+        episodes_lengths = torch.zeros(len(self.episodes_history), device=self.device)
 
         for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
-            history_returns[ep_id] = returns[0]
-            returns = returns - mean_returns
+            history_returns[ep_id] = returns[-1]
+            episodes_lengths[ep_id] = returns.shape[0]
             loss += -(log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
             "loss": loss,
             "return": history_returns.mean(),
+            "return_std": history_returns.std(),
+            "ep_len": episodes_lengths.mean(),
         }
         return metrics
 
     def launch_training(self):
-        optim = self.optimizer
-        self.model.to(self.device)
+        with wandb.init(project="eternity-rl", entity="pierrotlc") as run:
+            optim = self.optimizer
+            self.model.to(self.device)
 
-        n_batches = 2000
-        n_rollouts = 200
+            for _ in tqdm(range(self.n_batches)):
+                self.episodes_history = []
 
-        for _ in range(n_batches):
-            self.episodes_history = []
+                for _ in range(self.batch_size):
+                    self.rollout()
 
-            for _ in range(n_rollouts):
-                self.rollout()
+                metrics = self.compute_metrics()
+                optim.zero_grad()
+                metrics["loss"].backward()
+                clip_grad_norm_(self.model.parameters(), 1)
+                optim.step()
 
-            metrics = self.compute_metrics()
-            optim.zero_grad()
-            metrics["loss"].backward()
-            clip_grad_norm_(self.model.parameters(), 1)
-            optim.step()
+                # Log the metrics.
+                metrics = {
+                    metric_name: metric_value.cpu().item()
+                    for metric_name, metric_value in metrics.items()
+                }
+                run.log(metrics)
 
-            for metric_name in ["loss", "return"]:
-                value = metrics[metric_name].cpu().item()
-                print(f"{metric_name}: {value:.3f}", end="\t")
-            print("")
+    def make_gif(self, path: str):
+        env, model = self.env, self.model
+        device = self.device
+
+        model.to(device)
+        state = env.reset()
+        done = False
+
+        images = []
+        while not done:
+            state = torch.LongTensor(state).to(device).unsqueeze(0)
+            tile_1, tile_2 = model(state)
+            act_1, _ = self.select_tile(tile_1)
+            act_2, _ = self.select_tile(tile_2)
+
+            action = np.concatenate((act_1, act_2), axis=0)
+
+            state, _, done, _ = env.step(action)
+            image = env.render(mode="rgb_array")
+            images.append(image)
+
+        # Make a gif of the episode based on the images.
+        import imageio
+
+        imageio.mimwrite(path, images, fps=1)
