@@ -1,0 +1,12 @@
+env:
+  path: ./instances/eternity_A.txt
+  reward_type: win_ratio
+
+model:
+  embedding_dim: 8
+
+training:
+  learning_rate: 1.0e-4
+  gamma: 0.9
+  n_batches: 2000
+  batch_size: 50
