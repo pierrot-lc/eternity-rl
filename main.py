@@ -25,6 +25,7 @@ def main(config: dict[str, Any]):
     model = CNNPolicy(
         env.n_class,
         embedding_dim=config["model"]["embedding_dim"],
+        n_layers=config["model"]["n_layers"],
         board_width=env.size,
         board_height=env.size,
     )

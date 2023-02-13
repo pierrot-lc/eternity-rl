@@ -3,7 +3,8 @@ env:
   reward_type: win_ratio
 
 model:
-  embedding_dim: 8
+  embedding_dim: 16
+  n_layers: 4
 
 training:
   learning_rate: 1.0e-4

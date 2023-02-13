@@ -4,6 +4,7 @@ env:
 
 model:
   embedding_dim: 8
+  n_layers: 2
 
 training:
   learning_rate: 1.0e-3

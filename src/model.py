@@ -8,6 +8,7 @@ class CNNPolicy(nn.Module):
         self,
         n_classes: int,
         embedding_dim: int,
+        n_layers: int,
         board_width: int,
         board_height: int,
     ):
@@ -18,21 +19,25 @@ class CNNPolicy(nn.Module):
             nn.Embedding(n_classes, embedding_dim),
             nn.LayerNorm(embedding_dim),
             Rearrange("b h w t e -> b (t e) h w"),
-        )
-
-        self.cnn = nn.Sequential(
             nn.Conv2d(4 * embedding_dim, embedding_dim, 3, padding="same"),
             nn.LayerNorm([embedding_dim, board_height, board_width]),
             nn.GELU(),
-            nn.Conv2d(embedding_dim, 15, 3, padding="same"),
-            nn.LayerNorm([15, board_height, board_width]),
-            nn.GELU(),
-            nn.Conv2d(15, 15, 3, padding="same"),
-            nn.LayerNorm([15, board_height, board_width]),
-            nn.GELU(),
-            # Flatten.
+        )
+
+        self.residuals = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(embedding_dim, embedding_dim, 3, padding="same"),
+                    nn.LayerNorm([embedding_dim, board_height, board_width]),
+                    nn.GELU(),
+                )
+                for _ in range(n_layers)
+            ]
+        )
+
+        self.flatten = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(15 * board_width * board_height, embedding_dim),
+            nn.Linear(embedding_dim * board_width * board_height, embedding_dim),
             nn.LayerNorm(embedding_dim),
             nn.GELU(),
         )
@@ -63,7 +68,9 @@ class CNNPolicy(nn.Module):
             swap_height:
         """
         embed = self.embed_tiles(tiles)
-        embed = self.cnn(embed)
+        for layer in self.residuals:
+            embed = layer(embed) + embed
+        embed = self.flatten(embed)
         tile_1 = {key: layer(embed) for key, layer in self.select_1.items()}
         tile_2 = {key: layer(embed) for key, layer in self.select_2.items()}
         return tile_1, tile_2
