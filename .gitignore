@@ -5,3 +5,4 @@ instances/
 wandb/
 logs/
 data/
+**/.pytest_cache/
