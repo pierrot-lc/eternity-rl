@@ -52,16 +52,23 @@ def test_env_sizes():
 
 
 def test_matches_tiles():
-    env = EternityEnv(Path("instances/eternity_A.txt"), manual_orient=False)
-    assert env.count_matches() == 12
+    env = EternityEnv(Path("instances/eternity_A.txt"))
+    assert env.count_matches() == 19
     assert env.count_tile_matches((0, 0)) == 1
     assert env.count_tile_matches((1, 2)) == 3
 
     env.reset()
     rng = np.random.default_rng(0)
     for _ in range(10):
-        coords = np.array([rng.integers(0, env.n_pieces - 1) for _ in range(2)])
-        _, _, done, _ = env.step(coords)
+        action = np.array(
+            [
+                rng.integers(0, env.n_pieces - 1),
+                rng.integers(0, 4),
+                rng.integers(0, env.n_pieces - 1),
+                rng.integers(0, 4),
+            ]
+        )
+        _, _, done, _ = env.step(action)
         if done:
             return
 
@@ -78,7 +85,7 @@ def test_matches_tiles():
     ],
 )
 def test_swap_tiles(coords_1: tuple[int, int], coords_2: tuple[int, int]):
-    env = EternityEnv(Path("instances/eternity_A.txt"), manual_orient=True)
+    env = EternityEnv(Path("instances/eternity_A.txt"))
 
     tile_1 = env.instance[:, coords_1[0], coords_1[1]].copy()
     tile_2 = env.instance[:, coords_2[0], coords_2[1]].copy()
@@ -117,7 +124,7 @@ def test_instance_upgrade(instance_1: str, instance_2: str):
     "coords, roll_value", [((0, 0), 1), ((3, 2), -1), ((1, 1), 10)]
 )
 def test_roll_tiles(coords: tuple[int, int], roll_value: int):
-    env = EternityEnv(Path("instances/eternity_A.txt"), manual_orient=True)
+    env = EternityEnv(Path("instances/eternity_A.txt"))
     tile = env.instance[:, coords[0], coords[1]].copy()
 
     env.roll_tile(coords, roll_value)

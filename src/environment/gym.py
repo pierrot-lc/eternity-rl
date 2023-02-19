@@ -10,6 +10,9 @@ import numpy as np
 
 from .draw import draw_instance
 
+# Ids of the sides of the tiles.
+# The y-axis has its origin at the bottom.
+# The x-axis has its origin at the left.
 NORTH = 0
 EAST = 1
 SOUTH = 2
@@ -41,7 +44,6 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instance_path: Union[Path, str],
-        manual_orient: bool,
         reward_type: str = "win_ratio",
         reward_penalty: float = 0.0,
         seed: int = 0,
@@ -56,26 +58,20 @@ class EternityEnv(gym.Env):
         self.n_class = self.instance.max() + 1
         self.n_pieces = self.size * self.size
         self.max_steps = self.n_pieces * 4
-        self.best_matches = 2 * self.size * (self.size - 1)
+        self.best_matches = (
+            2 * self.size * (self.size - 1)  # Inner matches.
+            + 4 * self.size  # Walls matches at the borders.
+        )
         self.matches = 0
 
-        self.manual_orient = manual_orient
-        if manual_orient:
-            self.action_space = spaces.MultiDiscrete(
-                [
-                    self.n_pieces,  # Tile id to swap
-                    self.n_pieces,  # Tile id to swap
-                    4,  # How much rolls for the first tile
-                    4,  # How much rolls for the second tile
-                ]
-            )
-        else:
-            self.action_space = spaces.MultiDiscrete(
-                [
-                    self.n_pieces,  # Tile id to swap
-                    self.n_pieces,  # Tile id to swap
-                ]
-            )
+        self.action_space = spaces.MultiDiscrete(
+            [
+                self.n_pieces,  # Tile id to swap
+                self.n_pieces,  # Tile id to swap
+                4,  # How much rolls for the first tile
+                4,  # How much rolls for the second tile
+            ]
+        )
 
         self.observation_space = spaces.Box(
             low=0, high=1, shape=self.render().shape, dtype=np.uint8
@@ -101,21 +97,15 @@ class EternityEnv(gym.Env):
         """
         previous_matches = self.matches
 
-        if self.manual_orient:
-            rolls = [a for a in action[1::2]]
-            coords = [(a // self.size, a % self.size) for a in action[::2]]
-            self.roll_tile(coords[0], rolls[0])
-            self.roll_tile(coords[1], rolls[1])
-        else:
-            coords = [(a // self.size, a % self.size) for a in action]
+        rolls = [a for a in action[1::2]]
+        coords = [(a // self.size, a % self.size) for a in action[::2]]
+
+        # Roll tiles.
+        self.roll_tile(coords[0], rolls[0])
+        self.roll_tile(coords[1], rolls[1])
 
         # Swap tiles.
         self.swap_tiles(coords[0], coords[1])
-
-        # Find the best orientation after the swap.
-        if not self.manual_orient:
-            self.best_orientation(coords[0])
-            self.best_orientation(coords[1])
 
         self.matches = self.count_matches()
         self.tot_steps += 1
@@ -156,10 +146,10 @@ class EternityEnv(gym.Env):
         height = instance.shape[1]
         instance = einops.rearrange(instance, "c h w -> (h w) c")
 
-        # Scramble the tiles
+        # Scramble the tiles.
         instance = self.rng.permutation(instance, axis=0)
 
-        # Randomly orient the tiles
+        # Randomly orient the tiles.
         for tile_id, tile in enumerate(instance):
             shift_value = self.rng.integers(low=0, high=4)
             instance[tile_id] = np.roll(tile, shift_value)
@@ -187,7 +177,7 @@ class EternityEnv(gym.Env):
 
     def count_tile_matches(self, coords: tuple[int, int]) -> int:
         """Count the matches a tile has with its neighbours.
-        Ignore walls.
+        Walls are not counted as matches.
         """
         matches = 0
         tile = self.instance[:, coords[0], coords[1]]
@@ -203,7 +193,7 @@ class EternityEnv(gym.Env):
 
         for side_t, side_o, coords_o in zip(tile_sides, other_sides, other_coords):
             if not (0 <= coords_o[0] < self.size) or not (0 <= coords_o[1] < self.size):
-                continue  # Those coords are outside the square
+                continue  # Those coords are outside the square.
 
             tile_class = tile[side_t]
             other_class = self.instance[side_o, coords_o[0], coords_o[1]]
@@ -213,13 +203,40 @@ class EternityEnv(gym.Env):
 
         return matches
 
+    def count_walls_matches(self, coords: tuple[int, int]) -> int:
+        """Count all walls matches for the given tile.
+        A wall is considered a match if it is at the border of the map.
+        """
+        matches = 0
+        tile = self.instance[:, coords[0], coords[1]]
+
+        if coords[0] == 0 and tile[SOUTH] == WALL_ID:
+            matches += 1
+        if coords[0] == self.size - 1 and tile[NORTH] == WALL_ID:
+            matches += 1
+        if coords[1] == 0 and tile[WEST] == WALL_ID:
+            matches += 1
+        if coords[1] == self.size - 1 and tile[EAST] == WALL_ID:
+            matches += 1
+
+        return matches
+
     def count_matches(self) -> int:
         """Count all matches for the current state."""
+        # Count all matches between each tile.
         matches = sum(
             self.count_tile_matches((y, x))
             for x, y in product(range(self.size), range(self.size))
         )
-        return matches // 2  # Sides have all been checked twice
+        matches = matches // 2  # Sides have all been checked twice.
+
+        # Count all matches between walls and borders.
+        matches += sum(
+            self.count_walls_matches((y, x))
+            for x, y in product(range(self.size), range(self.size))
+        )
+
+        return matches
 
     def swap_tiles(
         self, tile_1_coords: tuple[int, int], tile_2_coords: tuple[int, int]

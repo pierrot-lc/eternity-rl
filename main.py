@@ -49,7 +49,7 @@ def main(config: dict[str, Any]):
         config["training"]["batch_size"],
         config["training"]["use_standardized_returns"],
     )
-    trainer.launch_training()
+    trainer.launch_training(config)
     trainer.make_gif("test.gif")
 
 
