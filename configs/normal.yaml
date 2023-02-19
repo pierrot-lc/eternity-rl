@@ -3,12 +3,15 @@ env:
   reward_type: win_ratio
 
 model:
-  embedding_dim: 16
-  n_layers: 4
+  embedding_dim: 64
+  n_layers: 8
 
 training:
-  learning_rate: 1.0e-4
-  gamma: 0.9
-  n_batches: 2000
+  learning_rate: 1.0e-3
+  gamma: 0.99
+  n_batches: 4000
   batch_size: 50
-  use_standardized_returns: True
+
+data_generation:
+  n_samples: 10000
+  seed: 0

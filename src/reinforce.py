@@ -1,4 +1,5 @@
 from itertools import accumulate
+from typing import Any
 
 import numpy as np
 import torch
@@ -22,7 +23,6 @@ class Reinforce:
         gamma: float,
         n_batches: int,
         batch_size: int,
-        use_standardized_returns: bool,
     ):
         self.env = env
         self.model = model
@@ -31,7 +31,6 @@ class Reinforce:
         self.gamma = gamma
         self.n_batches = n_batches
         self.batch_size = batch_size
-        self.use_standardized_returns = use_standardized_returns
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
         self.episodes_history = []
@@ -107,8 +106,7 @@ class Reinforce:
 
         loss = torch.tensor(0.0, device=self.device)
         for log_actions, returns in self.episodes_history:
-            if self.use_standardized_returns:
-                returns = (returns - mean_return) / (std_return + 1e-5)
+            returns = (returns - mean_return) / (std_return + 1e-5)
             loss += -(log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
@@ -119,7 +117,7 @@ class Reinforce:
         }
         return metrics
 
-    def launch_training(self, config: dict[str, any]):
+    def launch_training(self, config: dict[str, Any]):
         """Train the model and log everything to wandb."""
         optim = self.optimizer
         self.model.to(self.device)

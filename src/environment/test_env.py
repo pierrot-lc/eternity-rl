@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from .data_generation import generate_perfect_instance, generate_sample
 from .gym import ENV_DIR, ENV_ORDERED, EternityEnv, next_instance, read_instance_file
 
 
@@ -52,7 +53,7 @@ def test_env_sizes():
 
 
 def test_matches_tiles():
-    env = EternityEnv(Path("instances/eternity_A.txt"))
+    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
     assert env.count_matches() == 19
     assert env.count_tile_matches((0, 0)) == 1
     assert env.count_tile_matches((1, 2)) == 3
@@ -85,7 +86,7 @@ def test_matches_tiles():
     ],
 )
 def test_swap_tiles(coords_1: tuple[int, int], coords_2: tuple[int, int]):
-    env = EternityEnv(Path("instances/eternity_A.txt"))
+    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
 
     tile_1 = env.instance[:, coords_1[0], coords_1[1]].copy()
     tile_2 = env.instance[:, coords_2[0], coords_2[1]].copy()
@@ -124,8 +125,41 @@ def test_instance_upgrade(instance_1: str, instance_2: str):
     "coords, roll_value", [((0, 0), 1), ((3, 2), -1), ((1, 1), 10)]
 )
 def test_roll_tiles(coords: tuple[int, int], roll_value: int):
-    env = EternityEnv(Path("instances/eternity_A.txt"))
+    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
     tile = env.instance[:, coords[0], coords[1]].copy()
 
     env.roll_tile(coords, roll_value)
     assert np.all(env.instance[:, coords[0], coords[1]] == np.roll(tile, roll_value))
+
+
+@pytest.mark.parametrize(
+    "size, n_classes, seed",
+    [
+        (4, 4, 0),
+        (4, 4, 1),
+        (8, 12, 0),
+    ],
+)
+def test_generate_perfect_instance(size: int, n_classes: int, seed: int):
+    instance = generate_perfect_instance(size, n_classes, seed)
+    assert instance.shape == (4, size, size)
+
+    env = EternityEnv(instance=instance)
+    assert env.count_matches() == env.best_matches
+
+
+@pytest.mark.parametrize(
+    "size, n_classes, seed",
+    [
+        (4, 4, 0),
+        (4, 4, 1),
+        (8, 12, 0),
+    ],
+)
+def test_generate_sample(size: int, n_classes: int, seed: int):
+    instance, actions = generate_sample(size, n_classes, seed)
+    env = EternityEnv(instance=instance)
+    for action in actions:
+        env.step(action)
+
+    assert env.count_matches() == env.best_matches

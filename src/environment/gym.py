@@ -43,16 +43,23 @@ class EternityEnv(gym.Env):
 
     def __init__(
         self,
-        instance_path: Union[Path, str],
+        instance: Optional[np.ndarray] = None,
+        instance_path: Optional[Union[Path, str]] = None,
         reward_type: str = "win_ratio",
         reward_penalty: float = 0.0,
         seed: int = 0,
     ):
         super().__init__()
 
+        assert (instance is None) ^ (instance_path is None)
+
         self.rng = np.random.default_rng(seed)
+        self.instance = instance
         self.instance_path = instance_path
-        self.instance = read_instance_file(instance_path)  # Shape is [4, size, size].
+        if instance_path is not None:
+            self.instance = read_instance_file(
+                instance_path
+            )  # Shape is [4, size, size].
 
         self.size = self.instance.shape[-1]
         self.n_class = self.instance.max() + 1
@@ -63,6 +70,7 @@ class EternityEnv(gym.Env):
             + 4 * self.size  # Walls matches at the borders.
         )
         self.matches = 0
+        self.tot_steps = 0
 
         self.action_space = spaces.MultiDiscrete(
             [
@@ -127,7 +135,7 @@ class EternityEnv(gym.Env):
             case _:
                 raise RuntimeError(f"Unknown reward type: {self.reward_type}.")
 
-        reward -= self.reward_penalty  # Small penalty at each step
+        reward -= self.reward_penalty  # Small penalty at each step.
 
         info = {
             "matches": self.matches,
