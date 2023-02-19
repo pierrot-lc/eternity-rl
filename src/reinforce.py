@@ -92,22 +92,20 @@ class Reinforce:
 
     def compute_metrics(self) -> dict[str, torch.Tensor]:
         """Compute the loss and the metrics to log."""
-        loss = torch.tensor(0.0, device=self.device)
-        episodes_lengths = torch.zeros(len(self.episodes_history), device=self.device)
-
         # Compute some basic metrics.
-        episodes_lengths, returns = [], []
+        episodes_lengths, episodes_return = [], []
         for _, returns in self.episodes_history:
             episodes_lengths.append(returns.shape[0])
-            returns.append(returns[-1])
+            episodes_return.append(returns[-1])
 
         episodes_lengths = torch.FloatTensor(episodes_lengths)
-        returns = torch.FloatTensor(returns)
+        episodes_return = torch.FloatTensor(episodes_return)
 
         # Compute the mean and std of the returns.
-        mean_return = returns.mean()
-        std_return = returns.std()
+        mean_return = episodes_return.mean()
+        std_return = episodes_return.std()
 
+        loss = torch.tensor(0.0, device=self.device)
         for log_actions, returns in self.episodes_history:
             if self.use_standardized_returns:
                 returns = (returns - mean_return) / (std_return + 1e-5)
@@ -121,13 +119,16 @@ class Reinforce:
         }
         return metrics
 
-    def launch_training(self):
+    def launch_training(self, config: dict[str, any]):
         """Train the model and log everything to wandb."""
-        with wandb.init(project="eternity-rl", entity="pierrotlc") as run:
-            optim = self.optimizer
-            self.model.to(self.device)
-
-            for _ in tqdm(range(self.n_batches)):
+        optim = self.optimizer
+        self.model.to(self.device)
+        with wandb.init(
+            project="eternity-rl",
+            entity="pierrotlc",
+            config=config,
+        ) as run:
+            for epoch_id in tqdm(range(self.n_batches)):
                 self.episodes_history = []
 
                 for _ in range(self.batch_size):
@@ -145,6 +146,11 @@ class Reinforce:
                     for metric_name, metric_value in metrics.items()
                 }
                 run.log(metrics)
+
+                if epoch_id % 100 == 0:
+                    # Log a sample of the current policy.
+                    self.make_gif("./logs/sample.gif")
+                    run.log({"sample": wandb.Video("./logs/sample.gif", fps=1)})
 
     def make_gif(self, path: str):
         env, model = self.env, self.model
