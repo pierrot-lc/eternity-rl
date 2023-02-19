@@ -65,7 +65,16 @@ class CNNPolicy(nn.Module):
                 Tensor of shape [batch_size, 4, board_height, board_width].
 
         Returns:
-            swap_height:
+            tile_1: The logits for the first tile.
+                Dict of shape {
+                    "tile": [batch_size, board_width * board_height],
+                    "roll": [batch_size, 4],
+                }
+            tile_2: The logits for the second tile.
+                Dict of shape {
+                    "tile": [batch_size, board_width * board_height],
+                    "roll": [batch_size, 4],
+                }
         """
         embed = self.embed_tiles(tiles)
         for layer in self.residuals:

@@ -47,6 +47,7 @@ def main(config: dict[str, Any]):
         config["training"]["gamma"],
         config["training"]["n_batches"],
         config["training"]["batch_size"],
+        config["training"]["use_standardized_returns"],
     )
     trainer.launch_training()
     trainer.make_gif("test.gif")

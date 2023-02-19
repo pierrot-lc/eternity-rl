@@ -11,3 +11,4 @@ training:
   gamma: 0.9
   n_batches: 2000
   batch_size: 50
+  use_standardized_returns: True

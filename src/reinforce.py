@@ -22,6 +22,7 @@ class Reinforce:
         gamma: float,
         n_batches: int,
         batch_size: int,
+        use_standardized_returns: bool,
     ):
         self.env = env
         self.model = model
@@ -30,6 +31,7 @@ class Reinforce:
         self.gamma = gamma
         self.n_batches = n_batches
         self.batch_size = batch_size
+        self.use_standardized_returns = use_standardized_returns
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
         self.episodes_history = []
@@ -37,6 +39,7 @@ class Reinforce:
     def select_tile(
         self, tile_logits: dict[str, torch.Tensor]
     ) -> tuple[np.ndarray, torch.Tensor]:
+        """Sample the tile actions using the policy prediction."""
         actions = []
         log_actions = []
         for action_name in ["tile", "roll"]:
@@ -88,24 +91,38 @@ class Reinforce:
         self.episodes_history.append((log_actions, returns))
 
     def compute_metrics(self) -> dict[str, torch.Tensor]:
+        """Compute the loss and the metrics to log."""
         loss = torch.tensor(0.0, device=self.device)
-        history_returns = torch.zeros(len(self.episodes_history), device=self.device)
         episodes_lengths = torch.zeros(len(self.episodes_history), device=self.device)
 
-        for ep_id, (log_actions, returns) in enumerate(self.episodes_history):
-            history_returns[ep_id] = returns[-1]
-            episodes_lengths[ep_id] = returns.shape[0]
+        # Compute some basic metrics.
+        episodes_lengths, returns = [], []
+        for _, returns in self.episodes_history:
+            episodes_lengths.append(returns.shape[0])
+            returns.append(returns[-1])
+
+        episodes_lengths = torch.FloatTensor(episodes_lengths)
+        returns = torch.FloatTensor(returns)
+
+        # Compute the mean and std of the returns.
+        mean_return = returns.mean()
+        std_return = returns.std()
+
+        for log_actions, returns in self.episodes_history:
+            if self.use_standardized_returns:
+                returns = (returns - mean_return) / (std_return + 1e-5)
             loss += -(log_actions * returns.unsqueeze(1)).mean()
 
         metrics = {
             "loss": loss,
-            "return": history_returns.mean(),
-            "return_std": history_returns.std(),
+            "return": mean_return,
+            "return_std": std_return,
             "ep_len": episodes_lengths.mean(),
         }
         return metrics
 
     def launch_training(self):
+        """Train the model and log everything to wandb."""
         with wandb.init(project="eternity-rl", entity="pierrotlc") as run:
             optim = self.optimizer
             self.model.to(self.device)
