@@ -231,30 +231,6 @@ class EternityEnv(gym.Env):
         self.instance[:, tile_1_coords[0], tile_1_coords[1]] = tile_2
         self.instance[:, tile_2_coords[0], tile_2_coords[1]] = tile_1
 
-    def best_orientation(self, coords: tuple[int, int]) -> int:
-        """Reorient the given tile to maximise the matches.
-        This works for this tile only. If you apply this function
-        to two adjacent tiles, this will greedily search for each
-        tile without taking into account that the two can match together.
-
-        Return the number of matches of this tile.
-        """
-        tile = self.instance[:, coords[0], coords[1]]
-        max_matches = 0
-        best_tile = tile.copy()
-
-        for shift_value in range(4):
-            shifted_tile = np.roll(tile, shift_value)
-            self.instance[:, coords[0], coords[1]] = shifted_tile
-
-            matches = self.count_tile_matches(coords)
-            if matches > max_matches:
-                max_matches = matches
-                best_tile = shifted_tile.copy()
-
-        self.instance[:, coords[0], coords[1]] = best_tile
-        return max_matches
-
     def roll_tile(self, coords: tuple[int, int], shift_value: int):
         """Reorient the tile by doing a circular shift."""
         self.instance[:, coords[0], coords[1]] = np.roll(
