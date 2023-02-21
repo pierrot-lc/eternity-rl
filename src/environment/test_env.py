@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ..gym import ENV_DIR, ENV_ORDERED, EternityEnv, next_instance, read_instance_file
+from .gym import ENV_DIR, ENV_ORDERED, EternityEnv, next_instance, read_instance_file
 
 
 def test_read_instance():
