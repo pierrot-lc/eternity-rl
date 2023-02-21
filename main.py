@@ -65,7 +65,7 @@ def generate_data(config: dict[str, Any]):
 
     # Generate data.
     instances = np.zeros(
-        (config["data_generation"]["n_samples"], 4, env.size, env.size),
+        (config["data_generation"]["n_samples"], env.max_steps, 4, env.size, env.size),
         dtype=np.int32,
     )
     actions = np.zeros(

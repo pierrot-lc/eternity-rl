@@ -75,6 +75,7 @@ def generate_sample(
     rng = np.random.default_rng(seed)
     instance = generate_perfect_instance(size, n_classes, seed=seed)
     env = EternityEnv(instance)
+    instances = np.zeros((n_steps, 4, size, size), dtype=np.int32)
 
     # Sample random actions.
     swaps = rng.integers(0, size**2, size=(n_steps, 2))
@@ -85,8 +86,9 @@ def generate_sample(
     actions[:, 1::2] = rolls
 
     # Take the actions.
-    for action in actions:
+    for step_id, action in enumerate(actions):
         env.step(action)
+        instances[step_id] = env.render()
 
     # Revert the actions.
     rolls = (np.flip(rolls, axis=1) * -1) % 4
@@ -94,4 +96,7 @@ def generate_sample(
     actions[:, 1::2] = rolls
     actions = np.flip(actions, axis=0)
 
-    return env.render(), actions
+    # Revert the instances.
+    instances = np.flip(instances, axis=0)
+
+    return instances, actions
