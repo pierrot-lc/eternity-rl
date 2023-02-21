@@ -12,6 +12,10 @@ training:
   n_batches: 2000
   batch_size: 50
 
+supervised:
+  test_size: 0.2
+
 data_generation:
   n_samples: 10000
-  seed: 0
+
+seed: 0

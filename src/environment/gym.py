@@ -54,7 +54,7 @@ class EternityEnv(gym.Env):
         assert (instance is None) ^ (instance_path is None)
 
         self.rng = np.random.default_rng(seed)
-        self.instance = instance
+        self.instance = instance if instance is not None else np.zeros((4, 0, 0))
         self.instance_path = instance_path
         if instance_path is not None:
             self.instance = read_instance_file(

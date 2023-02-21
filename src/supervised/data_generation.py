@@ -9,7 +9,7 @@ The data is generated using the following steps:
 
 import numpy as np
 
-from .gym import EAST, NORTH, SOUTH, WALL_ID, WEST, EternityEnv
+from ..environment.gym import EAST, NORTH, SOUTH, WALL_ID, WEST, EternityEnv
 
 
 def generate_perfect_instance(
