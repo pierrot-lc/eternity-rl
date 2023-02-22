@@ -18,7 +18,13 @@ class EternityDataset(Dataset):
     def __getitem__(self, idx: int):
         instance = torch.LongTensor(self.instances[idx])
         action = torch.LongTensor(self.actions[idx])
-        return instance, action
+        return {
+            "instance": instance,
+            "tile_1": action[0],
+            "roll_1": action[1],
+            "tile_2": action[2],
+            "roll_2": action[3],
+        }
 
     @classmethod
     def from_file(

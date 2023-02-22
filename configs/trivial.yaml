@@ -13,6 +13,10 @@ training:
   batch_size: 50
 
 supervised:
+  learning_rate: 1.0e-2
+  batch_size: 128
+  epoch_size: 10000
+  n_epochs: 10
   test_size: 0.2
 
 data_generation:

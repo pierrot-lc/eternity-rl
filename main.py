@@ -8,11 +8,11 @@ import yaml
 from torchinfo import summary
 from tqdm import tqdm
 
-from src.environment.data_generation import generate_sample
 from src.environment.gym import EternityEnv
 from src.model import CNNPolicy
 from src.reinforce import Reinforce
-from src.supervised.dataset import EternityDataset
+from src.supervised import EternityDataset, EternityTrainer
+from src.supervised.data_generation import generate_sample
 
 
 def read_config(yaml_path: Path) -> dict:
@@ -101,7 +101,6 @@ def supervised(config: dict[str, Any]):
         test_size=config["supervised"]["test_size"],
         seed=config["seed"],
     )
-    print(len(train_dataset), len(test_dataset))
 
     # Get environment infos.
     env = EternityEnv(
@@ -126,6 +125,18 @@ def supervised(config: dict[str, Any]):
         ],
         device="cpu",
     )
+
+    trainer = EternityTrainer(
+        model,
+        train_dataset,
+        test_dataset,
+        config["supervised"]["learning_rate"],
+        config["supervised"]["batch_size"],
+        config["supervised"]["epoch_size"],
+        config["supervised"]["n_epochs"],
+        "cuda",
+    )
+    trainer.launch_training(config)
 
 
 if __name__ == "__main__":
