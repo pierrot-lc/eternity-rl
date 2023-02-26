@@ -36,6 +36,9 @@ def reinforce(config: dict[str, Any]):
         board_width=env.size,
         board_height=env.size,
     )
+    if config["reinforce"]["model_path"] != "":
+        model.load_state_dict(torch.load(config["reinforce"]["model_path"])["model"])
+
     summary(
         model,
         input_size=(4, env.size, env.size),
@@ -50,10 +53,10 @@ def reinforce(config: dict[str, Any]):
         env,
         model,
         config["device"],
-        config["training"]["learning_rate"],
-        config["training"]["gamma"],
-        config["training"]["n_batches"],
-        config["training"]["batch_size"],
+        config["reinforce"]["learning_rate"],
+        config["reinforce"]["gamma"],
+        config["reinforce"]["n_batches"],
+        config["reinforce"]["batch_size"],
     )
     trainer.launch_training(config)
     trainer.make_gif("test.gif")
