@@ -13,9 +13,14 @@ training:
   batch_size: 50
 
 supervised:
+  learning_rate: 1.0e-3
+  batch_size: 128
+  epoch_size: 10000
+  n_epochs: 20
   test_size: 0.2
 
 data_generation:
-  n_samples: 10000
+  n_samples: 100000
 
 seed: 0
+device: auto

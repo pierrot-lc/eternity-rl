@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -9,6 +10,7 @@ from tqdm import tqdm
 
 import wandb
 
+from ..environment.gym import EternityEnv
 from ..model import CNNPolicy
 from .dataset import EternityDataset
 
@@ -19,6 +21,7 @@ class EternityTrainer:
         model: CNNPolicy,
         train_dataset: EternityDataset,
         test_dataset: EternityDataset,
+        env: EternityEnv,
         lr: float,
         batch_size: int,
         epoch_size: int,
@@ -37,6 +40,7 @@ class EternityTrainer:
             ),
             drop_last=True,
         )
+        self.env = env
         self.optimizer = optim.AdamW(self.model.parameters(), lr=lr)
         self.batch_size = batch_size
         self.epoch_size = epoch_size
@@ -61,6 +65,12 @@ class EternityTrainer:
         metrics["loss"] = self.loss_fn(tile_logits, true_tiles) + self.loss_fn(
             roll_logits, true_rolls
         )
+        metrics["tile-accuracy"] = (
+            (tile_logits.argmax(dim=1) == true_tiles).float().mean()
+        )
+        metrics["roll-accuracy"] = (
+            (roll_logits.argmax(dim=1) == true_rolls).float().mean()
+        )
 
         return metrics
 
@@ -75,6 +85,7 @@ class EternityTrainer:
             metrics["loss"].backward()
             self.optimizer.step()
 
+    @torch.no_grad()
     def eval_dataset(self, dataset: EternityDataset) -> dict[str, float]:
         metrics = defaultdict(list)
         device = self.device
@@ -87,6 +98,7 @@ class EternityTrainer:
             ),
             drop_last=True,
         )
+        self.model.eval()
 
         for batch in loader:
             batch = {name: tensor.to(device) for name, tensor in batch.items()}
@@ -94,9 +106,42 @@ class EternityTrainer:
                 metrics[metric_name].append(metric_value.cpu().item())
 
         return {
-            metric_name: np.mean(metric_values)
+            metric_name: float(np.mean(metric_values))
             for metric_name, metric_values in metrics.items()
         }
+
+    def eval_env(self, n_games: int, gif_path: str) -> dict[str, float]:
+        metrics = defaultdict(list)
+        for _ in range(n_games):
+            tot_rewards, ep_len, _ = self.model.solve_env(
+                self.env, self.device, intermediate_images=False
+            )
+            metrics["return"].append(tot_rewards)
+            metrics["episode-length"].append(ep_len)
+
+        # Save a gif of an episode.
+        import imageio
+
+        _, _, images = self.model.solve_env(
+            self.env, self.device, intermediate_images=True
+        )
+        imageio.mimwrite(gif_path, images, fps=1)
+
+        return {
+            metric_name: float(np.mean(metric_values))
+            for metric_name, metric_values in metrics.items()
+        }
+
+    def save_model(self, config: dict[str, Any]):
+        env_name = os.path.basename(config["env"]["path"]).replace(".txt", "")
+        torch.save(
+            {
+                "model": self.model.state_dict(),
+                "embedding_dim": config["model"]["embedding_dim"],
+                "n_layers": config["model"]["n_layers"],
+            },
+            f"./logs/{env_name}-supervised-model.pt",
+        )
 
     def launch_training(self, config: dict[str, Any]):
         self.model.to(self.device)
@@ -108,9 +153,20 @@ class EternityTrainer:
             for _ in tqdm(range(self.n_epochs)):
                 self.train_one_epoch()
 
+                logs = dict()
                 for dataset, mode in zip(
                     [self.train_dataset, self.test_dataset],
                     ["train", "test"],
                 ):
                     metrics = self.eval_dataset(dataset)
-                    print(mode, metrics)
+                    for metric_name, metric_value in metrics.items():
+                        logs[f"{mode}/{metric_name}"] = metric_value
+
+                metrics = self.eval_env(50, "./logs/sample.gif")
+                for metric_name, metric_value in metrics.items():
+                    logs[f"env/{metric_name}"] = metric_value
+                logs["env/sample"] = wandb.Video("./logs/sample.gif", fps=1)
+
+                run.log(logs)
+
+                self.save_model(config)

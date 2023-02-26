@@ -66,8 +66,10 @@ class EternityEnv(gym.Env):
         self.n_pieces = self.size * self.size
         self.max_steps = self.n_pieces * 4
         self.best_matches = (
-            2 * self.size * (self.size - 1)  # Inner matches.
-            + 4 * self.size  # Walls matches at the borders.
+            2
+            * self.size
+            * (self.size - 1)  # Inner matches.
+            # + 4 * self.size  # Walls matches at the borders.
         )
         self.matches = 0
         self.tot_steps = 0
@@ -239,10 +241,10 @@ class EternityEnv(gym.Env):
         matches = matches // 2  # Sides have all been checked twice.
 
         # Count all matches between walls and borders.
-        matches += sum(
-            self.count_walls_matches((y, x))
-            for x, y in product(range(self.size), range(self.size))
-        )
+        # matches += sum(
+        #     self.count_walls_matches((y, x))
+        #     for x, y in product(range(self.size), range(self.size))
+        # )
 
         return matches
 

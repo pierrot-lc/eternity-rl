@@ -18,6 +18,9 @@ from src.supervised.data_generation import generate_sample
 def read_config(yaml_path: Path) -> dict:
     with open(yaml_path) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
+    if config["device"] == "auto":
+        config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
     return config
 
 
@@ -40,13 +43,13 @@ def reinforce(config: dict[str, Any]):
         dtypes=[
             torch.long,
         ],
-        device="cpu",
+        device=config["device"],
     )
 
     trainer = Reinforce(
         env,
         model,
-        "cuda",
+        config["device"],
         config["training"]["learning_rate"],
         config["training"]["gamma"],
         config["training"]["n_batches"],
@@ -130,11 +133,12 @@ def supervised(config: dict[str, Any]):
         model,
         train_dataset,
         test_dataset,
+        env,
         config["supervised"]["learning_rate"],
         config["supervised"]["batch_size"],
         config["supervised"]["epoch_size"],
         config["supervised"]["n_epochs"],
-        "cuda",
+        config["device"],
     )
     trainer.launch_training(config)
 

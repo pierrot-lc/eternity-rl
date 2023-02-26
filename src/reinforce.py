@@ -127,6 +127,7 @@ class Reinforce:
             config=config,
         ) as run:
             for epoch_id in tqdm(range(self.n_batches)):
+                self.model.train()
                 self.episodes_history = []
 
                 for _ in range(self.batch_size):
@@ -155,6 +156,7 @@ class Reinforce:
         device = self.device
 
         model.to(device)
+        model.eval()
         state = env.reset()
         done = False
 

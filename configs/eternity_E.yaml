@@ -1,26 +1,26 @@
 env:
-  path: ./instances/eternity_trivial_A.txt
+  path: ./instances/eternity_E.txt
   reward_type: win_ratio
 
 model:
-  embedding_dim: 12
-  n_layers: 4
+  embedding_dim: 64
+  n_layers: 8
 
 training:
   learning_rate: 1.0e-3
   gamma: 0.99
-  n_batches: 2000
+  n_batches: 4000
   batch_size: 50
 
 supervised:
-  learning_rate: 5.0e-3
+  learning_rate: 1.0e-3
   batch_size: 128
-  epoch_size: 10000
+  epoch_size: 20000
   n_epochs: 100
   test_size: 0.2
 
 data_generation:
-  n_samples: 100000
+  n_samples: 10000
 
 seed: 0
 device: auto
