@@ -149,6 +149,7 @@ class EternityTrainer:
             project="eternity-rl",
             entity="pierrotlc",
             config=config,
+            group=config["group"],
         ) as run:
             for _ in tqdm(range(self.n_epochs)):
                 self.train_one_epoch()

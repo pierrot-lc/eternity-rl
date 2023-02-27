@@ -6,17 +6,19 @@ model:
   embedding_dim: 64
   n_layers: 8
 
-training:
-  learning_rate: 1.0e-3
+reinforce:
+  learning_rate: 5.0e-4
   gamma: 0.99
   n_batches: 4000
-  batch_size: 50
+  batch_size: 10
+  model_path: ./logs/eternity_E-supervised-model.pt
+  # model_path: ""
 
 supervised:
   learning_rate: 1.0e-3
   batch_size: 128
   epoch_size: 20000
-  n_epochs: 100
+  n_epochs: 10
   test_size: 0.2
 
 data_generation:
@@ -24,3 +26,4 @@ data_generation:
 
 seed: 0
 device: auto
+group: eternity_E

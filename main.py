@@ -59,7 +59,6 @@ def reinforce(config: dict[str, Any]):
         config["reinforce"]["batch_size"],
     )
     trainer.launch_training(config)
-    trainer.make_gif("test.gif")
 
 
 def generate_data(config: dict[str, Any]):
@@ -71,19 +70,20 @@ def generate_data(config: dict[str, Any]):
     )
 
     # Generate data.
+    n_steps = env.max_steps * 2
     instances = np.zeros(
-        (config["data_generation"]["n_samples"], env.max_steps, 4, env.size, env.size),
+        (config["data_generation"]["n_samples"], n_steps, 4, env.size, env.size),
         dtype=np.int32,
     )
     actions = np.zeros(
-        (config["data_generation"]["n_samples"], env.max_steps, 4),
+        (config["data_generation"]["n_samples"], n_steps, 4),
         dtype=np.int32,
     )
     for sample_id in tqdm(range(config["data_generation"]["n_samples"])):
         inst, act = generate_sample(
             env.size,
             env.n_class,
-            env.max_steps,
+            n_steps,
             config["seed"],
         )
 
