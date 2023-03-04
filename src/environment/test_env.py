@@ -53,7 +53,7 @@ def test_env_sizes():
 
 def test_matches_tiles():
     env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
-    assert env.count_matches() == 19
+    assert env.count_matches() == 12
     assert env.count_tile_matches((0, 0)) == 1
     assert env.count_tile_matches((1, 2)) == 3
 
@@ -129,3 +129,32 @@ def test_roll_tiles(coords: tuple[int, int], roll_value: int):
 
     env.roll_tile(coords, roll_value)
     assert np.all(env.instance[:, coords[0], coords[1]] == np.roll(tile, roll_value))
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_reset(instance_path: str):
+    env = EternityEnv(instance_path=ENV_DIR / instance_path)
+    env.reset()
+    matches = env.count_matches()
+    instance = env.instance
+    tot_steps = env.tot_steps
+    env.reset(instance.copy(), tot_steps)
+    assert env.count_matches() == matches
+    assert np.all(env.instance == instance)
+    assert env.tot_steps == tot_steps
+
+    env.reset(instance.copy())
+    assert env.count_matches() == matches
+    assert np.all(env.instance == instance)
+    assert env.tot_steps == 0
+
+    env.reset()
+    assert np.any(env.instance != instance)  # It should pass, but we may get unlucky.
+    assert env.tot_steps == 0

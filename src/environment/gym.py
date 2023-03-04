@@ -150,23 +150,31 @@ class EternityEnv(gym.Env):
 
         return observation, reward, done, info
 
-    def reset(self) -> np.ndarray:
+    def reset(
+        self,
+        instance: Optional[np.ndarray] = None,
+        tot_steps: Optional[int] = None,
+    ) -> np.ndarray:
         """Scramble the tiles and randomly orient them."""
-        instance = self.instance
-        height = instance.shape[1]
-        instance = einops.rearrange(instance, "c h w -> (h w) c")
+        if instance is None:
+            # Randomly mix the tiles to create a new instance.
+            instance = self.instance
+            height = instance.shape[1]
+            instance = einops.rearrange(instance, "c h w -> (h w) c")
 
-        # Scramble the tiles.
-        instance = self.rng.permutation(instance, axis=0)
+            # Scramble the tiles.
+            instance = self.rng.permutation(instance, axis=0)
 
-        # Randomly orient the tiles.
-        for tile_id, tile in enumerate(instance):
-            shift_value = self.rng.integers(low=0, high=4)
-            instance[tile_id] = np.roll(tile, shift_value)
+            # Randomly orient the tiles.
+            for tile_id, tile in enumerate(instance):
+                shift_value = self.rng.integers(low=0, high=4)
+                instance[tile_id] = np.roll(tile, shift_value)
 
-        self.instance = einops.rearrange(instance, "(h w) c -> c h w", h=height)
+            instance = einops.rearrange(instance, "(h w) c -> c h w", h=height)
+
+        self.instance = instance
         self.matches = self.count_matches()
-        self.tot_steps = 0
+        self.tot_steps = tot_steps if tot_steps is not None else 0
 
         return self.render()
 

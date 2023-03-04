@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from src.environment.gym import EternityEnv
 from src.model import CNNPolicy
+from src.monte_carlo import MonteCarloTreeSearch
 from src.reinforce import Reinforce
 from src.supervised import EternityDataset, EternityTrainer
 from src.supervised.data_generation import generate_sample
@@ -146,8 +147,24 @@ def supervised(config: dict[str, Any]):
     trainer.launch_training(config)
 
 
+def monte_carlo():
+    env = EternityEnv(instance_path="./instances/eternity_trivial_A.txt")
+    env.reset()
+    mcts = MonteCarloTreeSearch(env)
+    root = mcts.root
+    while not root.terminal:
+        root = mcts.search(root, 4)
+        root.parent = None  # Cut the tree.
+        env.reset(root.state, root.steps)
+
+
 if __name__ == "__main__":
     import argparse
+
+    monte_carlo()
+    import sys
+
+    sys.exit(0)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

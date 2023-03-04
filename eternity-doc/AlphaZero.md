@@ -1,0 +1,1 @@
+Pour entraîner un value network, le modèle a besoin de savoir combien de steps il reste avant la fin du jeu.
