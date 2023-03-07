@@ -148,23 +148,20 @@ def supervised(config: dict[str, Any]):
 
 
 def monte_carlo():
-    env = EternityEnv(instance_path="./instances/eternity_trivial_A.txt")
+    env = EternityEnv(instance_path="./instances/eternity_trivial_B.txt")
     env.reset()
     mcts = MonteCarloTreeSearch(env)
     root = mcts.root
     while not root.terminal:
-        root = mcts.search(root, 4)
-        root.parent = None  # Cut the tree.
-        env.reset(root.state, root.steps)
+        root = mcts.search(root, 2000)
+        root.parent = None  # Cut the tree (to avoid useless backpropagations).
+
+    env.reset(root.state)
+    env.render("rgb_array", "test.png")
 
 
 if __name__ == "__main__":
     import argparse
-
-    monte_carlo()
-    import sys
-
-    sys.exit(0)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

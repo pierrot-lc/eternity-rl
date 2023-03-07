@@ -5,7 +5,7 @@ from typing import Optional
 
 import numpy as np
 
-from .environment import EternityEnv
+from ..environment import EternityEnv
 
 
 class Node:
@@ -48,6 +48,8 @@ class Node:
     @property
     def exploration(self) -> float:
         """The exploration value of this node."""
+        if self.terminal:
+            return float("-inf")  # We do not want to explore this node.
         if self.visits == 0:
             return float("+inf")
         if self.parent is None:
@@ -78,7 +80,7 @@ class MonteCarloTreeSearch:
 
         ---
         Args:
-            state: The initial state of the environment.
+            env: The environment to use.
         """
         self.env = env
         self.root = Node(env.instance.copy(), env.tot_steps, np.array([0, 0, 0, 0]))
@@ -95,7 +97,7 @@ class MonteCarloTreeSearch:
         Returns:
             The best node.
         """
-        for i in range(n):
+        for _ in range(n):
             node = self.select(root)
             reward = self.simulate(node)
             self.backpropagate(node, reward)
