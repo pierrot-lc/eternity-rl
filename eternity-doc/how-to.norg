@@ -1,0 +1,30 @@
+@document.meta
+    title: how-to
+    description: How to use the repo.
+    authors: pierrotlc
+    categories: doc
+    created: 2023-03-08
+    updated: 2023-03-08
+@end
+
+* Pretraining Using Generated Data
+  The goal of this phase is to have a model already acting well so that it can be finetuned easily.
+  The data is a solved random instance, from a starting point to the final solved state.
+  The model is trained using imitation learning.
+
+  The data is generated using the following scheme:
+  1. Generate a random solved instance.
+  2. Apply random actions to degrade its state.
+  3. Compute the inverse actions in order to get back to the solved state.
+  4. Save the degraded instance along with the reverse actions.
+
+* Testing
+  Tests are done using `pytest`.
+  To allow relative imports, you need to set the flag `--import-mode importlib`,
+  and to call the program explicitly from the `python -m` argument.
+
+  So to check if all tests are passing, you need to use the following command in the root directory :
+
+  @code sh
+  python3 -m pytest --import-mode importlib .
+  @end
