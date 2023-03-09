@@ -1,10 +1,10 @@
 @document.meta
-    title: how-to
-    description: How to use the repo.
-    authors: pierrotlc
-    categories: doc
-    created: 2023-03-08
-    updated: 2023-03-08
+title: how-to
+description: How to use the repo.
+authors: pierrotlc
+categories: doc
+created: 2023-03-08
+updated: 2023-03-09
 @end
 
 * Pretraining Using Generated Data
@@ -13,10 +13,10 @@
   The model is trained using imitation learning.
 
   The data is generated using the following scheme:
-  1. Generate a random solved instance.
-  2. Apply random actions to degrade its state.
-  3. Compute the inverse actions in order to get back to the solved state.
-  4. Save the degraded instance along with the reverse actions.
+  ~ Generate a random solved instance.
+  ~ Apply random actions to degrade its state.
+  ~ Compute the inverse actions in order to get back to the solved state.
+  ~ Save the degraded instance along with the reverse actions.
 
 * Testing
   Tests are done using `pytest`.
