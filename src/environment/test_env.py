@@ -2,7 +2,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
+from .batched_gym import BatchedEternityEnv
 from .gym import ENV_DIR, ENV_ORDERED, EternityEnv, next_instance, read_instance_file
 
 
@@ -158,3 +160,26 @@ def test_reset(instance_path: str):
     env.reset()
     assert np.any(env.instance != instance)  # It should pass, but we may get unlucky.
     assert env.tot_steps == 0
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_batch_matches(instance_path: str):
+    env = EternityEnv(instance_path=ENV_DIR / instance_path)
+    instance = env.render()
+    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
+    instances = torch.stack(instances)
+
+    env = BatchedEternityEnv(instances)
+
+    matches = env.matches
+
+    for instance, instance_match in zip(instances, matches):
+        env = EternityEnv(instance=instance.numpy())
+        assert env.count_matches() == instance_match.item()
