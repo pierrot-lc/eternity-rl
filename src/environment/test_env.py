@@ -226,3 +226,12 @@ def test_batch_scramble(instance_path: str):
 
     for instance in env.instances:
         assert compare_instances(instance, reference)
+
+
+def test_batch_roll():
+    input_tensor = torch.randn((10, 5))
+    shifts = torch.randint(low=-15, high=15, size=(len(input_tensor),))
+    rolled_tensor = BatchedEternityEnv.batched_roll(input_tensor, shifts)
+
+    for inpt, shift, rolled in zip(input_tensor, shifts, rolled_tensor):
+        assert torch.all(torch.roll(inpt, shift.item()) == rolled)

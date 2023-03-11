@@ -2,10 +2,12 @@
 All actions are made on the batch.
 """
 import einops
+import functorch
 import gymnasium as gym
 import gymnasium.spaces as spaces
 import numpy as np
 import torch
+from einops import rearrange
 
 from .gym import EAST, NORTH, SOUTH, WEST
 
@@ -95,6 +97,18 @@ class BatchedEternityEnv(gym.Env):
 
         return self.render()
 
+    def roll(self, coords: torch.LongTensor, shifts: torch.Tensor):
+        """Rolls tiles at the given coordinates for the given shifts.
+
+        ---
+        Args:
+            coords: The coordinates of the tiles to roll.
+                Shape of [batch_size, 2].
+            shifts: The number of shifts for each tile.
+                Shape of [batch_size,].
+        """
+        pass
+
     @property
     def matches(self) -> torch.Tensor:
         """The number of matches for each instance.
@@ -124,7 +138,7 @@ class BatchedEternityEnv(gym.Env):
     def scramble_instances(self):
         """Scrambles the instances to start from a new valid configuration."""
         # Scrambles the tiles.
-        self.instances = einops.rearrange(
+        self.instances = rearrange(
             self.instances, "b c h w -> b (h w) c", w=self.size
         )  # Shape of [batch_size, n_pieces, 4].
         permutations = torch.stack(
@@ -140,18 +154,17 @@ class BatchedEternityEnv(gym.Env):
             ]
 
         # Randomly rolls the tiles.
-        # Note: we can't really make it in a vectorized way.
-        # A way to do it would be to use `torch.vmap`, which is still in beta.
-        rolls = torch.randint(
-            low=0, high=4, size=(self.batch_size, self.n_pieces), generator=self.rng
+        shifts = torch.randint(
+            low=0, high=4, size=(self.batch_size * self.n_pieces,), generator=self.rng
         )
-        for instance_id in range(self.batch_size):
-            for piece_id in range(self.n_pieces):
-                piece = self.instances[instance_id, piece_id]
-                piece = torch.roll(piece, shifts=rolls[instance_id, piece_id].item())
-                self.instances[instance_id, piece_id] = piece
-        self.instances = einops.rearrange(
-            self.instances, "b (h w) c -> b c h w", w=self.size
+        self.instances = rearrange(self.instances, "b p c -> (b p) c")
+        self.instances = self.batched_roll(self.instances, shifts)
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.size,
+            w=self.size,
         )
 
     def render(self, mode: str = "computer") -> torch.Tensor:
@@ -170,3 +183,36 @@ class BatchedEternityEnv(gym.Env):
                 return self.instances
             case _:
                 raise RuntimeError(f"Unknown rendering type: {mode}.")
+
+    @staticmethod
+    def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:
+        """Batched version of `torch.roll`.
+        It applies a circular shifts to the last dimension of the tensor.
+
+        ---
+        Args:
+            input_tensor: The tensor to roll.
+                Shape of [batch_size, hidden_size].
+            shifts: The number of shifts for each element of the batch.
+                Shape of [batch_size,].
+
+        ---
+        Returns:
+            The rolled tensor.
+        """
+        batch_size, hidden_size = input_tensor.shape
+        # In the right range of values (circular shift).
+        shifts = shifts % hidden_size
+        # To match the same direction as `torch.roll`.
+        shifts = hidden_size - shifts
+
+        # Compute the indices that will select the right part of the extended tensor.
+        offsets = torch.arange(hidden_size)
+        offsets = einops.repeat(offsets, "h -> b h", b=batch_size)
+        select_indices = shifts.unsqueeze(1) + offsets
+
+        # Extend the input tensor with circular padding.
+        input_tensor = torch.concat((input_tensor, input_tensor), dim=1)
+
+        rolled_tensor = torch.gather(input_tensor, dim=1, index=select_indices)
+        return rolled_tensor
