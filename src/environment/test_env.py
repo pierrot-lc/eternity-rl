@@ -193,14 +193,14 @@ def test_batch_matches(instance_path: str):
         "eternity_A.txt",
     ],
 )
-def test_batch_reset(instance_path: str):
+def test_batch_scramble(instance_path: str):
     env = EternityEnv(instance_path=ENV_DIR / instance_path)
     reference = torch.LongTensor(env.reset())
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
     env = BatchedEternityEnv(instances)
 
-    env.reset()
+    env.scramble_instances()
 
     def compare_pieces(piece_1: torch.Tensor, piece_2: torch.Tensor) -> bool:
         """True if pieces are equal rollwise."""
