@@ -97,17 +97,29 @@ class BatchedEternityEnv(gym.Env):
 
         return self.render()
 
-    def roll(self, coords: torch.LongTensor, shifts: torch.Tensor):
-        """Rolls tiles at the given coordinates for the given shifts.
+    def roll(self, tile_ids: torch.LongTensor, shifts: torch.LongTensor):
+        """Rolls tiles at the given ids for the given shifts.
 
         ---
         Args:
-            coords: The coordinates of the tiles to roll.
-                Shape of [batch_size, 2].
+            tile_ids: The id of the tiles to roll.
+                Shape of [batch_size,].
             shifts: The number of shifts for each tile.
                 Shape of [batch_size,].
         """
-        pass
+        total_shifts = torch.zeros(self.batch_size * self.n_pieces, dtype=torch.long)
+        offsets = torch.arange(0, self.batch_size * self.n_pieces, self.n_pieces)
+        total_shifts[tile_ids + offsets] = shifts
+
+        self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
+        self.instances = self.batched_roll(self.instances, total_shifts)
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.size,
+            w=self.size,
+        )
 
     @property
     def matches(self) -> torch.Tensor:

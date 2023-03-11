@@ -235,3 +235,31 @@ def test_batch_roll():
 
     for inpt, shift, rolled in zip(input_tensor, shifts, rolled_tensor):
         assert torch.all(torch.roll(inpt, shift.item()) == rolled)
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_batch_roll_action(instance_path):
+    env = EternityEnv(instance_path=ENV_DIR / instance_path)
+    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
+    instances = torch.stack(instances)
+
+    env = BatchedEternityEnv(instances)
+    tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+    shifts = torch.randint(low=0, high=4, size=(env.batch_size,))
+    env.roll(tile_ids, shifts)
+
+    for instance_ref, instance_rolled, tile_id, shift in zip(
+        instances, env.instances, tile_ids, shifts
+    ):
+        env = EternityEnv(instance=instance_ref.numpy())
+        coords = (tile_id.item() // env.size, tile_id.item() % env.size)
+        env.roll_tile(coords, shift.item())
+
+        assert torch.all(torch.LongTensor(env.instance) == instance_rolled)
