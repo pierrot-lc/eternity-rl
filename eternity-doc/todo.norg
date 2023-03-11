@@ -7,12 +7,12 @@ updated: 2023-03-11
 @end
 
 * TODO
-  - (-) A batched environment, based on tensor operations.
+  - (x) A batched environment, based on tensor operations.
   -- (x) Batch matches.
   -- (x) Reset (tests).
-  -- (-) Batch actions.
+  -- (x) Batch actions.
   --- (x) Batched rolls.
-  --- ( ) Batched swap.
+  --- (x) Batched swap.
   - ( ) Reinforce using the batched environment.
   - ( ) A cleaner version of the MCTS.
   - ( ) Mixing MCTS with neural networks -> AlphaZero.

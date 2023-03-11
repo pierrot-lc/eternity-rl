@@ -97,8 +97,30 @@ class BatchedEternityEnv(gym.Env):
 
         return self.render()
 
-    def roll(self, tile_ids: torch.LongTensor, shifts: torch.LongTensor):
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Do a batched step through all instances.
+
+        ---
+        Args:
+            actions: Batch of actions to apply.
+                Shape of [batch_size, tile_id_1, shift_1, tile_id_2, shift_2].
+        """
+        tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
+        shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
+
+        self.roll_tiles(tiles_id_1, shifts_1)
+        self.roll_tiles(tiles_id_2, shifts_2)
+
+        self.swap_tiles(tiles_id_1, tiles_id_2)
+
+        self.tot_steps += 1
+
+        return self.render(), self.matches
+
+    def roll_tiles(self, tile_ids: torch.LongTensor, shifts: torch.LongTensor):
         """Rolls tiles at the given ids for the given shifts.
+        It actually shifts all tiles, but with 0-shifts
+        except for the pointed tile ids.
 
         ---
         Args:
@@ -113,6 +135,29 @@ class BatchedEternityEnv(gym.Env):
 
         self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
         self.instances = self.batched_roll(self.instances, total_shifts)
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.size,
+            w=self.size,
+        )
+
+    def swap_tiles(self, tile_ids: torch.LongTensor):
+        """Swap two tiles in each element of the batch.
+
+        ---
+        Args:
+            tile_ids: The id of the tiles to swap.
+                Shape of [batch_size, 2].
+        """
+        offsets = torch.arange(0, self.batch_size * self.n_pieces, self.n_pieces)
+        tile_ids = tile_ids + offsets.unsqueeze(1)
+        self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
+        self.instances[tile_ids[:, 0]], self.instances[tile_ids[:, 1]] = (
+            self.instances[tile_ids[:, 1]],
+            self.instances[tile_ids[:, 0]],
+        )
         self.instances = rearrange(
             self.instances,
             "(b h w) c -> b c h w",
