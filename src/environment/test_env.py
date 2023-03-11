@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import einops
 import numpy as np
 import pytest
 import torch
@@ -175,7 +176,6 @@ def test_batch_matches(instance_path: str):
     instance = env.render()
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
-
     env = BatchedEternityEnv(instances)
 
     matches = env.matches
@@ -183,3 +183,46 @@ def test_batch_matches(instance_path: str):
     for instance, instance_match in zip(instances, matches):
         env = EternityEnv(instance=instance.numpy())
         assert env.count_matches() == instance_match.item()
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_batch_reset(instance_path: str):
+    env = EternityEnv(instance_path=ENV_DIR / instance_path)
+    reference = torch.LongTensor(env.reset())
+    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
+    instances = torch.stack(instances)
+    env = BatchedEternityEnv(instances)
+
+    env.reset()
+
+    def compare_pieces(piece_1: torch.Tensor, piece_2: torch.Tensor) -> bool:
+        """True if pieces are equal rollwise."""
+        for shifts in range(4):
+            rolled_piece = torch.roll(piece_2, shifts)
+            if torch.all(piece_1 == rolled_piece):
+                return True
+        return False
+
+    def compare_instances(instance_1: torch.Tensor, instance_2: torch.Tensor) -> bool:
+        """True if all pieces of both instances are found."""
+        pieces_1 = list(einops.rearrange(instance_1, "c h w -> (h w) c"))
+        pieces_2 = list(einops.rearrange(instance_2, "c h w -> (h w) c"))
+        pieces_found = set()
+
+        for piece_1 in pieces_1:
+            for piece_id, piece_2 in enumerate(pieces_2):
+                if compare_pieces(piece_1, piece_2) and piece_id not in pieces_found:
+                    pieces_found.add(piece_id)
+                    break
+
+        return len(pieces_found) == len(pieces_2)
+
+    for instance in env.instances:
+        assert compare_instances(instance, reference)

@@ -12,6 +12,7 @@ from .gym import EAST, NORTH, SOUTH, WEST
 # Defines convs that will compute vertical and horizontal matches.
 # Shapes are [out_channels, in_channels, kernel_height, kernel_width].
 # See `BatchedEternityEnv.matches` for more information.
+# Don't forget that the y-axis is reversed!!
 HORIZONTAL_CONV = torch.zeros((1, 4, 2, 1))
 HORIZONTAL_CONV[0, SOUTH, 1, 0] = 1
 HORIZONTAL_CONV[0, NORTH, 0, 0] = -1
