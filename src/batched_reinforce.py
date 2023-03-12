@@ -82,10 +82,15 @@ class BatchedReinforce:
         """
         states, _ = self.env.reset()
         returns = torch.zeros(
-            self.env.batch_size, self.env.max_steps, device=self.device
+            self.env.batch_size,
+            self.env.max_steps,
+            device=self.device,
         )
         log_actions = torch.zeros(
-            self.env.batch_size, self.env.max_steps, 4, device=self.device
+            self.env.batch_size,
+            self.env.max_steps,
+            4,
+            device=self.device,
         )
         masks = torch.zeros(
             self.env.batch_size,
@@ -95,7 +100,7 @@ class BatchedReinforce:
         )
 
         while not self.env.truncated or torch.all(self.env.terminated):
-            tile_1, tile_2 = self.model(states.to(self.device))
+            tile_1, tile_2 = self.model(states)
             actions_1, logits_1 = self.sample_action(tile_1)
             actions_2, logits_2 = self.sample_action(tile_2)
 
@@ -104,22 +109,24 @@ class BatchedReinforce:
 
             states, rewards, _, _, _ = self.env.step(actions)
 
-            if not self.env.truncated:
-                returns[:, self.env.step_id] = rewards
-                log_actions[:, self.env.step_id] = logits
-                masks[:, self.env.step_id] = ~self.env.terminated
+            returns[:, self.env.step_id - 1] = rewards
+            log_actions[:, self.env.step_id - 1] = logits
+            masks[:, self.env.step_id - 1] = ~self.env.terminated
 
         # The last terminated state is not counted in the masks,
         # so we need to shift the masks by 1 to make sure we include id.
         masks = torch.roll(masks, shifts=1, dims=(1,))
-        masks[:, 0] = 1
+        masks[:, 0] = True
 
         # Compute the cumulated rewards.
         returns = torch.flip(returns, dims=(1,))
         masks = torch.flip(masks, dims=(1,))
-        returns = torch.cumsum(returns * masks, dim=1) * masks  # Ignore masked rewards.
+
+        returns = torch.cumsum(returns * masks, dim=1)  # Ignore masked rewards.
+
         returns = torch.flip(returns, dims=(1,))
         masks = torch.flip(masks, dims=(1,))
+
         return returns, log_actions, masks
 
     def compute_metrics(
@@ -142,11 +149,11 @@ class BatchedReinforce:
         """
         metrics = dict()
 
-        end_game = masks.sum(dim=1).long()
+        end_game = masks.sum(dim=1).long() - 1
         end_return = torch.gather(returns, dim=1, index=end_game.unsqueeze(1))
         end_return = end_return.squeeze(1)
         mean_return, std_return = end_return.mean(), end_return.std()
-        returns = (returns - mean_return) / (std_return + 1e-7)
+        # returns = (returns - mean_return) / (std_return + 1e-7)
         masked_loss = -(log_actions * masks.unsqueeze(2) * returns.unsqueeze(2))
 
         metrics["loss"] = masked_loss.sum() / masks.sum()
