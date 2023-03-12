@@ -23,16 +23,16 @@ class CNNPolicy(nn.Module):
             nn.LayerNorm(embedding_dim),
             Rearrange("b h w t e -> b (t e) h w"),
             nn.Conv2d(4 * embedding_dim, embedding_dim, 3, padding="same"),
-            nn.LayerNorm([embedding_dim, board_height, board_width]),
             nn.GELU(),
+            nn.LayerNorm([embedding_dim, board_height, board_width]),
         )
 
         self.residuals = nn.ModuleList(
             [
                 nn.Sequential(
                     nn.Conv2d(embedding_dim, embedding_dim, 3, padding="same"),
-                    nn.LayerNorm([embedding_dim, board_height, board_width]),
                     nn.GELU(),
+                    nn.LayerNorm([embedding_dim, board_height, board_width]),
                 )
                 for _ in range(n_layers)
             ]
@@ -41,8 +41,8 @@ class CNNPolicy(nn.Module):
         self.flatten = nn.Sequential(
             nn.Flatten(),
             nn.Linear(embedding_dim * board_width * board_height, embedding_dim),
-            nn.LayerNorm(embedding_dim),
             nn.GELU(),
+            nn.LayerNorm(embedding_dim),
         )
 
         self.select_1 = nn.ModuleDict(

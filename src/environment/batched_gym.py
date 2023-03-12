@@ -135,12 +135,16 @@ class BatchedEternityEnv(gym.Env):
 
         self.step_id += 1
         self.truncated = self.step_id >= self.max_steps
+
         # Maintain the previous terminated states.
         self.terminated |= self.matches == self.best_matches
 
+        # Only give a reward at the end of the episode.
+        rewards = self.matches * self.terminated / self.best_matches
+
         return (
             self.render(),
-            self.matches / self.best_matches,
+            rewards,
             self.terminated,
             self.truncated,
             dict(),

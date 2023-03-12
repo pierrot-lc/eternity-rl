@@ -117,7 +117,7 @@ class BatchedReinforce:
         # Compute the cumulated rewards.
         returns = torch.flip(returns, dims=(1,))
         masks = torch.flip(masks, dims=(1,))
-        returns = torch.cumsum(returns * masks, dim=1)  # Ignore masked rewards.
+        returns = torch.cumsum(returns * masks, dim=1) * masks  # Ignore masked rewards.
         returns = torch.flip(returns, dims=(1,))
         masks = torch.flip(masks, dims=(1,))
         return returns, log_actions, masks
@@ -135,6 +135,10 @@ class BatchedReinforce:
                 Shape of [batch_size, max_steps, 4].
             masks: The mask indicating whether the game is terminated.
                 Shape of [batch_size, max_steps].
+
+        ---
+        Returns:
+            A dictionary of metrics of the batched rollout.
         """
         metrics = dict()
 
@@ -142,13 +146,15 @@ class BatchedReinforce:
         end_return = torch.gather(returns, dim=1, index=end_game.unsqueeze(1))
         end_return = end_return.squeeze(1)
         mean_return, std_return = end_return.mean(), end_return.std()
-
         returns = (returns - mean_return) / (std_return + 1e-7)
-        metrics["loss"] = (log_actions * returns.unsqueeze(2)).mean()
+        masked_loss = -(log_actions * masks.unsqueeze(2) * returns.unsqueeze(2))
 
-        metrics["episode lengths"] = torch.sum(masks, dim=1).float().mean()
-        metrics["mean return"] = mean_return
-        metrics["std return"] = std_return
+        metrics["loss"] = masked_loss.sum() / masks.sum()
+        metrics["ep-len/mean"] = end_game.float().mean()
+        metrics["ep-len/min"] = end_game.min()
+        metrics["return/max"] = end_return.max()
+        metrics["return/mean"] = mean_return
+        metrics["return/std"] = std_return
 
         return metrics
 
@@ -157,6 +163,7 @@ class BatchedReinforce:
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
+            group="batched-reinforce",
             config=config,
         ) as run:
             for epoch_id in tqdm(range(self.n_batches)):
