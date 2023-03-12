@@ -8,7 +8,8 @@ import yaml
 from torchinfo import summary
 from tqdm import tqdm
 
-from src.environment.gym import EternityEnv
+from src.batched_reinforce import BatchedReinforce
+from src.environment import BatchedEternityEnv, EternityEnv
 from src.model import CNNPolicy
 from src.monte_carlo import MonteCarloTreeSearch
 from src.reinforce import Reinforce
@@ -58,6 +59,44 @@ def reinforce(config: dict[str, Any]):
         config["reinforce"]["gamma"],
         config["reinforce"]["n_batches"],
         config["reinforce"]["batch_size"],
+    )
+    trainer.launch_training(config)
+
+
+def batched_reinforce(config: dict[str, Any]):
+    env = EternityEnv(
+        instance_path=config["env"]["path"],
+    )
+    instances = torch.stack(
+        [
+            torch.LongTensor(env.render())
+            for _ in range(config["reinforce"]["batch_size"])
+        ]
+    )
+    env = BatchedEternityEnv(instances, config["device"], seed=config["seed"])
+    model = CNNPolicy(
+        env.n_class,
+        embedding_dim=config["model"]["embedding_dim"],
+        n_layers=config["model"]["n_layers"],
+        board_width=env.size,
+        board_height=env.size,
+    )
+    summary(
+        model,
+        input_size=(4, env.size, env.size),
+        batch_dim=0,
+        dtypes=[
+            torch.long,
+        ],
+        device=config["device"],
+    )
+    trainer = BatchedReinforce(
+        env,
+        model,
+        config["device"],
+        config["reinforce"]["learning_rate"],
+        config["reinforce"]["gamma"],
+        config["reinforce"]["n_batches"],
     )
     trainer.launch_training(config)
 
@@ -166,7 +205,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["reinforce", "generate-data", "supervised"],
+        choices=["reinforce", "generate-data", "supervised", "batched-reinforce"],
         default="reinforce",
     )
     parser.add_argument("--config", type=Path, default="configs/trivial.yaml")
@@ -181,3 +220,5 @@ if __name__ == "__main__":
             generate_data(config)
         case "supervised":
             supervised(config)
+        case "batched-reinforce":
+            batched_reinforce(config)

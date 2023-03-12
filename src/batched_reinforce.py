@@ -3,6 +3,7 @@ from typing import Any
 import torch
 import torch.optim as optim
 from torch.distributions import Categorical
+from torch.nn.utils.clip_grad import clip_grad_value_
 from tqdm import tqdm
 
 import wandb
@@ -50,9 +51,9 @@ class BatchedReinforce:
         tile_distribution = Categorical(logits=tile_logits["tile"])
         tile_ids = tile_distribution.sample()
         tile_ids_logits = torch.gather(
-            tile_logits["title"], dim=1, index=tile_ids.unsqueeze(1)
+            tile_logits["tile"], dim=1, index=tile_ids.unsqueeze(1)
         )
-        tile_ids_logits.squeeze(1)
+        tile_ids_logits = tile_ids_logits.squeeze(1)
 
         # Sample the roll values.
         roll_distribution = Categorical(logits=tile_logits["roll"])
@@ -86,7 +87,12 @@ class BatchedReinforce:
         log_actions = torch.zeros(
             self.env.batch_size, self.env.max_steps, 4, device=self.device
         )
-        masks = torch.zeros(self.env.batch_size, self.env.max_steps, device=self.device)
+        masks = torch.zeros(
+            self.env.batch_size,
+            self.env.max_steps,
+            device=self.device,
+            dtype=torch.bool,
+        )
 
         while not self.env.truncated or torch.all(self.env.terminated):
             tile_1, tile_2 = self.model(states.to(self.device))
@@ -98,9 +104,10 @@ class BatchedReinforce:
 
             states, rewards, _, _, _ = self.env.step(actions)
 
-            returns[:, self.env.step_id] = rewards
-            log_actions[:, self.env.step_id] = logits
-            masks[:, self.env.step_id] = 1 - self.env.terminated.to(self.device)
+            if not self.env.truncated:
+                returns[:, self.env.step_id] = rewards
+                log_actions[:, self.env.step_id] = logits
+                masks[:, self.env.step_id] = ~self.env.terminated
 
         # The last terminated state is not counted in the masks,
         # so we need to shift the masks by 1 to make sure we include id.
@@ -131,7 +138,7 @@ class BatchedReinforce:
         """
         metrics = dict()
 
-        end_game = masks.sum(dim=1)
+        end_game = masks.sum(dim=1).long()
         end_return = torch.gather(returns, dim=1, index=end_game.unsqueeze(1))
         end_return = end_return.squeeze(1)
         mean_return, std_return = end_return.mean(), end_return.std()
@@ -139,7 +146,7 @@ class BatchedReinforce:
         returns = (returns - mean_return) / (std_return + 1e-7)
         metrics["loss"] = (log_actions * returns.unsqueeze(2)).mean()
 
-        metrics["episode lengths"] = torch.sum(masks, dim=1).mean()
+        metrics["episode lengths"] = torch.sum(masks, dim=1).float().mean()
         metrics["mean return"] = mean_return
         metrics["std return"] = std_return
 
@@ -147,7 +154,11 @@ class BatchedReinforce:
 
     def launch_training(self, config: dict[str, Any]):
         self.model.to(self.device)
-        with wandb.init(project="eternity-rl", entity="pierrotl", config=config) as run:
+        with wandb.init(
+            project="eternity-rl",
+            entity="pierrotlc",
+            config=config,
+        ) as run:
             for epoch_id in tqdm(range(self.n_batches)):
                 self.model.train()
 
@@ -156,6 +167,8 @@ class BatchedReinforce:
 
                 self.optimizer.zero_grad()
                 metrics["loss"].backward()
+                clip_grad_value_(self.model.parameters(), clip_value=1)
                 self.optimizer.step()
 
-                print(metrics["loss"].cpu().item())
+                metrics = {k: v.cpu().item() for k, v in metrics.items()}
+                run.log(metrics)

@@ -13,10 +13,10 @@ updated: 2023-03-12
   -- (x) Batch actions.
   --- (x) Batched rolls.
   --- (x) Batched swap.
-  - (-) Reinforce using the batched environment.
+  - (x) Reinforce using the batched environment.
   -- (x) sample actions.
   -- (x) rollout.
   -- (x) metrics.
-  -- ( ) devices.
+  -- (x) devices.
   - ( ) A cleaner version of the MCTS.
   - ( ) Mixing MCTS with neural networks -> AlphaZero.

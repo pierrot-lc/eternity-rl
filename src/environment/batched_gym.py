@@ -41,7 +41,7 @@ class BatchedEternityEnv(gym.Env):
 
     metadata = {"render.modes": ["computer"]}
 
-    def __init__(self, batch_instances: torch.Tensor, seed: int = 0):
+    def __init__(self, batch_instances: torch.Tensor, device: str, seed: int = 0):
         """Initialize the environment.
 
         ---
@@ -58,21 +58,22 @@ class BatchedEternityEnv(gym.Env):
         assert torch.all(batch_instances >= 0), "Classes must be positives."
 
         super().__init__()
-        self.instances = batch_instances
-        self.rng = torch.Generator().manual_seed(seed)
+        self.instances = batch_instances.to(device)
+        self.device = device
+        self.rng = torch.Generator(device).manual_seed(seed)
 
         # Instances infos.
         self.size = self.instances.shape[-1]
         self.n_pieces = self.size * self.size
-        self.n_class = self.instances.max().cpu().item()
+        self.n_class = self.instances.max().cpu().item() + 1
         self.max_steps = self.n_pieces * 4
         self.best_matches = 2 * self.size * (self.size - 1)
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
         self.step_id = 0
-        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
-        self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
+        self.truncated = False
+        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
 
         # Spaces
         # Those spaces do not take into account that
@@ -96,8 +97,10 @@ class BatchedEternityEnv(gym.Env):
         """
         self.scramble_instances()
         self.step_id = 0
-        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
-        self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
+        self.truncated = False
+        self.terminated = torch.zeros(
+            self.batch_size, dtype=torch.bool, device=self.device
+        )
 
         return self.render(), dict()
 
@@ -155,8 +158,12 @@ class BatchedEternityEnv(gym.Env):
             shifts: The number of shifts for each tile.
                 Shape of [batch_size,].
         """
-        total_shifts = torch.zeros(self.batch_size * self.n_pieces, dtype=torch.long)
-        offsets = torch.arange(0, self.batch_size * self.n_pieces, self.n_pieces)
+        total_shifts = torch.zeros(
+            self.batch_size * self.n_pieces, dtype=torch.long, device=self.device
+        )
+        offsets = torch.arange(
+            0, self.batch_size * self.n_pieces, self.n_pieces, device=self.device
+        )
         total_shifts[tile_ids + offsets] = shifts
 
         self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
@@ -179,7 +186,9 @@ class BatchedEternityEnv(gym.Env):
             tile_ids_2: The id of the second tiles to swap.
                 Shape of [batch_size,].
         """
-        offsets = torch.arange(0, self.batch_size * self.n_pieces, self.n_pieces)
+        offsets = torch.arange(
+            0, self.batch_size * self.n_pieces, self.n_pieces, device=self.device
+        )
         tile_ids_1 = tile_ids_1 + offsets
         tile_ids_2 = tile_ids_2 + offsets
         self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
@@ -208,15 +217,15 @@ class BatchedEternityEnv(gym.Env):
         so we also compute $class_id_1 + class_id_2$ and check if this is equal
         to 0 (which would mean that both class_id are equal to 0).
         """
-        n_matches = torch.zeros(self.batch_size)
+        n_matches = torch.zeros(self.batch_size, device=self.device)
 
         for conv in [HORIZONTAL_CONV, VERTICAL_CONV]:
-            res = torch.conv2d(self.instances.float(), conv)
+            res = torch.conv2d(self.instances.float(), conv.to(self.device))
             n_matches += (res == 0).float().flatten(start_dim=1).sum(dim=1)
 
         # Remove the 0-0 matches from the count.
         for conv in [HORIZONTAL_ZERO_CONV, VERTICAL_ZERO_CONV]:
-            res = torch.conv2d(self.instances.float(), conv)
+            res = torch.conv2d(self.instances.float(), conv.to(self.device))
             n_matches -= (res == 0).float().flatten(start_dim=1).sum(dim=1)
 
         return n_matches.long()
@@ -229,7 +238,7 @@ class BatchedEternityEnv(gym.Env):
         )  # Shape of [batch_size, n_pieces, 4].
         permutations = torch.stack(
             [
-                torch.randperm(self.n_pieces, generator=self.rng)
+                torch.randperm(self.n_pieces, generator=self.rng, device=self.device)
                 for _ in range(self.batch_size)
             ]
         )  # Shape of [batch_size, n_pieces].
@@ -241,7 +250,11 @@ class BatchedEternityEnv(gym.Env):
 
         # Randomly rolls the tiles.
         shifts = torch.randint(
-            low=0, high=4, size=(self.batch_size * self.n_pieces,), generator=self.rng
+            low=0,
+            high=4,
+            size=(self.batch_size * self.n_pieces,),
+            generator=self.rng,
+            device=self.device,
         )
         self.instances = rearrange(self.instances, "b p c -> (b p) c")
         self.instances = self.batched_roll(self.instances, shifts)
@@ -293,7 +306,7 @@ class BatchedEternityEnv(gym.Env):
         shifts = hidden_size - shifts
 
         # Compute the indices that will select the right part of the extended tensor.
-        offsets = torch.arange(hidden_size)
+        offsets = torch.arange(hidden_size, device=input_tensor.device)
         offsets = repeat(offsets, "h -> b h", b=batch_size)
         select_indices = shifts.unsqueeze(1) + offsets
 
