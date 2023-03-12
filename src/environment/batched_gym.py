@@ -1,12 +1,13 @@
 """A batched version of the environment.
 All actions are made on the batch.
 """
-import einops
+from typing import Any
+
 import gymnasium as gym
 import gymnasium.spaces as spaces
 import numpy as np
 import torch
-from einops import rearrange
+from einops import rearrange, repeat
 
 from .gym import EAST, NORTH, SOUTH, WEST
 
@@ -69,7 +70,7 @@ class BatchedEternityEnv(gym.Env):
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
-        self.tot_steps = torch.zeros(self.batch_size, dtype=torch.long)
+        self.step_id = 0
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
         self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
 
@@ -88,21 +89,21 @@ class BatchedEternityEnv(gym.Env):
             low=0, high=1, shape=self.instances.shape[1:], dtype=np.uint8
         )
 
-    def reset(self):
+    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         Scrambles the instances and reset their infos.
         """
         self.scramble_instances()
-        self.tot_steps = torch.zeros(self.batch_size, dtype=torch.long)
+        self.step_id = 0
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
         self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
 
-        return self.render()
+        return self.render(), dict()
 
     def step(
         self, actions: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, bool, dict[str, Any]]:
         """Do a batched step through all instances.
 
         ---
@@ -129,9 +130,10 @@ class BatchedEternityEnv(gym.Env):
         self.roll_tiles(tiles_id_2, shifts_2)
         self.swap_tiles(tiles_id_1, tiles_id_2)
 
-        self.tot_steps += 1
-        self.terminated = self.matches == self.best_matches
-        self.truncated = self.tot_steps >= self.max_steps
+        self.step_id += 1
+        self.truncated = self.step_id >= self.max_steps
+        # Maintain the previous terminated states.
+        self.terminated |= self.matches == self.best_matches
 
         return (
             self.render(),
@@ -292,7 +294,7 @@ class BatchedEternityEnv(gym.Env):
 
         # Compute the indices that will select the right part of the extended tensor.
         offsets = torch.arange(hidden_size)
-        offsets = einops.repeat(offsets, "h -> b h", b=batch_size)
+        offsets = repeat(offsets, "h -> b h", b=batch_size)
         select_indices = shifts.unsqueeze(1) + offsets
 
         # Extend the input tensor with circular padding.
