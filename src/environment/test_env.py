@@ -279,14 +279,17 @@ def test_batch_swap_action(instance_path):
     instances = torch.stack(instances)
 
     env = BatchedEternityEnv(instances)
-    tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size, 2))
-    env.swap_tiles(tile_ids)
+    tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+    tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+    env.swap_tiles(tile_ids_1, tile_ids_2)
 
-    for instance_ref, instance_rolled, tile_id in zip(
-        instances, env.instances, tile_ids
+    for instance_ref, instance_rolled, tile_id_1, tile_id_2 in zip(
+        instances, env.instances, tile_ids_1, tile_ids_2
     ):
         env = EternityEnv(instance=instance_ref.numpy())
-        coords = [(c.item() // env.size, c.item() % env.size) for c in tile_id]
+        coords = [
+            (c.item() // env.size, c.item() % env.size) for c in [tile_id_1, tile_id_2]
+        ]
         env.swap_tiles(coords[0], coords[1])
 
         assert torch.all(torch.LongTensor(env.instance) == instance_rolled)

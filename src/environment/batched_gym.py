@@ -2,7 +2,6 @@
 All actions are made on the batch.
 """
 import einops
-import functorch
 import gymnasium as gym
 import gymnasium.spaces as spaces
 import numpy as np
@@ -41,13 +40,13 @@ class BatchedEternityEnv(gym.Env):
 
     metadata = {"render.modes": ["computer"]}
 
-    def __init__(self, batch_instances: torch.LongTensor, seed: int = 0):
+    def __init__(self, batch_instances: torch.Tensor, seed: int = 0):
         """Initialize the environment.
 
         ---
         Args:
             batch_instances: The instances of this environment.
-                Shape of [batch_size, 4, size, size].
+                Long tensor of shape of [batch_size, 4, size, size].
             seed: The seed for the random number generator.
         """
         assert len(batch_instances.shape) == 4, "Tensor must have 4 dimensions."
@@ -70,7 +69,9 @@ class BatchedEternityEnv(gym.Env):
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
-        self.tot_steps = 0
+        self.tot_steps = torch.zeros(self.batch_size, dtype=torch.long)
+        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
+        self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
 
         # Spaces
         # Those spaces do not take into account that
@@ -93,31 +94,54 @@ class BatchedEternityEnv(gym.Env):
         Scrambles the instances and reset their infos.
         """
         self.scramble_instances()
-        self.tot_steps = 0
+        self.tot_steps = torch.zeros(self.batch_size, dtype=torch.long)
+        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool)
+        self.truncated = torch.zeros(self.batch_size, dtype=torch.bool)
 
         return self.render()
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def step(
+        self, actions: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Do a batched step through all instances.
 
         ---
         Args:
             actions: Batch of actions to apply.
-                Shape of [batch_size, tile_id_1, shift_1, tile_id_2, shift_2].
+                Long tensor of shape of [batch_size, tile_id_1, shift_1, tile_id_2, shift_2].
+
+        ---
+        Returns:
+            observations: The observation of the environments.
+                Shape of [batch_size, 4, size, size].
+            rewards: The reward of the environments.
+                Shape of [batch_size,].
+            terminated: Whether the environments are terminated (won).
+                Shape of [batch_size,].
+            truncated: Whether the environments are truncated (max steps reached).
+                Shape of [batch_size,].
+            infos: Additional infos.
         """
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
-
         self.swap_tiles(tiles_id_1, tiles_id_2)
 
         self.tot_steps += 1
+        self.terminated = self.matches == self.best_matches
+        self.truncated = self.tot_steps >= self.max_steps
 
-        return self.render(), self.matches
+        return (
+            self.render(),
+            self.matches / self.best_matches,
+            self.terminated,
+            self.truncated,
+            dict(),
+        )
 
-    def roll_tiles(self, tile_ids: torch.LongTensor, shifts: torch.LongTensor):
+    def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
         It actually shifts all tiles, but with 0-shifts
         except for the pointed tile ids.
@@ -143,20 +167,23 @@ class BatchedEternityEnv(gym.Env):
             w=self.size,
         )
 
-    def swap_tiles(self, tile_ids: torch.LongTensor):
+    def swap_tiles(self, tile_ids_1: torch.Tensor, tile_ids_2: torch.Tensor):
         """Swap two tiles in each element of the batch.
 
         ---
         Args:
-            tile_ids: The id of the tiles to swap.
-                Shape of [batch_size, 2].
+            tile_ids_1: The id of the first tiles to swap.
+                Shape of [batch_size,].
+            tile_ids_2: The id of the second tiles to swap.
+                Shape of [batch_size,].
         """
         offsets = torch.arange(0, self.batch_size * self.n_pieces, self.n_pieces)
-        tile_ids = tile_ids + offsets.unsqueeze(1)
+        tile_ids_1 = tile_ids_1 + offsets
+        tile_ids_2 = tile_ids_2 + offsets
         self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
-        self.instances[tile_ids[:, 0]], self.instances[tile_ids[:, 1]] = (
-            self.instances[tile_ids[:, 1]],
-            self.instances[tile_ids[:, 0]],
+        self.instances[tile_ids_1], self.instances[tile_ids_2] = (
+            self.instances[tile_ids_2],
+            self.instances[tile_ids_1],
         )
         self.instances = rearrange(
             self.instances,
