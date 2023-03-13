@@ -66,7 +66,7 @@ class BatchedEternityEnv(gym.Env):
         self.size = self.instances.shape[-1]
         self.n_pieces = self.size * self.size
         self.n_class = self.instances.max().cpu().item() + 1
-        self.max_steps = self.n_pieces * 4
+        self.max_steps = self.n_pieces
         self.best_matches = 2 * self.size * (self.size - 1)
         self.batch_size = self.instances.shape[0]
 
@@ -126,21 +126,26 @@ class BatchedEternityEnv(gym.Env):
                 Shape of [batch_size,].
             infos: Additional infos.
         """
+        self.step_id += 1
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
+
+        matches = self.matches
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
         self.swap_tiles(tiles_id_1, tiles_id_2)
 
-        self.step_id += 1
-        self.truncated = self.step_id >= self.max_steps
-
         # Maintain the previous terminated states.
         self.terminated |= self.matches == self.best_matches
+        self.truncated = self.step_id >= self.max_steps
 
         # Only give a reward at the end of the episode.
-        rewards = self.matches * self.terminated / self.best_matches
+        # if not self.truncated:
+        #     rewards = self.matches * self.terminated / self.best_matches
+        # else:
+        #     rewards = self.matches / self.best_matches
+        rewards = (self.matches - matches) / self.best_matches
 
         return (
             self.render(),

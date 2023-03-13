@@ -3,7 +3,6 @@ from typing import Any
 import torch
 import torch.optim as optim
 from torch.distributions import Categorical
-from torch.nn.utils.clip_grad import clip_grad_norm_, clip_grad_value_
 from tqdm import tqdm
 
 import wandb
@@ -144,8 +143,7 @@ class BatchedReinforce:
         metrics = dict()
 
         end_game = masks.sum(dim=1).long() - 1
-        end_return = torch.gather(returns, dim=1, index=end_game.unsqueeze(1))
-        end_return = end_return.squeeze(1)
+        end_return = returns[:, 0]
         mean_return, std_return = end_return.mean(), end_return.std()
         returns = (returns - mean_return) / (std_return + 1e-7)
         masked_loss = -(log_actions * masks.unsqueeze(2) * returns.unsqueeze(2))
@@ -153,6 +151,7 @@ class BatchedReinforce:
         metrics["loss"] = masked_loss.sum() / masks.sum()
         metrics["ep-len/mean"] = end_game.float().mean()
         metrics["ep-len/min"] = end_game.min()
+        metrics["ep-len/std"] = end_game.float().std()
         metrics["return/max"] = end_return.max()
         metrics["return/mean"] = mean_return
         metrics["return/std"] = std_return
@@ -164,7 +163,7 @@ class BatchedReinforce:
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
-            group="batched-reinforce",
+            group=f"batched-reinforce/{self.env.size}x{self.env.size}",
             config=config,
         ) as run:
             for _ in tqdm(range(self.n_batches)):
@@ -175,8 +174,6 @@ class BatchedReinforce:
 
                 self.optimizer.zero_grad()
                 metrics["loss"].backward()
-                # clip_grad_value_(self.model.parameters(), clip_value=1)
-                clip_grad_norm_(self.model.parameters(), max_norm=1)
                 self.optimizer.step()
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
