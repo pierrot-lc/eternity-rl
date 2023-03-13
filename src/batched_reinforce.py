@@ -3,7 +3,7 @@ from typing import Any
 import torch
 import torch.optim as optim
 from torch.distributions import Categorical
-from torch.nn.utils.clip_grad import clip_grad_value_
+from torch.nn.utils.clip_grad import clip_grad_norm_, clip_grad_value_
 from tqdm import tqdm
 
 import wandb
@@ -44,28 +44,22 @@ class BatchedReinforce:
         Returns:
             actions: The sampled tile ids and roll values.
                 Shape of [batch_size, 2].
-            logits: The logit of the sampled actions.
+            log_probs: The logit of the sampled actions.
                 Shape of [batch_size, 2].
         """
         # Sample the tile ids.
         tile_distribution = Categorical(logits=tile_logits["tile"])
         tile_ids = tile_distribution.sample()
-        tile_ids_logits = torch.gather(
-            tile_logits["tile"], dim=1, index=tile_ids.unsqueeze(1)
-        )
-        tile_ids_logits = tile_ids_logits.squeeze(1)
+        tile_id_log_probs = tile_distribution.log_prob(tile_ids)
 
         # Sample the roll values.
         roll_distribution = Categorical(logits=tile_logits["roll"])
         rolls = roll_distribution.sample()
-        rolls_logits = torch.gather(
-            tile_logits["roll"], dim=1, index=rolls.unsqueeze(1)
-        )
-        rolls_logits = rolls_logits.squeeze(1)
+        roll_log_probs = roll_distribution.log_prob(rolls)
 
         actions = torch.stack([tile_ids, rolls], dim=1)
-        logits = torch.stack([tile_ids_logits, rolls_logits], dim=1)
-        return actions, logits
+        log_probs = torch.stack([tile_id_log_probs, roll_log_probs], dim=1)
+        return actions, log_probs
 
     def rollout(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Simulates a batch of games and returns the cumulated rewards
@@ -99,18 +93,18 @@ class BatchedReinforce:
             dtype=torch.bool,
         )
 
-        while not self.env.truncated or torch.all(self.env.terminated):
+        while not self.env.truncated and not torch.all(self.env.terminated):
             tile_1, tile_2 = self.model(states)
-            actions_1, logits_1 = self.sample_action(tile_1)
-            actions_2, logits_2 = self.sample_action(tile_2)
+            actions_1, log_probs_1 = self.sample_action(tile_1)
+            actions_2, log_probs_2 = self.sample_action(tile_2)
 
             actions = torch.concat([actions_1, actions_2], dim=1)
-            logits = torch.concat([logits_1, logits_2], dim=1)
+            log_probs = torch.concat([log_probs_1, log_probs_2], dim=1)
 
             states, rewards, _, _, _ = self.env.step(actions)
 
             returns[:, self.env.step_id - 1] = rewards
-            log_actions[:, self.env.step_id - 1] = logits
+            log_actions[:, self.env.step_id - 1] = log_probs
             masks[:, self.env.step_id - 1] = ~self.env.terminated
 
         # The last terminated state is not counted in the masks,
@@ -153,7 +147,7 @@ class BatchedReinforce:
         end_return = torch.gather(returns, dim=1, index=end_game.unsqueeze(1))
         end_return = end_return.squeeze(1)
         mean_return, std_return = end_return.mean(), end_return.std()
-        # returns = (returns - mean_return) / (std_return + 1e-7)
+        returns = (returns - mean_return) / (std_return + 1e-7)
         masked_loss = -(log_actions * masks.unsqueeze(2) * returns.unsqueeze(2))
 
         metrics["loss"] = masked_loss.sum() / masks.sum()
@@ -173,7 +167,7 @@ class BatchedReinforce:
             group="batched-reinforce",
             config=config,
         ) as run:
-            for epoch_id in tqdm(range(self.n_batches)):
+            for _ in tqdm(range(self.n_batches)):
                 self.model.train()
 
                 returns, log_actions, masks = self.rollout()
@@ -181,7 +175,8 @@ class BatchedReinforce:
 
                 self.optimizer.zero_grad()
                 metrics["loss"].backward()
-                clip_grad_value_(self.model.parameters(), clip_value=1)
+                # clip_grad_value_(self.model.parameters(), clip_value=1)
+                clip_grad_norm_(self.model.parameters(), max_norm=1)
                 self.optimizer.step()
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
