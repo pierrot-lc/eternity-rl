@@ -18,11 +18,12 @@ updated: 2023-03-15
   -- (x) rollout.
   -- (x) metrics.
   -- (x) devices.
-  - ( ) Compute cumulated returns with decay factor (pytorch implementation).
-  -- ( ) {https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2}[idea].
-  -- ( ) Add the mask in the computations.
-  -- ( ) Include the gamma factor in the loss computation?
-  -- ( ) UnitTest.
+  - (x) Compute cumulated returns with decay factor (pytorch implementation).
+  -- (x) {https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2}[idea].
+  -- (x) Add the mask in the computations.
+  -- (x) Include the gamma factor in the loss computation?
+  --- (x) https://ai.stackexchange.com/questions/7680/why-does-the-discount-rate-in-the-reinforce-algorithm-appear-twice
+  -- (x) UnitTest.
   - ( ) Add a value network as a baseline.
   - ( ) Explore the importance of the multiple HPs.
   -- ( ) Model size.
