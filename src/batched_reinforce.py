@@ -2,10 +2,10 @@ from typing import Any
 
 import torch
 import torch.optim as optim
+import wandb
+from einops import repeat
 from torch.distributions import Categorical
 from tqdm import tqdm
-
-import wandb
 
 from .environment import BatchedEternityEnv
 from .model import CNNPolicy
@@ -24,7 +24,7 @@ class BatchedReinforce:
         self.env = env
         self.model = model
         self.device = device
-        self.gamma = gamma  # TODO: Use this.
+        self.gamma = gamma
         self.n_batches = n_batches
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
@@ -178,3 +178,30 @@ class BatchedReinforce:
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
                 run.log(metrics)
+
+    @staticmethod
+    def cumulative_decay_return(rewards: torch.Tensor, gamma: float) -> torch.Tensor:
+        """Compute the cumulative decayed return of a batch of games.
+        It is efficiently implemented using tensor operations.
+
+        ---
+        Args:
+            rewards: The rewards of the games.
+                Shape of [batch_size, max_steps].
+            gamma: The discount factor.
+
+        ---
+        Returns:
+            The cumulative decayed return of the games.
+                Shape of [batch_size, max_steps].
+        """
+        # Compute the gamma powers.
+        powers = torch.arange(rewards.shape[1], device=rewards.device)
+        powers = gamma**powers
+        powers = repeat(powers, "t -> b t", b=rewards.shape[0])
+
+        # Compute the cumulative decayed return.
+        rewards = torch.flip(rewards, dims=(1,))
+        returns = torch.cumsum(rewards * powers, dim=1)
+        returns = torch.flip(returns, dims=(1,))
+        return returns
