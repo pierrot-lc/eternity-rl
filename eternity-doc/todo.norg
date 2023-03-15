@@ -22,6 +22,8 @@ updated: 2023-03-15
   -- ( ) {https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2}[idea].
   -- ( ) Add the mask in the computations.
   -- ( ) Include the gamma factor in the loss computation?
+  -- ( ) UnitTest.
+  - ( ) Add a value network as a baseline.
   - ( ) Explore the importance of the multiple HPs.
   -- ( ) Model size.
   -- ( ) Learning rate, optimizer, betas...
