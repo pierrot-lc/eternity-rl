@@ -58,10 +58,12 @@ class CNNPolicy(nn.Module):
             }
         )
 
+        self.value = nn.Linear(embedding_dim, 1)
+
     def forward(
         self, tiles: torch.Tensor
-    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-        """Predict the actions for the given game state.
+    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor]:
+        """Predict the actions and value for the given game states.
 
         ---
         Args:
@@ -80,6 +82,8 @@ class CNNPolicy(nn.Module):
                     "tile": [batch_size, board_width * board_height],
                     "roll": [batch_size, 4],
                 }
+            value: The value of the given game state.
+                Shape [batch_size, 1].
         """
         embed = self.embed_tiles(tiles)
         for layer in self.residuals:
@@ -87,7 +91,8 @@ class CNNPolicy(nn.Module):
         embed = self.flatten(embed)
         tile_1 = {key: layer(embed) for key, layer in self.select_1.items()}
         tile_2 = {key: layer(embed) for key, layer in self.select_2.items()}
-        return tile_1, tile_2
+        value = self.value(embed)
+        return tile_1, tile_2, value
 
     @torch.no_grad()
     def solve_env(
