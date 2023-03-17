@@ -61,12 +61,14 @@ class CNNPolicy(nn.Module):
     def forward(
         self, tiles: torch.Tensor
     ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-        """
+        """Predict the actions for the given game state.
 
+        ---
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
 
+        ---
         Returns:
             tile_1: The logits for the first tile.
                 Dict of shape {
