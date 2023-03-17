@@ -7,6 +7,8 @@ The data is generated using the following steps:
     4. Save the action taken and the resulting state.
 """
 
+from typing import Any
+
 import numpy as np
 
 from ..environment.gym import EAST, NORTH, SOUTH, WALL_ID, WEST, EternityEnv
@@ -100,3 +102,44 @@ def generate_sample(
     instances = np.flip(instances, axis=0)
 
     return instances, actions
+
+
+def main(config: dict[str, Any]):
+    """Generate data to be used to train a model."""
+    import os
+    from pathlib import Path
+
+    from tqdm import tqdm
+
+    # Get environment infos.
+    env = EternityEnv(
+        instance_path=config["env"]["path"],
+        reward_type=config["env"]["reward_type"],
+    )
+
+    # Generate data.
+    n_steps = env.max_steps * 2
+    instances = np.zeros(
+        (config["data_generation"]["n_samples"], n_steps, 4, env.size, env.size),
+        dtype=np.int32,
+    )
+    actions = np.zeros(
+        (config["data_generation"]["n_samples"], n_steps, 4),
+        dtype=np.int32,
+    )
+    for sample_id in tqdm(range(config["data_generation"]["n_samples"])):
+        inst, act = generate_sample(
+            env.size,
+            env.n_class,
+            n_steps,
+            config["seed"],
+        )
+
+        instances[sample_id] = inst
+        actions[sample_id] = act
+
+    # Save data.
+    os.makedirs("./data", exist_ok=True)
+    filename = os.path.basename(config["env"]["path"]).replace(".txt", ".npz")
+    filepath = Path("./data") / filename
+    np.savez_compressed(filepath, instances=instances, actions=actions)

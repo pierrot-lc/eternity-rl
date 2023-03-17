@@ -66,7 +66,7 @@ class BatchedEternityEnv(gym.Env):
         self.size = self.instances.shape[-1]
         self.n_pieces = self.size * self.size
         self.n_class = self.instances.max().cpu().item() + 1
-        self.max_steps = self.n_pieces * 4
+        self.max_steps = self.n_pieces
         self.best_matches = 2 * self.size * (self.size - 1)
         self.batch_size = self.instances.shape[0]
 

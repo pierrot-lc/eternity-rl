@@ -9,8 +9,8 @@ from tqdm import tqdm
 
 import wandb
 
-from .environment.gym import EternityEnv
-from .model import CNNPolicy
+from ..environment.gym import EternityEnv
+from ..model import CNNPolicy
 
 
 class Reinforce:
@@ -177,3 +177,42 @@ class Reinforce:
         import imageio
 
         imageio.mimwrite(path, images, fps=1)
+
+
+def simple_reinforce(config: dict[str, Any]):
+    from torchinfo import summary
+
+    env = EternityEnv(
+        instance_path=config["env"]["path"],
+        reward_type=config["env"]["reward_type"],
+    )
+    model = CNNPolicy(
+        env.n_class,
+        embedding_dim=config["model"]["embedding_dim"],
+        n_layers=config["model"]["n_layers"],
+        board_width=env.size,
+        board_height=env.size,
+    )
+    if config["reinforce"]["model_path"] != "":
+        model.load_state_dict(torch.load(config["reinforce"]["model_path"])["model"])
+
+    summary(
+        model,
+        input_size=(4, env.size, env.size),
+        batch_dim=0,
+        dtypes=[
+            torch.long,
+        ],
+        device=config["device"],
+    )
+
+    trainer = Reinforce(
+        env,
+        model,
+        config["device"],
+        config["reinforce"]["learning_rate"],
+        config["reinforce"]["gamma"],
+        config["reinforce"]["n_batches"],
+        config["reinforce"]["batch_size"],
+    )
+    trainer.launch_training(config)

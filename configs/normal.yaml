@@ -2,12 +2,12 @@ env:
   path: ./instances/eternity_A.txt
   reward_type: win_ratio
 model:
-  embedding_dim: 32
-  n_layers: 4
+  embedding_dim: 24
+  n_layers: 3
 reinforce:
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-3
   gamma: 0.99
-  n_batches: 4000
+  n_batches: 20000
   batch_size: 200
   model_path: ./logs/eternity_A-supervised-model.pt
 supervised:

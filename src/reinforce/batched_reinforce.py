@@ -8,11 +8,11 @@ from tqdm import tqdm
 
 import wandb
 
-from .environment import BatchedEternityEnv
-from .model import CNNPolicy
+from ..environment import BatchedEternityEnv
+from ..model import CNNPolicy
 
 
-class BatchedReinforce:
+class Reinforce:
     def __init__(
         self,
         env: BatchedEternityEnv,
@@ -64,8 +64,8 @@ class BatchedReinforce:
 
         while not self.env.truncated and not torch.all(self.env.terminated):
             tile_1, tile_2 = self.model(states)
-            actions_1, log_probs_1 = BatchedReinforce.sample_action(tile_1)
-            actions_2, log_probs_2 = BatchedReinforce.sample_action(tile_2)
+            actions_1, log_probs_1 = Reinforce.sample_action(tile_1)
+            actions_2, log_probs_2 = Reinforce.sample_action(tile_2)
 
             actions = torch.concat([actions_1, actions_2], dim=1)
             log_probs = torch.concat([log_probs_1, log_probs_2], dim=1)
@@ -82,9 +82,7 @@ class BatchedReinforce:
         masks[:, 0] = True
 
         # Compute the cumulated rewards.
-        decayed_returns = BatchedReinforce.cumulative_decay_return(
-            rewards, masks, self.gamma
-        )
+        decayed_returns = Reinforce.cumulative_decay_return(rewards, masks, self.gamma)
         total_returns = (rewards * masks).sum(dim=1)
         # rewards = torch.flip(rewards, dims=(1,))
         # masks = torch.flip(masks, dims=(1,))

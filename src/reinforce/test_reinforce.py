@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .batched_reinforce import BatchedReinforce
+from .batched_reinforce import Reinforce
 
 
 @pytest.mark.parametrize(
@@ -46,5 +46,5 @@ def test_cumulative_decay_return(
     returns: torch.Tensor,
 ):
     assert torch.allclose(
-        BatchedReinforce.cumulative_decay_return(rewards, masks, gamma), returns
+        Reinforce.cumulative_decay_return(rewards, masks, gamma), returns
     )
