@@ -1,6 +1,7 @@
 """A batched version of the environment.
 All actions are made on the batch.
 """
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
@@ -324,3 +325,14 @@ class BatchedEternityEnv(gym.Env):
 
         rolled_tensor = torch.gather(input_tensor, dim=1, index=select_indices)
         return rolled_tensor
+
+    @classmethod
+    def from_file(
+        cls, instance_path: Path, batch_size: int, device: str, seed: int = 0
+    ):
+        from .gym import read_instance_file
+
+        instance = read_instance_file(instance_path)
+        instance = torch.from_numpy(instance).long()
+        instances = repeat(instance, "c h w -> b c h w", b=batch_size)
+        return cls(instances, device, seed)

@@ -5,7 +5,7 @@ import torch
 import yaml
 from torchinfo import summary
 
-from src.environment import BatchedEternityEnv, EternityEnv
+from src.environment import BatchedEternityEnv
 from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
@@ -20,18 +20,14 @@ def read_config(yaml_path: Path) -> dict:
 
 
 def reinforce(config: dict[str, Any]):
-    env = EternityEnv(
-        instance_path=config["env"]["path"],
+    env = BatchedEternityEnv.from_file(
+        config["env"],
+        config["reinforce"]["batch_size"],
+        config["device"],
+        config["seed"],
     )
-    instances = torch.stack(
-        [
-            torch.LongTensor(env.render())
-            for _ in range(config["reinforce"]["batch_size"])
-        ]
-    )
-    env = BatchedEternityEnv(instances, config["device"], seed=config["seed"])
     model = CNNPolicy(
-        env.n_class,
+        int(env.n_class),
         embedding_dim=config["model"]["embedding_dim"],
         n_layers=config["model"]["n_layers"],
         board_width=env.size,
@@ -50,8 +46,10 @@ def reinforce(config: dict[str, Any]):
         model,
         config["device"],
         config["reinforce"]["learning_rate"],
+        config["reinforce"]["value_weight"],
         config["reinforce"]["gamma"],
         config["reinforce"]["n_batches"],
+        config["reinforce"]["advantage"],
     )
     trainer.launch_training(config)
 

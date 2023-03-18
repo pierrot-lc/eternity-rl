@@ -20,14 +20,21 @@ class Reinforce:
         model: CNNPolicy,
         device: str,
         learning_rate: float,
+        value_weight: float,
         gamma: float,
         n_batches: int,
+        advantage: str,
     ):
         self.env = env
         self.model = model
         self.device = device
+        self.value_weight = value_weight
         self.gamma = gamma
         self.n_batches = n_batches
+        self.advantage = advantage
+
+        if self.advantage != "learned":
+            self.value_weight = 0
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
@@ -135,16 +142,24 @@ class Reinforce:
         episodes_len = masks.sum(dim=1).long() - 1
 
         # Compute the advantage and policy loss.
-        advantages = decayed_returns - values.detach()
-        # advantages = (decayed_returns - decayed_returns.mean()) / (
-        #     decayed_returns.std() + 1e-7
-        # )
+        match self.advantage:
+            case "learned":
+                advantages = decayed_returns - values.detach()
+            case "estimated":
+                advantages = (decayed_returns - decayed_returns.mean()) / (
+                    decayed_returns.std() + 1e-7
+                )
+            case "no-advantage":
+                advantages = decayed_returns
+            case _:
+                raise ValueError(f"Unknown advantage: {self.advantage}.")
+
         masked_loss = (
             -rollout["log_probs"] * advantages.unsqueeze(2) * masks.unsqueeze(2)
         )
 
         metrics["loss/policy"] = masked_loss.sum() / masks.sum()
-        metrics["loss/value"] = 1e-2 * F.mse_loss(
+        metrics["loss/value"] = self.value_weight * F.mse_loss(
             values * masks, decayed_returns, reduction="mean"
         )
         metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/value"]
