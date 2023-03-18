@@ -1,3 +1,4 @@
+from itertools import count
 from typing import Any
 
 import torch
@@ -180,7 +181,8 @@ class Reinforce:
             group=f"batched-reinforce/{self.env.size}x{self.env.size}",
             config=config,
         ) as run:
-            for _ in tqdm(range(self.n_batches)):
+            iter = range(self.n_batches) if self.n_batches != -1 else count(0)
+            for _ in tqdm(iter, desc="Batch"):
                 self.model.train()
 
                 rollout = self.rollout()

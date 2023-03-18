@@ -6,8 +6,8 @@ reinforce:
   learning_rate: 1.0e-3
   gamma: 0.99
   n_batches: -1
-  batch_size: 100
+  batch_size: 50
   value_weight: 1.0e-2
-  advantage: learned
+  advantage: estimated
 seed: 0
 device: auto

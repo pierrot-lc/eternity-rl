@@ -8,6 +8,6 @@ reinforce:
   n_batches: 20000
   batch_size: 200
   value_weight: 1.0e-2
-  advantage: learned
+  advantage: no-advantage
 seed: 0
 device: auto
