@@ -1,7 +1,9 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import repeat
 from einops.layers.torch import Rearrange
+from positional_encodings.torch_encodings import PositionalEncoding1D
 
 from .environment.gym import EternityEnv
 
@@ -16,7 +18,9 @@ class CNNPolicy(nn.Module):
         board_height: int,
     ):
         super().__init__()
+        self.embedding_dim = embedding_dim
 
+        self.position_enc = PositionalEncoding1D(embedding_dim)
         self.embed_tiles = nn.Sequential(
             Rearrange("b t h w -> b h w t"),
             nn.Embedding(n_classes, embedding_dim),
@@ -26,7 +30,6 @@ class CNNPolicy(nn.Module):
             nn.GELU(),
             nn.LayerNorm([embedding_dim, board_height, board_width]),
         )
-
         self.residuals = nn.ModuleList(
             [
                 nn.Sequential(
@@ -37,8 +40,7 @@ class CNNPolicy(nn.Module):
                 for _ in range(n_layers)
             ]
         )
-
-        self.flatten = nn.Sequential(
+        self.project = nn.Sequential(
             nn.Flatten(),
             nn.Linear(embedding_dim * board_width * board_height, embedding_dim),
             nn.GELU(),
@@ -58,10 +60,42 @@ class CNNPolicy(nn.Module):
             }
         )
 
-        self.value = nn.Linear(embedding_dim, 1)
+        self.value = nn.Sequential(
+            nn.Linear(embedding_dim, 1),
+            nn.Tanh(),
+        )
+
+    def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
+        """Embed the timesteps.
+
+        ---
+        Args:
+            timesteps: The timesteps of the game states.
+                Shape of [batch_size,].
+
+        ---
+        Returns:
+            The positional encodings for the given timesteps.
+                Shape of [batch_size, embedding_dim].
+        """
+        # Compute the positional encodings for the given timesteps.
+        max_timesteps = int(timesteps.max().item())
+        x = torch.zeros(
+            1, max_timesteps + 1, self.embedding_dim, device=timesteps.device
+        )
+        encodings = self.position_enc(x)
+        encodings = encodings.squeeze(0)  # Shape is [timesteps, embedding_dim].
+
+        # Select the right encodings for the timesteps.
+        encodings = repeat(encodings, "t e -> b t e", b=timesteps.shape[0])
+        timesteps = repeat(timesteps, "b -> b t e", t=1, e=self.embedding_dim)
+        encodings = torch.gather(encodings, dim=1, index=timesteps)
+
+        encodings = encodings.squeeze(1)  # Shape is [batch_size, embedding_dim].
+        return encodings
 
     def forward(
-        self, tiles: torch.Tensor
+        self, tiles: torch.Tensor, timesteps: torch.Tensor
     ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor]:
         """Predict the actions and value for the given game states.
 
@@ -69,6 +103,8 @@ class CNNPolicy(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
+            timesteps: The timesteps of the game states.
+                Long tensor of shape of [batch_size,].
 
         ---
         Returns:
@@ -85,13 +121,20 @@ class CNNPolicy(nn.Module):
             value: The value of the given game state.
                 Shape [batch_size, 1].
         """
+        # Compute game embeddings.
         embed = self.embed_tiles(tiles)
         for layer in self.residuals:
             embed = layer(embed) + embed
-        embed = self.flatten(embed)
+        embed = self.project(embed)
+        timesteps = self.embed_timesteps(timesteps)
+
+        # Compute action logits.
         tile_1 = {key: layer(embed) for key, layer in self.select_1.items()}
         tile_2 = {key: layer(embed) for key, layer in self.select_2.items()}
-        value = self.value(embed)
+
+        # Compute value.
+        value = self.value(embed + timesteps)
+
         return tile_1, tile_2, value
 
     @torch.no_grad()

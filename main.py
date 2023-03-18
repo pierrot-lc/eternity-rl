@@ -39,12 +39,11 @@ def reinforce(config: dict[str, Any]):
     )
     summary(
         model,
-        input_size=(4, env.size, env.size),
-        batch_dim=0,
-        dtypes=[
-            torch.long,
+        input_data=[
+            torch.zeros(1, 4, env.size, env.size, dtype=torch.long),
+            torch.randint(0, 10, size=(1,)),
         ],
-        device=config["device"],
+        device="cpu",
     )
     trainer = Reinforce(
         env,

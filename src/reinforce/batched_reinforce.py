@@ -33,7 +33,7 @@ class Reinforce:
 
     def rollout(
         self,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Simulates a batch of games and returns the cumulated rewards
         and the logit of the actions taken.
 
@@ -41,12 +41,13 @@ class Reinforce:
         Returns:
             returns: The cumulated rewards of the games.
                 Shape of [batch_size, max_steps].
-            log_actions: The logit of the actions taken.
+            log_probs: The logit of the actions taken.
                 Shape of [batch_size, max_steps, 4].
             values: The value of the games state.
+                Shape of [batch_size, max_steps].
             masks: The mask indicating whether the game is terminated.
                 Shape of [batch_size, max_steps].
-            total_returns: The cumulated rewards (without decay) of the games.
+            returns: The cumulated rewards (without decay) of the games.
                 Shape of [batch_size,].
         """
         states, _ = self.env.reset()
@@ -72,9 +73,15 @@ class Reinforce:
             device=self.device,
             dtype=torch.bool,
         )
+        timesteps = torch.zeros(
+            self.env.batch_size,
+            device=self.device,
+            dtype=torch.long,
+        )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            tile_1, tile_2, value = self.model(states)
+            timesteps.fill_(self.env.step_id)
+            tile_1, tile_2, value = self.model(states, timesteps)
             actions_1, log_probs_1 = Reinforce.sample_action(tile_1)
             actions_2, log_probs_2 = Reinforce.sample_action(tile_2)
 
@@ -96,52 +103,57 @@ class Reinforce:
         # Compute the cumulated rewards.
         decayed_returns = Reinforce.cumulative_decay_return(rewards, masks, self.gamma)
         total_returns = (rewards * masks).sum(dim=1)
-        return decayed_returns, log_actions, values, masks, total_returns
+
+        return {
+            "decayed_returns": decayed_returns,
+            "log_probs": log_actions,
+            "values": values,
+            "masks": masks,
+            "returns": total_returns,
+        }
 
     def compute_metrics(
         self,
-        returns: torch.Tensor,
-        log_actions: torch.Tensor,
-        values: torch.Tensor,
-        masks: torch.Tensor,
-        total_returns: torch.Tensor,
+        rollout: dict[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
         """Compute the metrics of the batched rollout.
 
         ---
         Args:
-            returns: The cumulated rewards of the games (with decay).
-                Shape of [batch_size, max_steps].
-            log_actions: The logit of the actions taken.
-                Shape of [batch_size, max_steps, 4].
-            values: The value of the games state.
-                Shape of [batch_size, max_steps].
-            masks: The mask indicating whether the game is terminated.
-                Shape of [batch_size, max_steps].
-            total_returns: The total rewards of the games (without decay).
-                Shape of [batch_size,].
+            rollout: The batched rollout outputs.
 
         ---
         Returns:
             A dictionary of metrics of the batched rollout.
         """
         metrics = dict()
+        masks = rollout["masks"]
+        decayed_returns = rollout["decayed_returns"]
+        returns = rollout["returns"]
+        values = rollout["values"]
 
         episodes_len = masks.sum(dim=1).long() - 1
 
-        # Compute the advantage.
-        advantages = returns - values
-        masked_loss = -log_actions * masks.unsqueeze(2) * advantages.unsqueeze(2)
+        # Compute the advantage and policy loss.
+        advantages = decayed_returns - values.detach()
+        # advantages = (decayed_returns - decayed_returns.mean()) / (
+        #     decayed_returns.std() + 1e-7
+        # )
+        masked_loss = (
+            -rollout["log_probs"] * advantages.unsqueeze(2) * masks.unsqueeze(2)
+        )
 
         metrics["loss/policy"] = masked_loss.sum() / masks.sum()
-        metrics["loss/value"] = F.mse_loss(values, returns, reduction="mean")
-        metrics["loss/total"] = metrics["loss/value"] + metrics["loss/value"]
+        metrics["loss/value"] = 1e-2 * F.mse_loss(
+            values * masks, decayed_returns, reduction="mean"
+        )
+        metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/value"]
         metrics["ep-len/mean"] = episodes_len.float().mean()
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/std"] = episodes_len.float().std()
-        metrics["return/max"] = total_returns.max()
-        metrics["return/mean"] = total_returns.mean()
-        metrics["return/std"] = total_returns.std()
+        metrics["return/mean"] = returns.mean()
+        metrics["return/max"] = returns.max()
+        metrics["return/std"] = returns.std()
 
         return metrics
 
@@ -156,16 +168,8 @@ class Reinforce:
             for _ in tqdm(range(self.n_batches)):
                 self.model.train()
 
-                (
-                    decayed_returns,
-                    log_actions,
-                    values,
-                    masks,
-                    total_returns,
-                ) = self.rollout()
-                metrics = self.compute_metrics(
-                    decayed_returns, log_actions, values, masks, total_returns
-                )
+                rollout = self.rollout()
+                metrics = self.compute_metrics(rollout)
 
                 self.optimizer.zero_grad()
                 metrics["loss/total"].backward()

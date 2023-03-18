@@ -24,13 +24,15 @@ updated: 2023-03-18
   -- (x) Include the gamma factor in the loss computation?
   --- (x) https://ai.stackexchange.com/questions/7680/why-does-the-discount-rate-in-the-reinforce-algorithm-appear-twice
   -- (x) UnitTest.
-  - ( ) Add a value network as a baseline.
-  -- ( ) Add timesteps for value computations.
+  - (x) Add a value network as a baseline.
+  -- (x) Add timesteps for value computations.
   - ( ) Explore the importance of the multiple HPs.
   -- ( ) Model size.
   -- ( ) Learning rate, optimizer, betas...
   -- ( ) Gamma factor.
   -- ( ) Number of max steps.
   -- ( ) Reward type.
+  -- ( ) Timesteps in value network and in policy?
+  -- ( ) Value network weight.
   - ( ) A cleaner version of the MCTS.
   - ( ) Mixing MCTS with neural networks -> AlphaZero.
