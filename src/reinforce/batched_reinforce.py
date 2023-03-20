@@ -89,12 +89,7 @@ class Reinforce:
 
         while not self.env.truncated and not torch.all(self.env.terminated):
             timesteps.fill_(self.env.step_id)
-            tile_1, tile_2, value = self.model(states, timesteps)
-            actions_1, log_probs_1 = Reinforce.sample_action(tile_1)
-            actions_2, log_probs_2 = Reinforce.sample_action(tile_2)
-
-            actions = torch.concat([actions_1, actions_2], dim=1)
-            log_probs = torch.concat([log_probs_1, log_probs_2], dim=1)
+            actions, log_probs, value = self.model(states, timesteps)
 
             states, step_rewards, _, _, _ = self.env.step(actions)
 

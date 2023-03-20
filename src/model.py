@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import repeat
+from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from positional_encodings.torch_encodings import PositionalEncoding1D
+from torch.distributions import Categorical
 
 from .environment.gym import EternityEnv
 
@@ -21,11 +22,15 @@ class CNNPolicy(nn.Module):
         self.embedding_dim = embedding_dim
 
         self.position_enc = PositionalEncoding1D(embedding_dim)
-        self.embed_tiles = nn.Sequential(
-            Rearrange("b t h w -> b h w t"),
+        self.embed_classes = nn.Sequential(
             nn.Embedding(n_classes, embedding_dim),
             nn.LayerNorm(embedding_dim),
-            Rearrange("b h w t e -> b (t e) h w"),
+        )
+        self.embed_tile_ids = nn.Sequential(
+            nn.Embedding(board_width * board_height, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+        )
+        self.embed_board = nn.Sequential(
             nn.Conv2d(4 * embedding_dim, embedding_dim, 3, padding="same"),
             nn.GELU(),
             nn.LayerNorm([embedding_dim, board_height, board_width]),
@@ -47,20 +52,16 @@ class CNNPolicy(nn.Module):
             nn.LayerNorm(embedding_dim),
         )
 
-        self.select_1 = nn.ModuleDict(
+        self.predict_actions = nn.ModuleDict(
             {
-                "tile": nn.Linear(embedding_dim, board_width * board_height),
-                "roll": nn.Linear(embedding_dim, 4),
-            }
-        )
-        self.select_2 = nn.ModuleDict(
-            {
-                "tile": nn.Linear(embedding_dim, board_width * board_height),
-                "roll": nn.Linear(embedding_dim, 4),
+                "tile-1": nn.Linear(embedding_dim, board_width * board_height),
+                "tile-2": nn.Linear(embedding_dim, board_width * board_height),
+                "roll-1": nn.Linear(embedding_dim, 4),
+                "roll-2": nn.Linear(embedding_dim, 4),
             }
         )
 
-        self.value = nn.Sequential(
+        self.predict_value = nn.Sequential(
             nn.Linear(embedding_dim, 1),
             nn.Tanh(),
         )
@@ -96,7 +97,7 @@ class CNNPolicy(nn.Module):
 
     def forward(
         self, tiles: torch.Tensor, timesteps: torch.Tensor
-    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -108,34 +109,51 @@ class CNNPolicy(nn.Module):
 
         ---
         Returns:
-            tile_1: The logits for the first tile.
-                Dict of shape {
-                    "tile": [batch_size, board_width * board_height],
-                    "roll": [batch_size, 4],
-                }
-            tile_2: The logits for the second tile.
-                Dict of shape {
-                    "tile": [batch_size, board_width * board_height],
-                    "roll": [batch_size, 4],
-                }
-            value: The value of the given game state.
+            actions: The predicted actions.
+                Shape of [batch_size, 4].
+            logprobs: The log probabilities of the predicted actions.
+                Shape of [batch_size, 4].
+            values: The value of the given game states.
                 Shape [batch_size, 1].
         """
         # Compute game embeddings.
-        embed = self.embed_tiles(tiles)
+        tiles = rearrange(tiles, "b t w h -> b h w t")
+        embed = self.embed_classes(tiles)
+
+        embed = rearrange(embed, "b h w t e -> b (t e) h w")
+        embed = self.embed_board(embed)
+
+        # Shape is of [batch_size, embedding_dim, height, width].
         for layer in self.residuals:
             embed = layer(embed) + embed
+
         embed = self.project(embed)
-        timesteps = self.embed_timesteps(timesteps)
+        # Shape is of [batch_size, embedding_dim].
 
         # Compute action logits.
-        tile_1 = {key: layer(embed) for key, layer in self.select_1.items()}
-        tile_2 = {key: layer(embed) for key, layer in self.select_2.items()}
+        tile_1 = self.predict_actions["tile-1"](embed)
+        tile_1_id, tile_1_logprob = self.select_actions(tile_1)
+        tile_1_emb = self.embed_tile_ids(tile_1_id)
+
+        tile_2 = self.predict_actions["tile-2"](embed + tile_1_emb)
+        tile_2_id, tile_2_logprob = self.select_actions(tile_2)
+        tile_2_emb = self.embed_tile_ids(tile_2_id)
+
+        roll_1 = self.predict_actions["roll-1"](embed + tile_1_emb)
+        roll_1_id, roll_1_logprob = self.select_actions(roll_1)
+        roll_2 = self.predict_actions["roll-2"](embed + tile_2_emb)
+        roll_2_id, roll_2_logprob = self.select_actions(roll_2)
+
+        actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
+        logprobs = torch.stack(
+            [tile_1_logprob, roll_1_logprob, tile_2_logprob, roll_2_logprob], dim=1
+        )
 
         # Compute value.
-        value = self.value(embed + timesteps)
+        timesteps = self.embed_timesteps(timesteps)
+        values = self.predict_value(embed + timesteps)
 
-        return tile_1, tile_2, value
+        return actions, logprobs, values
 
     @torch.no_grad()
     def solve_env(
@@ -173,23 +191,22 @@ class CNNPolicy(nn.Module):
         return total_reward, episode_length, images
 
     @staticmethod
-    def select_actions(
-        tile_logits: dict[str, torch.Tensor], rng: np.random.Generator
-    ) -> tuple[np.ndarray, torch.Tensor]:
-        """Sample actions from the given tile and roll logits.
-        Returns their numpy actions and the torch log probabilities.
+    def select_actions(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sample actions from the given logits.
+        Returns the sampled actions and their log-probilities.
+
+        ---
+        Args:
+            logits: The logits of the actions.
+
+        ---
+        Returns:
+            actions: The sampled actions.
+                Shape [batch_size,].
+            log_actions: The log-probabilities of the sampled actions.
+                Shape of [batch_size,].
         """
-        actions, log_actions = [], []
-        for action_name in ["tile", "roll"]:
-            logits = tile_logits[action_name]
-            distribution = torch.softmax(logits, dim=-1)
-            action = rng.choice(
-                np.arange(logits.shape[1]),
-                size=(1,),
-                p=distribution.cpu().detach().numpy()[0],
-            )
-
-            actions.append(action)
-            log_actions.append(torch.log(distribution[0, action] + 1e-5))
-
-        return (np.array(actions), torch.concat(log_actions))
+        distribution = Categorical(logits=logits)
+        action_ids = distribution.sample()
+        log_actions = distribution.log_prob(action_ids)
+        return action_ids, log_actions
