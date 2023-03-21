@@ -9,5 +9,6 @@ updated: 2023-03-21
 * Ideas
   - The value network needs to know the current timestep to effectively predict the value.
   - It may be possible to use the batched environment in AlphaZero?
+  -- A full MCTS tree can be represented as a `[]`
   - Data aug is easily done with rotations of the board.
   - Do MCTS once the model is trained and see if it is better than the model alone.

@@ -210,3 +210,16 @@ class MonteCarloTreeSearch:
             return max(node.children, key=lambda child: child.ucb())
         else:
             return max(node.children, key=lambda child: child.exploitation)
+
+
+def main():
+    env = EternityEnv(instance_path="./instances/eternity_trivial_B.txt")
+    env.reset()
+    mcts = MonteCarloTreeSearch(env)
+    root = mcts.root
+    while not root.terminal:
+        root = mcts.search(root, 2000)
+        root.parent = None  # Cut the tree (to avoid useless backpropagations).
+
+    env.reset(root.state)
+    env.render("rgb_array", "test.png")

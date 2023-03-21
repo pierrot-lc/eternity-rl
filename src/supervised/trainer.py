@@ -169,5 +169,57 @@ class EternityTrainer:
                 logs["env/sample"] = wandb.Video("./logs/sample.gif", fps=1)
 
                 run.log(logs)
+            self.save_model(config)
 
-                self.save_model(config)
+
+def main(config: dict[str, Any]):
+    """Train a supervised model."""
+    from pathlib import Path
+
+    from torchinfo import summary
+
+    # Load data.
+    filename = os.path.basename(config["env"]["path"]).replace(".txt", ".npz")
+    filepath = Path("./data") / filename
+    train_dataset, test_dataset = EternityDataset.from_file(
+        filepath,
+        test_size=config["supervised"]["test_size"],
+        seed=config["seed"],
+    )
+
+    # Get environment infos.
+    env = EternityEnv(
+        instance_path=config["env"]["path"],
+        reward_type=config["env"]["reward_type"],
+    )
+
+    # Initialize model.
+    model = CNNPolicy(
+        env.n_class,
+        embedding_dim=config["model"]["embedding_dim"],
+        n_layers=config["model"]["n_layers"],
+        board_width=env.size,
+        board_height=env.size,
+    )
+    summary(
+        model,
+        input_size=(4, env.size, env.size),
+        batch_dim=0,
+        dtypes=[
+            torch.long,
+        ],
+        device="cpu",
+    )
+
+    trainer = EternityTrainer(
+        model,
+        train_dataset,
+        test_dataset,
+        env,
+        config["supervised"]["learning_rate"],
+        config["supervised"]["batch_size"],
+        config["supervised"]["epoch_size"],
+        config["supervised"]["n_epochs"],
+        config["device"],
+    )
+    trainer.launch_training(config)
