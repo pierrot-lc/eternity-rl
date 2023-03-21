@@ -1,4 +1,6 @@
-env: ./instances/eternity_trivial_A.txt
+env:
+  path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_trivial_A.txt
+  reward: delta
 model:
   embedding_dim: 12
   n_layers: 4
@@ -11,3 +13,6 @@ reinforce:
   advantage: learned
 seed: 0
 device: auto
+hydra:
+  job:
+    chdir: true

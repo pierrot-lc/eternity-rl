@@ -42,7 +42,13 @@ class BatchedEternityEnv(gym.Env):
 
     metadata = {"render.modes": ["computer"]}
 
-    def __init__(self, batch_instances: torch.Tensor, device: str, seed: int = 0):
+    def __init__(
+        self,
+        batch_instances: torch.Tensor,
+        reward_type: str,
+        device: str,
+        seed: int = 0,
+    ):
         """Initialize the environment.
 
         ---
@@ -57,9 +63,11 @@ class BatchedEternityEnv(gym.Env):
             batch_instances.shape[2] == batch_instances.shape[3]
         ), "Instances are not squares."
         assert torch.all(batch_instances >= 0), "Classes must be positives."
+        assert reward_type in ["delta", "win"], "Unknown reward type."
 
         super().__init__()
         self.instances = batch_instances.to(device)
+        self.reward_type = reward_type
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -131,22 +139,30 @@ class BatchedEternityEnv(gym.Env):
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
 
-        matches = self.matches
+        # Save the previous matches (useful for the `delta` reward).
+        previous_matches = self.matches
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
         self.swap_tiles(tiles_id_1, tiles_id_2)
 
+        # New matches counts.
+        matches = self.matches
+
         # Maintain the previous terminated states.
         self.terminated |= self.matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
 
-        # Only give a reward at the end of the episode.
-        # if not self.truncated:
-        #     rewards = self.matches * self.terminated / self.best_matches
-        # else:
-        #     rewards = self.matches / self.best_matches
-        rewards = (self.matches - matches) / self.best_matches
+        match self.reward_type:
+            case "win":  # Only give a reward at the end of the episode.
+                if not self.truncated:
+                    rewards = matches * self.terminated / self.best_matches
+                else:
+                    rewards = matches / self.best_matches
+            case "delta":  # Give a reward at each step.
+                rewards = (matches - previous_matches) / self.best_matches
+            case _:
+                raise ValueError(f"Unknown reward type {self.reward_type}.")
 
         return (
             self.render(),
@@ -328,11 +344,16 @@ class BatchedEternityEnv(gym.Env):
 
     @classmethod
     def from_file(
-        cls, instance_path: Path, batch_size: int, device: str, seed: int = 0
+        cls,
+        instance_path: Path,
+        batch_size: int,
+        reward_type: str,
+        device: str,
+        seed: int = 0,
     ):
         from .gym import read_instance_file
 
         instance = read_instance_file(instance_path)
         instance = torch.from_numpy(instance).long()
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, device, seed)
+        return cls(instances, reward_type, device, seed)

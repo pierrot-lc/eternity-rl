@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Any
 
+import hydra
 import torch
-import yaml
+from omegaconf import DictConfig, OmegaConf
 from torchinfo import summary
 
 from src.environment import BatchedEternityEnv
@@ -10,26 +10,22 @@ from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
 
-def read_config(yaml_path: Path) -> dict:
-    with open(yaml_path) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+@hydra.main(version_base="1.3", config_path="configs", config_name="normal")
+def reinforce(config: DictConfig):
+    if config.device == "auto":
+        config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if config["device"] == "auto":
-        config["device"] = "cuda" if torch.cuda.is_available() else "cpu"
-    return config
-
-
-def reinforce(config: dict[str, Any]):
     env = BatchedEternityEnv.from_file(
-        config["env"],
-        config["reinforce"]["batch_size"],
-        config["device"],
-        config["seed"],
+        Path(config.env.path),
+        config.reinforce.batch_size,
+        config.env.reward,
+        config.device,
+        config.seed,
     )
     model = CNNPolicy(
         int(env.n_class),
-        embedding_dim=config["model"]["embedding_dim"],
-        n_layers=config["model"]["n_layers"],
+        embedding_dim=config.model.embedding_dim,
+        n_layers=config.model.n_layers,
         board_width=env.size,
         board_height=env.size,
     )
@@ -44,22 +40,16 @@ def reinforce(config: dict[str, Any]):
     trainer = Reinforce(
         env,
         model,
-        config["device"],
-        config["reinforce"]["learning_rate"],
-        config["reinforce"]["value_weight"],
-        config["reinforce"]["gamma"],
-        config["reinforce"]["n_batches"],
-        config["reinforce"]["advantage"],
+        config.device,
+        config.reinforce.learning_rate,
+        config.reinforce.value_weight,
+        config.reinforce.gamma,
+        config.reinforce.n_batches,
+        config.reinforce.advantage,
     )
-    trainer.launch_training(config)
+    trainer.launch_training(OmegaConf.to_container(config))
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path, default="configs/trivial.yaml")
-    args = parser.parse_args()
-
-    config = read_config(args.config)
-    reinforce(config)
+    # Launch with hydra.
+    reinforce()

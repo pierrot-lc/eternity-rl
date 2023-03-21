@@ -1,0 +1,18 @@
+program: main.py
+method: random
+metric:
+  name: return/mean
+  goal: maximize
+parameters:
+  reinforce.learning_rate:
+    min: 1.0e-4
+    max: 1.0e-1
+  reinforce.gamma:
+    min: 0.5
+    max: 1.0
+  reinforce.advantage:
+    values: [learned, estimated, no-advantage]
+command:
+  - python3
+  - ${program}
+  - ${args_no_hyphens}

@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import repeat
-from torch.distributions import Categorical
 from tqdm import tqdm
 
 import wandb
@@ -38,6 +37,8 @@ class Reinforce:
             self.value_weight = 0
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+
+        self.save_every = 1000
 
     def rollout(
         self,
@@ -176,8 +177,10 @@ class Reinforce:
             group=f"batched-reinforce/{self.env.size}x{self.env.size}",
             config=config,
         ) as run:
+            # Infinite loop if n_batches is -1.
             iter = range(self.n_batches) if self.n_batches != -1 else count(0)
-            for _ in tqdm(iter, desc="Batch"):
+
+            for i in tqdm(iter, desc="Batch"):
                 self.model.train()
 
                 rollout = self.rollout()
@@ -190,36 +193,13 @@ class Reinforce:
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
                 run.log(metrics)
 
-    @staticmethod
-    def sample_action(
-        tile_logits: dict[str, torch.Tensor]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Sample the tile actions using the policy prediction.
+                if i % self.save_every == 0:
+                    self.save_model()
 
-        ---
-        Args:
-            tile_logits: The logits of the tile and roll actions.
-
-        ---
-        Returns:
-            actions: The sampled tile ids and roll values.
-                Shape of [batch_size, 2].
-            log_probs: The logit of the sampled actions.
-                Shape of [batch_size, 2].
-        """
-        # Sample the tile ids.
-        tile_distribution = Categorical(logits=tile_logits["tile"])
-        tile_ids = tile_distribution.sample()
-        tile_id_log_probs = tile_distribution.log_prob(tile_ids)
-
-        # Sample the roll values.
-        roll_distribution = Categorical(logits=tile_logits["roll"])
-        rolls = roll_distribution.sample()
-        roll_log_probs = roll_distribution.log_prob(rolls)
-
-        actions = torch.stack([tile_ids, rolls], dim=1)
-        log_probs = torch.stack([tile_id_log_probs, roll_log_probs], dim=1)
-        return actions, log_probs
+    def save_model(self):
+        model_state = self.model.state_dict()
+        optimizer_state = self.optimizer.state_dict()
+        torch.save({"model": model_state, "optimizer": optimizer_state}, "model.pth")
 
     @staticmethod
     def cumulative_decay_return(
