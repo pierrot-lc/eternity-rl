@@ -34,13 +34,12 @@ class Reinforce:
         self.gamma = gamma
         self.n_batches = n_batches
         self.advantage = advantage
+        self.save_every = save_every
 
         if self.advantage != "learned":
             self.value_weight = 0
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
-
-        self.save_every = save_every
 
     def rollout(
         self,
@@ -171,12 +170,12 @@ class Reinforce:
 
         return metrics
 
-    def launch_training(self, config: dict[str, Any]):
+    def launch_training(self, group: str, config: dict[str, Any]):
         self.model.to(self.device)
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
-            group=f"batched-reinforce/{self.env.size}x{self.env.size}",
+            group=group,
             config=config,
         ) as run:
             # Infinite loop if n_batches is -1.

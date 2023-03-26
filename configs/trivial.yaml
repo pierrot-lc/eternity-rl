@@ -1,3 +1,4 @@
+group: Trivial A
 env:
   path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_trivial_A.txt
   reward: delta

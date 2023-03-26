@@ -48,7 +48,7 @@ def reinforce(config: DictConfig):
         config.reinforce.advantage,
         config.reinforce.save_every,
     )
-    trainer.launch_training(OmegaConf.to_container(config))
+    trainer.launch_training(config.group, OmegaConf.to_container(config))
 
 
 if __name__ == "__main__":
