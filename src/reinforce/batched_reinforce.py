@@ -1,4 +1,5 @@
 from itertools import count
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -24,6 +25,7 @@ class Reinforce:
         gamma: float,
         n_batches: int,
         advantage: str,
+        save_every: int,
     ):
         self.env = env
         self.model = model
@@ -38,7 +40,7 @@ class Reinforce:
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
-        self.save_every = 1000
+        self.save_every = save_every
 
     def rollout(
         self,
@@ -178,7 +180,7 @@ class Reinforce:
             config=config,
         ) as run:
             # Infinite loop if n_batches is -1.
-            iter = range(self.n_batches) if self.n_batches != -1 else count(0)
+            iter = count(0) if self.n_batches == -1 else range(self.n_batches)
 
             for i in tqdm(iter, desc="Batch"):
                 self.model.train()
@@ -188,18 +190,36 @@ class Reinforce:
 
                 self.optimizer.zero_grad()
                 metrics["loss/total"].backward()
+
+                # Compute the gradient norm.
+                grad_norms = []
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        grad_norms.append(p.grad.detach().data.norm())
+                grad_norms = torch.stack(grad_norms)
+
+                metrics["grad-norm/mean"] = grad_norms.mean()
+                metrics["grad-norm/max"] = grad_norms.max()
+                metrics["grad-norm/std"] = grad_norms.std()
+
                 self.optimizer.step()
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
                 run.log(metrics)
 
                 if i % self.save_every == 0:
-                    self.save_model()
+                    self.save_model("model.pt")
+                    self.env.save_best_env("board.png")
+                    run.log(
+                        {
+                            "best board": wandb.Image("board.png"),
+                        }
+                    )
 
-    def save_model(self):
+    def save_model(self, filepath: Path | str):
         model_state = self.model.state_dict()
         optimizer_state = self.optimizer.state_dict()
-        torch.save({"model": model_state, "optimizer": optimizer_state}, "model.pth")
+        torch.save({"model": model_state, "optimizer": optimizer_state}, filepath)
 
     @staticmethod
     def cumulative_decay_return(

@@ -1,14 +1,14 @@
 env:
-  path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_E.txt
+  path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_trivial_B.txt
   reward: delta
 model:
-  embedding_dim: 64
-  n_layers: 6
+  embedding_dim: 32
+  n_layers: 4
 reinforce:
   learning_rate: 1.0e-3
   gamma: 0.99
-  n_batches: -1
-  batch_size: 50
+  n_batches: 20000
+  batch_size: 200
   value_weight: 1.0e-2
   advantage: estimated
   save_every: 1000

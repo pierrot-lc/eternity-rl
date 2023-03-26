@@ -10,8 +10,8 @@ updated: 2023-03-21
   - (x) Better training management.
   -- (x) Hydra.
   -- (x) Save the models.
-  - ( ) Explore the importance of the multiple HPs.
-  -- ( ) WandB sweeps.
+  - (-) Explore the importance of the multiple HPs.
+  -- (x) WandB sweeps.
   -- ( ) Model size.
   -- ( ) Learning rate, optimizer, betas...
   -- ( ) Gamma factor.

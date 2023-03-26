@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 
+from .draw import draw_instance
 from .gym import EAST, NORTH, SOUTH, WEST
 
 # Defines convs that will compute vertical and horizontal matches.
@@ -308,6 +309,13 @@ class BatchedEternityEnv(gym.Env):
                 return self.instances
             case _:
                 raise RuntimeError(f"Unknown rendering type: {mode}.")
+
+    def save_best_env(self, filepath: Path | str):
+        """Render the best environment and save it on disk."""
+        best_env = self.matches.argmax()
+        best_score = self.matches[best_env].cpu().item()
+        board = self.instances[best_env].cpu().numpy()
+        draw_instance(board, best_score, filepath)
 
     @staticmethod
     def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:

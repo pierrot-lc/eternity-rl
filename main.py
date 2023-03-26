@@ -10,7 +10,7 @@ from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
 
-@hydra.main(version_base="1.3", config_path="configs", config_name="normal")
+@hydra.main(version_base="1.3", config_path="configs", config_name="trivial_B")
 def reinforce(config: DictConfig):
     if config.device == "auto":
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,6 +46,7 @@ def reinforce(config: DictConfig):
         config.reinforce.gamma,
         config.reinforce.n_batches,
         config.reinforce.advantage,
+        config.reinforce.save_every,
     )
     trainer.launch_training(OmegaConf.to_container(config))
 

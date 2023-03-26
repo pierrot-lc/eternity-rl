@@ -12,6 +12,7 @@ reinforce:
   batch_size: 200
   value_weight: 1.0e-2
   advantage: estimated
+  save_every: 1000
 seed: 0
 device: auto
 hydra:
