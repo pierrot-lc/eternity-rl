@@ -2,6 +2,7 @@ from pathlib import Path
 
 import hydra
 import torch
+from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torchinfo import summary
 
@@ -15,8 +16,9 @@ def reinforce(config: DictConfig):
     if config.device == "auto":
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    env_path = Path(to_absolute_path(config.env.path))
     env = BatchedEternityEnv.from_file(
-        Path(config.env.path),
+        env_path,
         config.reinforce.batch_size,
         config.env.reward,
         config.device,

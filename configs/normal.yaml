@@ -1,6 +1,6 @@
 group: Eternity A
 env:
-  path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_A.txt
+  path: ./instances/eternity_A.txt
   reward: delta
 model:
   embedding_dim: 24

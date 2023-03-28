@@ -1,6 +1,6 @@
-group: Trivial A
+group: Trivial B
 env:
-  path: /home/pierrotlc/Documents/eternity-rl/instances/eternity_trivial_B.txt
+  path: ./instances/eternity_trivial_B.txt
   reward: delta
 model:
   embedding_dim: 32
