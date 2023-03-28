@@ -1,5 +1,5 @@
-# Find good learning rate and gamma values.
-# Check if there is a better advantage function.
+# Affine the learning rate range from `sweep-1.yaml`
+# Try the same experiments.
 
 program: main.py
 method: random
@@ -9,7 +9,7 @@ metric:
 parameters:
   reinforce.learning_rate:
     min: 1.0e-4
-    max: 1.0e-1
+    max: 1.0e-3
   reinforce.gamma:
     min: 0.9
     max: 1.0
