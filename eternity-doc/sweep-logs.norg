@@ -1,0 +1,34 @@
+@document.meta
+title: sweep-logs
+description: 
+authors: pierrotlc
+categories: 
+created: 2023-03-29
+updated: 2023-03-29
+version: 1.0.0
+@end
+
+* Sweep 1
+  Goal: A first feeling about the following HPs:
+  - `advatage` type (`learned`, `estimated` and `no-advantage`).
+  - `gamma` between $0.9$ and $1.0$.
+
+  To have a somehow challenging environment without having to run
+  too many episodes, I decided to use the `trivial_B` environment.
+
+  But most of the sweeps was really bad, and after a quick analysis
+  I found out that the learning rate was too high which probably
+  led to unstable learning.
+
+* Sweep 2
+  A refined version of the first sweep, with a lower learning rate
+  range, between $0.0001$ and $0.001$.
+
+  Doing so was much better, but the runs with the `learned` advantage
+  was learning really slowly. I figured out that the `value_weight`
+  is too high, which led to a value network taking most of the gradient
+  norm.
+
+* Sweep 3
+  To better compare the `learned` advantage with the other from {Sweep 2},
+  I refined the `value_weight` range between $0.01$ and $0.1$.
