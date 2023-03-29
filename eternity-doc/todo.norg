@@ -3,7 +3,7 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-03-21
+updated: 2023-03-29
 @end
 
 * TODO
@@ -20,5 +20,6 @@ updated: 2023-03-21
   -- ( ) Timesteps in value network and in policy?
   -- ( ) Value network weight.
   -- ( ) Warmup?
+  -- ( ) Model init.
   - ( ) A cleaner version of the MCTS.
   - ( ) Mixing MCTS with neural networks -> AlphaZero.
