@@ -1,12 +1,8 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
-from einops.layers.torch import Rearrange
 from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
-
-from .environment.gym import EternityEnv
 
 
 class CNNPolicy(nn.Module):
@@ -17,6 +13,7 @@ class CNNPolicy(nn.Module):
         n_layers: int,
         board_width: int,
         board_height: int,
+        zero_init_residuals: bool,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
@@ -65,6 +62,15 @@ class CNNPolicy(nn.Module):
             nn.Linear(embedding_dim, 1),
             nn.Tanh(),
         )
+
+        if zero_init_residuals:
+            self.init_residuals()
+
+    def init_residuals(self):
+        """Zero out the weights of the residual layers."""
+        for layer in self.residuals:
+            for param in layer.parameters():
+                param.data.zero_()
 
     def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
         """Embed the timesteps.
@@ -154,41 +160,6 @@ class CNNPolicy(nn.Module):
         values = self.predict_value(embed + timesteps)
 
         return actions, logprobs, values
-
-    @torch.no_grad()
-    def solve_env(
-        self,
-        env: EternityEnv,
-        device: str,
-        seed: int = 0,
-        intermediate_images: bool = False,
-    ) -> tuple[float, int, list[np.ndarray]]:
-        self.eval()
-        self.to(device)
-        rng = np.random.default_rng(seed)
-
-        state = env.reset()
-        done = False
-        total_reward = 0
-        episode_length = 0
-        images = []
-
-        while not done:
-            state = torch.LongTensor(state).to(device).unsqueeze(0)
-            tile_1, tile_2 = self(state)
-
-            act_1, _ = self.select_actions(tile_1, rng)
-            act_2, _ = self.select_actions(tile_2, rng)
-
-            action = np.concatenate((act_1, act_2), axis=0)
-            state, reward, done, _ = env.step(action)
-
-            total_reward += reward
-            episode_length += 1
-            if intermediate_images:
-                images.append(env.render(mode="rgb_array"))
-
-        return total_reward, episode_length, images
 
     @staticmethod
     def select_actions(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

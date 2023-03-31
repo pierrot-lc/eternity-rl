@@ -30,6 +30,7 @@ def reinforce(config: DictConfig):
         n_layers=config.model.n_layers,
         board_width=env.size,
         board_height=env.size,
+        zero_init_residuals=config.model.zero_init_residuals,
     )
     summary(
         model,

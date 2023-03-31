@@ -5,6 +5,7 @@ env:
 model:
   embedding_dim: 24
   n_layers: 4
+  zero_init_residuals: true
 reinforce:
   learning_rate: 1.0e-3
   gamma: 0.99
