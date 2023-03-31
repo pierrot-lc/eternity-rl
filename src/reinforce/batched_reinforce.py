@@ -21,6 +21,7 @@ class Reinforce:
         model: CNNPolicy,
         device: str,
         learning_rate: float,
+        warmup_steps: int,
         value_weight: float,
         gamma: float,
         n_batches: int,
@@ -40,6 +41,12 @@ class Reinforce:
             self.value_weight = 0
 
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+        self.scheduler = optim.lr_scheduler.LinearLR(
+            optimizer=self.optimizer,
+            start_factor=0.001,
+            end_factor=1.0,
+            total_iters=warmup_steps,
+        )
 
     def rollout(
         self,
@@ -202,6 +209,7 @@ class Reinforce:
                 metrics["grad-norm/std"] = grad_norms.std()
 
                 self.optimizer.step()
+                self.scheduler.step()
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
                 run.log(metrics)
