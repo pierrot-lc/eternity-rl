@@ -7,6 +7,7 @@ model:
   n_layers: 4
   zero_init_residuals: false
 reinforce:
+  optimizer: adam
   learning_rate: 1.0e-3
   warmup_steps: 1
   gamma: 0.99

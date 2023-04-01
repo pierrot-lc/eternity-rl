@@ -114,6 +114,7 @@ class BatchedEternityEnv(gym.Env):
 
         return self.render(), dict()
 
+    @torch.no_grad()
     def step(
         self, actions: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, bool, dict[str, Any]]:

@@ -20,6 +20,7 @@ class Reinforce:
         env: BatchedEternityEnv,
         model: CNNPolicy,
         device: str,
+        optimizer: str,
         learning_rate: float,
         warmup_steps: int,
         value_weight: float,
@@ -40,7 +41,22 @@ class Reinforce:
         if self.advantage != "learned":
             self.value_weight = 0
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+        match optimizer:
+            case "adam":
+                self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+            case "adamw":
+                self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+            case "sgd":
+                self.optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
+            case "rmsprop":
+                self.optimizer = optim.RMSprop(
+                    self.model.parameters(), lr=learning_rate
+                )
+            case _:
+                print(f"Unknown optimizer: {optimizer}.")
+                print("Using Adam instead.")
+                self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
+
         self.scheduler = optim.lr_scheduler.LinearLR(
             optimizer=self.optimizer,
             start_factor=0.001,
@@ -203,16 +219,16 @@ class Reinforce:
                     if p.grad is not None:
                         grad_norms.append(p.grad.detach().data.norm())
                 grad_norms = torch.stack(grad_norms)
-
                 metrics["grad-norm/mean"] = grad_norms.mean()
                 metrics["grad-norm/max"] = grad_norms.max()
                 metrics["grad-norm/std"] = grad_norms.std()
 
+                metrics = {k: v.cpu().item() for k, v in metrics.items()}
+                metrics["learning-rate"] = self.scheduler.get_last_lr()
+                run.log(metrics)
+
                 self.optimizer.step()
                 self.scheduler.step()
-
-                metrics = {k: v.cpu().item() for k, v in metrics.items()}
-                run.log(metrics)
 
                 if i % self.save_every == 0:
                     self.save_model("model.pt")

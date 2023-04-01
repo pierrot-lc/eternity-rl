@@ -44,6 +44,7 @@ def reinforce(config: DictConfig):
         env,
         model,
         config.device,
+        config.reinforce.optimizer,
         config.reinforce.learning_rate,
         config.reinforce.warmup_steps,
         config.reinforce.value_weight,
