@@ -11,8 +11,8 @@ reinforce:
   learning_rate: 1.0e-3
   warmup_steps: 1
   gamma: 0.99
-  n_batches: 20000
-  batch_size: 200
+  n_batches: 10000
+  batch_size: 3000
   value_weight: 1.0e-2
   advantage: estimated
   save_every: 1000
