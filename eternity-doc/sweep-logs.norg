@@ -4,7 +4,7 @@ description: Logs of my experiments and thougths.
 authors: pierrotlc
 categories: logs
 created: 2023-03-29
-updated: 2023-03-31
+updated: 2023-04-02
 version: 1.0.0
 @end
 
@@ -12,7 +12,7 @@ version: 1.0.0
   The overall goal is to explore a little the search spaces
   and get a feeling of what is good and what is not.
 
-** Sweep 1
+** Sweep 1: first exploration
    Goal: A first feeling about the following HPs:
    - `advantage` type (`learned`, `estimated` and `no-advantage`).
    - `gamma` between $0.9$ and $1.0$.
@@ -24,7 +24,7 @@ version: 1.0.0
    I found out that the learning rate was too high which probably
    led to unstable learning.
 
-** Sweep 2
+** Sweep 2: refined `learning_rate`
    A refined version of the first sweep, with a lower learning rate
    range, between $0.0001$ and $0.001$.
 
@@ -33,7 +33,7 @@ version: 1.0.0
    is too high, which led to a value network taking most of the gradient
    norm.
 
-** Sweep 3
+** Sweep 3: refined `value_weight`
    To better compare the `learned` advantage with the other from {Sweep 2},
    I refined the `value_weight` range between $0.01$ and $0.1$.
 
@@ -50,3 +50,43 @@ version: 1.0.0
    and I found that the runs performances were pretty random once the HPs
    have been set. This calls for a better training loop, to get a stable (reproducible)
    training loop.
+
+* Experimennt: mitigate the randomness of the runs
+  The first experiment showed that each runs had a high performance variance,
+  leading to difficulties in analyzing the sweeps. It is a known problem in RL,
+  but I wanted to try a few things to mitigate it.
+
+** Sweep 4: zeroing-out the residual layers at initialization
+   The tuning playbook has this advice to zero-out the initialization
+   of the residual layers. Unfortunately, this does not seem to have
+   a huge impact on the runs, be it in performance variance or
+   in absolute performance.
+
+   It can still be useful later once the training pipeline will be improved
+   or the model gets bigger.
+
+** Sweep 5: warmup steps
+   The warmup phase can scale down the first bad updates of the training,
+   mitigating its effect on the overall long run. It can also unlock higher
+   learning rates, which can help the training to converge faster.
+
+   The base learning rate is set to $1.0e-2$, which is the frontier
+   for which the training has shown unstabilities previously. The best warmup
+   steps seems to be the highest ones, whatever the limit I gave. It looks
+   like the base learning rate is too high, so that the training is unstable
+   whatever the warmup steps.
+
+   A second study is done with a base learning rate at $1.0e-3$.
+
+** Sweep 6: optimizers
+   I test the `AdamW`, `RMSProp` and `SGD`.
+
+   The `SGD` is the worst by far from the two others. On the other hand,
+   the `RMSProp` has the best mean performance when compared to `AdamW`.
+   It will be used for the next sweeps.
+
+   It is still hard to know if the variance has been reduced or not.
+
+** Sweep 7: higher batch sizes
+
+** Sweep 8: weight decay regularization

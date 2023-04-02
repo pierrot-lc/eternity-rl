@@ -12,7 +12,7 @@ parameters:
     values: [adamw, sgd, rmsprop]
   reinforce.learning_rate:
     min: 1.0e-4
-    max: 1.0e-2
+    max: 5.0e-3
   reinforce.gamma:
     min: 0.9
     max: 1.0
