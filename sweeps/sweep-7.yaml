@@ -10,7 +10,7 @@ parameters:
   reinforce.batch_size:
     values: [100, 200, 400, 800, 1500, 3000]
   reinforce.n_batches:
-    value: 5000
+    value: 3000
   reinforce.learning_rate:
     value: 1.0e-3
   reinforce.gamma:
