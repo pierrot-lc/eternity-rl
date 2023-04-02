@@ -224,7 +224,7 @@ class Reinforce:
                 metrics["grad-norm/std"] = grad_norms.std()
 
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
-                metrics["learning-rate"] = self.scheduler.get_last_lr()
+                metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
                 run.log(metrics)
 
                 self.optimizer.step()
