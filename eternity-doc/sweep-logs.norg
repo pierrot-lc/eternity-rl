@@ -51,7 +51,7 @@ version: 1.0.0
    have been set. This calls for a better training loop, to get a stable (reproducible)
    training loop.
 
-* Experimennt: mitigate the randomness of the runs
+* Experiment: mitigate the randomness of the runs
   The first experiment showed that each runs had a high performance variance,
   leading to difficulties in analyzing the sweeps. It is a known problem in RL,
   but I wanted to try a few things to mitigate it.
@@ -88,5 +88,12 @@ version: 1.0.0
    It is still hard to know if the variance has been reduced or not.
 
 ** Sweep 7: higher batch sizes
+   The batch size has been set to $200$ so far. I thought it was pretty
+   good but I can try higher values. And indeed it looks better!
+   It looks like it is one of the most important hyperparameter to get a
+   stable training, which seems obvious after all.
+
+   The problem is that for bigger puzzles, I won't be able to increase it
+   that much, so I will surely have to use gradient accumulation.
 
 ** Sweep 8: weight decay regularization

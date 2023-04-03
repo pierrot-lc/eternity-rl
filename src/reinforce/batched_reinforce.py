@@ -25,7 +25,8 @@ class Reinforce:
         warmup_steps: int,
         value_weight: float,
         gamma: float,
-        n_batches: int,
+        n_batches_per_iteration: int,
+        n_total_iterations: int,
         advantage: str,
         save_every: int,
     ):
@@ -34,7 +35,8 @@ class Reinforce:
         self.device = device
         self.value_weight = value_weight
         self.gamma = gamma
-        self.n_batches = n_batches
+        self.n_total_iterations = n_total_iterations
+        self.n_batches_per_iteration = n_batches_per_iteration
         self.advantage = advantage
         self.save_every = save_every
 
@@ -196,7 +198,7 @@ class Reinforce:
     def launch_training(self, group: str, config: dict[str, Any]):
         self.model.to(self.device)
         with wandb.init(
-            project="eternity-rl",
+            pbatchesroject="eternity-rl",
             entity="pierrotlc",
             group=group,
             config=config,
