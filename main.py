@@ -49,7 +49,8 @@ def reinforce(config: DictConfig):
         config.reinforce.warmup_steps,
         config.reinforce.value_weight,
         config.reinforce.gamma,
-        config.reinforce.n_batches,
+        config.reinforce.n_batches_per_iteration,
+        config.reinforce.n_total_iterations,
         config.reinforce.advantage,
         config.reinforce.save_every,
     )

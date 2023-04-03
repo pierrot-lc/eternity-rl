@@ -30,6 +30,8 @@ class Reinforce:
         advantage: str,
         save_every: int,
     ):
+        assert n_batches_per_iteration > 0
+
         self.env = env
         self.model = model
         self.device = device
@@ -198,22 +200,27 @@ class Reinforce:
     def launch_training(self, group: str, config: dict[str, Any]):
         self.model.to(self.device)
         with wandb.init(
-            pbatchesroject="eternity-rl",
+            project="eternity-rl",
             entity="pierrotlc",
             group=group,
             config=config,
         ) as run:
             # Infinite loop if n_batches is -1.
-            iter = count(0) if self.n_batches == -1 else range(self.n_batches)
+            iter = (
+                count(0)
+                if self.n_total_iterations == -1
+                else range(self.n_total_iterations)
+            )
 
             for i in tqdm(iter, desc="Batch"):
                 self.model.train()
 
-                rollout = self.rollout()
-                metrics = self.compute_metrics(rollout)
+                for _ in range(self.n_batches_per_iteration):
+                    rollout = self.rollout()
+                    metrics = self.compute_metrics(rollout)
 
-                self.optimizer.zero_grad()
-                metrics["loss/total"].backward()
+                    self.optimizer.zero_grad()
+                    metrics["loss/total"].backward()
 
                 # Compute the gradient norm.
                 grad_norms = []
