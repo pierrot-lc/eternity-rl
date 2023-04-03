@@ -4,7 +4,7 @@ description: Logs of my experiments and thougths.
 authors: pierrotlc
 categories: logs
 created: 2023-03-29
-updated: 2023-04-02
+updated: 2023-04-03
 version: 1.0.0
 @end
 
@@ -77,15 +77,17 @@ version: 1.0.0
    whatever the warmup steps.
 
    A second study is done with a base learning rate at $1.0e-3$.
+   This study does not shows any preferred warmup steps, nor any advantages
+   to use warmup steps at all.
 
 ** Sweep 6: optimizers
    I test the `AdamW`, `RMSProp` and `SGD`.
 
    The `SGD` is the worst by far from the two others. On the other hand,
    the `RMSProp` has the best mean performance when compared to `AdamW`.
-   It will be used for the next sweeps.
+   But the variance that the two optimizers has is still high.
 
-   It is still hard to know if the variance has been reduced or not.
+   RMSProp is attractive because it has less hyperparameters to tune.
 
 ** Sweep 7: higher batch sizes
    The batch size has been set to $200$ so far. I thought it was pretty
