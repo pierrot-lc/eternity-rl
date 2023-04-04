@@ -3,7 +3,7 @@ env:
   path: ./instances/eternity_A.txt
   reward: delta
 model:
-  embedding_dim: 24
+  embedding_dim: 96
   n_layers: 4
   zero_init_residuals: false
 reinforce:
@@ -12,7 +12,7 @@ reinforce:
   warmup_steps: 1
   gamma: 0.99
   n_total_iterations: 10000
-  n_batches_per_iteration: 5
+  n_batches_per_iteration: 10
   batch_size: 3000
   value_weight: 1.0e-2
   advantage: estimated

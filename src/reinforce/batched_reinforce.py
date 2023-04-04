@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import repeat
+from torch.distributions import Categorical
 from tqdm import tqdm
 
 import wandb
@@ -205,6 +206,9 @@ class Reinforce:
             group=group,
             config=config,
         ) as run:
+            # Log gradients and model parameters.
+            run.watch(self.model)
+
             # Infinite loop if n_batches is -1.
             iter = (
                 count(0)
