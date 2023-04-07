@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
@@ -10,7 +12,8 @@ class CNNPolicy(nn.Module):
         self,
         n_classes: int,
         embedding_dim: int,
-        n_layers: int,
+        n_res_layers: int,
+        n_gru_layers: int,
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
@@ -39,7 +42,7 @@ class CNNPolicy(nn.Module):
                     nn.GELU(),
                     nn.LayerNorm([embedding_dim, board_height, board_width]),
                 )
-                for _ in range(n_layers)
+                for _ in range(n_res_layers)
             ]
         )
         self.project = nn.Sequential(
@@ -47,6 +50,9 @@ class CNNPolicy(nn.Module):
             nn.Linear(embedding_dim * board_width * board_height, embedding_dim),
             nn.GELU(),
             nn.LayerNorm(embedding_dim),
+        )
+        self.gru = nn.GRU(
+            embedding_dim, embedding_dim, num_layers=n_gru_layers, batch_first=False
         )
 
         self.predict_actions = nn.ModuleDict(
@@ -102,16 +108,16 @@ class CNNPolicy(nn.Module):
         return encodings
 
     def forward(
-        self, tiles: torch.Tensor, timesteps: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timesteps: The timesteps of the game states.
-                Long tensor of shape of [batch_size,].
+            hidden_memory: Memory of the GRU.
+                Tensor of shape of [n_gru_layers, embedding_dim].
 
         ---
         Returns:
@@ -121,6 +127,10 @@ class CNNPolicy(nn.Module):
                 Shape of [batch_size, 4].
             values: The value of the given game states.
                 Shape [batch_size, 1].
+            hidden_memory: Updated memory of the GRU.
+                Shape of [n_gru_layers, embedding_dim].
+            entropies: The entropy of the predicted actions.
+                Shape of [batch_size, 4].
         """
         # Compute game embeddings.
         tiles = rearrange(tiles, "b t w h -> b h w t")
@@ -136,33 +146,43 @@ class CNNPolicy(nn.Module):
         embed = self.project(embed)
         # Shape is of [batch_size, embedding_dim].
 
+        # Add and remove the sequence length dimension.
+        embed = embed.unsqueeze(0)
+        embed, hidden_memory = self.gru(embed, hidden_memory)
+        embed = embed.squeeze(0)
+
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
-        tile_1_id, tile_1_logprob = self.select_actions(tile_1)
+        tile_1_id, tile_1_logprob, entropies_tile_1 = self.select_actions(tile_1)
         tile_1_emb = self.embed_tile_ids(tile_1_id)
 
         tile_2 = self.predict_actions["tile-2"](embed + tile_1_emb)
-        tile_2_id, tile_2_logprob = self.select_actions(tile_2)
+        tile_2_id, tile_2_logprob, entropies_tile_2 = self.select_actions(tile_2)
         tile_2_emb = self.embed_tile_ids(tile_2_id)
 
         roll_1 = self.predict_actions["roll-1"](embed + tile_1_emb)
-        roll_1_id, roll_1_logprob = self.select_actions(roll_1)
+        roll_1_id, roll_1_logprob, entropies_roll_1 = self.select_actions(roll_1)
         roll_2 = self.predict_actions["roll-2"](embed + tile_2_emb)
-        roll_2_id, roll_2_logprob = self.select_actions(roll_2)
+        roll_2_id, roll_2_logprob, entropies_roll_2 = self.select_actions(roll_2)
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
         logprobs = torch.stack(
             [tile_1_logprob, roll_1_logprob, tile_2_logprob, roll_2_logprob], dim=1
         )
+        entropies = torch.stack(
+            [entropies_tile_1, entropies_roll_1, entropies_tile_2, entropies_roll_2],
+            dim=1,
+        )
 
         # Compute value.
-        timesteps = self.embed_timesteps(timesteps)
-        values = self.predict_value(embed + timesteps)
+        values = self.predict_value(embed)
 
-        return actions, logprobs, values
+        return actions, logprobs, values, hidden_memory, entropies
 
     @staticmethod
-    def select_actions(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def select_actions(
+        logits: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample actions from the given logits.
         Returns the sampled actions and their log-probilities.
 
@@ -176,8 +196,11 @@ class CNNPolicy(nn.Module):
                 Shape [batch_size,].
             log_actions: The log-probabilities of the sampled actions.
                 Shape of [batch_size,].
+            entropies: The entropy of the categorical distributions.
+                Shape of [batch_size,].
         """
         distribution = Categorical(logits=logits)
         action_ids = distribution.sample()
         log_actions = distribution.log_prob(action_ids)
-        return action_ids, log_actions
+        entropies = distribution.entropy()
+        return action_ids, log_actions, entropies

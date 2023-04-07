@@ -176,7 +176,7 @@ def test_batch_matches(instance_path: str):
     instance = env.render()
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
-    env = BatchedEternityEnv(instances, "cpu")
+    env = BatchedEternityEnv(instances, "win", "cpu")
 
     matches = env.matches
 
@@ -198,7 +198,7 @@ def test_batch_scramble(instance_path: str):
     reference = torch.LongTensor(env.reset())
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
-    env = BatchedEternityEnv(instances, "cpu")
+    env = BatchedEternityEnv(instances, "win", "cpu")
 
     env.scramble_instances()
 
@@ -250,7 +250,7 @@ def test_batch_roll_action(instance_path):
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
 
-    env = BatchedEternityEnv(instances, "cpu")
+    env = BatchedEternityEnv(instances, "win", "cpu")
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     shifts = torch.randint(low=0, high=4, size=(env.batch_size,))
     env.roll_tiles(tile_ids, shifts)
@@ -278,7 +278,7 @@ def test_batch_swap_action(instance_path):
     instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
     instances = torch.stack(instances)
 
-    env = BatchedEternityEnv(instances, "cpu")
+    env = BatchedEternityEnv(instances, "win", "cpu")
     tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     env.swap_tiles(tile_ids_1, tile_ids_2)

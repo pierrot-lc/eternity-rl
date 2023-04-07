@@ -27,7 +27,8 @@ def reinforce(config: DictConfig):
     model = CNNPolicy(
         int(env.n_class),
         embedding_dim=config.model.embedding_dim,
-        n_layers=config.model.n_layers,
+        n_res_layers=config.model.n_res_layers,
+        n_gru_layers=config.model.n_gru_layers,
         board_width=env.size,
         board_height=env.size,
         zero_init_residuals=config.model.zero_init_residuals,
@@ -36,7 +37,6 @@ def reinforce(config: DictConfig):
         model,
         input_data=[
             torch.zeros(1, 4, env.size, env.size, dtype=torch.long),
-            torch.randint(0, 10, size=(1,)),
         ],
         device="cpu",
     )
@@ -48,6 +48,7 @@ def reinforce(config: DictConfig):
         config.reinforce.learning_rate,
         config.reinforce.warmup_steps,
         config.reinforce.value_weight,
+        config.reinforce.entropy_weight,
         config.reinforce.gamma,
         config.reinforce.n_batches_per_iteration,
         config.reinforce.n_total_iterations,

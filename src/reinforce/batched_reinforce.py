@@ -25,6 +25,7 @@ class Reinforce:
         learning_rate: float,
         warmup_steps: int,
         value_weight: float,
+        entropy_weight: float,
         gamma: float,
         n_batches_per_iteration: int,
         n_total_iterations: int,
@@ -37,6 +38,7 @@ class Reinforce:
         self.model = model
         self.device = device
         self.value_weight = value_weight
+        self.entropy_weight = entropy_weight
         self.gamma = gamma
         self.n_total_iterations = n_total_iterations
         self.n_batches_per_iteration = n_batches_per_iteration
@@ -59,7 +61,7 @@ class Reinforce:
                 )
             case _:
                 print(f"Unknown optimizer: {optimizer}.")
-                print("Using Adam instead.")
+                print("Using AdamW instead.")
                 self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
 
         self.scheduler = optim.lr_scheduler.LinearLR(
@@ -77,9 +79,11 @@ class Reinforce:
 
         ---
         Returns:
-            returns: The cumulated rewards of the games.
+            decayed-returns: The cumulated rewards of the games.
                 Shape of [batch_size, max_steps].
-            log_probs: The logit of the actions taken.
+            log-probs: The logit of the actions taken.
+                Shape of [batch_size, max_steps, 4].
+            entropies: The entropy of the actions distributions.
                 Shape of [batch_size, max_steps, 4].
             values: The value of the games state.
                 Shape of [batch_size, max_steps].
@@ -88,62 +92,67 @@ class Reinforce:
             returns: The cumulated rewards (without decay) of the games.
                 Shape of [batch_size,].
         """
+        rollout_infos = {
+            "rewards": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+            ),
+            "values": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+            ),
+            "log-probs": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "entropies": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "masks": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+                dtype=torch.bool,
+            ),
+        }
         states, _ = self.env.reset()
-        rewards = torch.zeros(
-            self.env.batch_size,
-            self.env.max_steps,
-            device=self.device,
-        )
-        log_actions = torch.zeros(
-            self.env.batch_size,
-            self.env.max_steps,
-            4,
-            device=self.device,
-        )
-        values = torch.zeros(
-            self.env.batch_size,
-            self.env.max_steps,
-            device=self.device,
-        )
-        masks = torch.zeros(
-            self.env.batch_size,
-            self.env.max_steps,
-            device=self.device,
-            dtype=torch.bool,
-        )
-        timesteps = torch.zeros(
-            self.env.batch_size,
-            device=self.device,
-            dtype=torch.long,
-        )
+        gru_memory = None
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            timesteps.fill_(self.env.step_id)
-            actions, log_probs, value = self.model(states, timesteps)
+            actions, log_probs, values, gru_memory, entropies = self.model(
+                states, gru_memory
+            )
 
-            states, step_rewards, _, _, _ = self.env.step(actions)
+            states, rewards, _, _, _ = self.env.step(actions)
 
-            rewards[:, self.env.step_id - 1] = step_rewards
-            log_actions[:, self.env.step_id - 1] = log_probs
-            values[:, self.env.step_id - 1] = value.squeeze(1)
-            masks[:, self.env.step_id - 1] = ~self.env.terminated
+            rollout_infos["rewards"][:, self.env.step_id - 1] = rewards
+            rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
+            rollout_infos["values"][:, self.env.step_id - 1] = values.squeeze(1)
+            rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
+            rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
 
         # The last terminated state is not counted in the masks,
         # so we need to shift the masks by 1 to make sure we include id.
+        masks = rollout_infos["masks"]
         masks = torch.roll(masks, shifts=1, dims=(1,))
         masks[:, 0] = True
+        rollout_infos["masks"] = masks
 
         # Compute the cumulated rewards.
-        decayed_returns = Reinforce.cumulative_decay_return(rewards, masks, self.gamma)
-        total_returns = (rewards * masks).sum(dim=1)
+        rewards = rollout_infos["rewards"]
+        rollout_infos["decayed-returns"] = Reinforce.cumulative_decay_return(
+            rewards, masks, self.gamma
+        )
+        rollout_infos["returns"] = (rewards * masks).sum(dim=1)
 
-        return {
-            "decayed_returns": decayed_returns,
-            "log_probs": log_actions,
-            "values": values,
-            "masks": masks,
-            "returns": total_returns,
-        }
+        return rollout_infos
 
     def compute_metrics(
         self,
@@ -161,7 +170,7 @@ class Reinforce:
         """
         metrics = dict()
         masks = rollout["masks"]
-        decayed_returns = rollout["decayed_returns"]
+        decayed_returns = rollout["decayed-returns"]
         returns = rollout["returns"]
         values = rollout["values"]
 
@@ -181,14 +190,21 @@ class Reinforce:
                 raise ValueError(f"Unknown advantage: {self.advantage}.")
 
         masked_loss = (
-            -rollout["log_probs"] * advantages.unsqueeze(2) * masks.unsqueeze(2)
+            -rollout["log-probs"] * advantages.unsqueeze(2) * masks.unsqueeze(2)
         )
 
         metrics["loss/policy"] = masked_loss.sum() / masks.sum()
         metrics["loss/value"] = self.value_weight * F.mse_loss(
             values * masks, decayed_returns, reduction="mean"
         )
-        metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/value"]
+        metrics["loss/entropy"] = (
+            -self.entropy_weight
+            * (rollout["entropies"] * masks.unsqueeze(2)).sum()
+            / masks.sum()
+        )
+        metrics["loss/total"] = (
+            metrics["loss/policy"] + metrics["loss/value"] + metrics["loss/entropy"]
+        )
         metrics["ep-len/mean"] = episodes_len.float().mean()
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/std"] = episodes_len.float().std()

@@ -3,18 +3,20 @@ env:
   path: ./instances/eternity_trivial_B.txt
   reward: delta
 model:
-  embedding_dim: 32
-  n_layers: 4
+  embedding_dim: 64
+  n_res_layers: 4
+  n_gru_layers: 1
   zero_init_residuals: false
 reinforce:
-  optimizer: rmsprop
-  learning_rate: 1.0e-3
+  optimizer: adamw
+  learning_rate: 5.0e-4
   warmup_steps: 1
   gamma: 0.99
   n_total_iterations: 10000
-  n_batches_per_iteration: 5
-  batch_size: 3000
+  n_batches_per_iteration: 1
+  batch_size: 300
   value_weight: 1.0e-2
+  entropy_weight: 3.0e-4
   advantage: estimated
   save_every: 1000
 seed: 0
