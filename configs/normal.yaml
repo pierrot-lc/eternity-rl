@@ -1,23 +1,23 @@
 group: Eternity A
 env:
   path: ./instances/eternity_A.txt
-  reward: delta
+  reward: win
 model:
-  embedding_dim: 96
-  n_res_layers: 4
+  embedding_dim: 52
+  n_res_layers: 8
   n_gru_layers: 1
   zero_init_residuals: true
 reinforce:
   optimizer: adamw
-  learning_rate: 1.0e-5
-  warmup_steps: 1
-  gamma: 0.99
-  n_total_iterations: 10000
-  n_batches_per_iteration: 1
+  learning_rate: 1.0e-3
+  warmup_steps: 1000
+  gamma: 1.00
+  n_total_iterations: 100000
+  n_batches_per_iteration: 5
   batch_size: 300
   value_weight: 1.0e-2
   entropy_weight: 1.0e-4
-  advantage: estimated
+  advantage: no-advantage
   save_every: 1000
 seed: 0
 device: auto

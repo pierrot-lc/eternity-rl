@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import repeat
-from torch.distributions import Categorical
 from tqdm import tqdm
 
 import wandb

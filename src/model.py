@@ -73,9 +73,9 @@ class CNNPolicy(nn.Module):
             self.init_residuals()
 
     def init_residuals(self):
-        """Zero out the weights of the residual layers."""
+        """Zero out the weights of the residual convolutional layers."""
         for layer in self.residuals:
-            for param in layer.parameters():
+            for param in layer[0].parameters():
                 param.data.zero_()
 
     def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
