@@ -6,6 +6,8 @@ from einops import rearrange, repeat
 from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
 
+from .sampling import nucleus_sampling
+
 
 class CNNPolicy(nn.Module):
     def __init__(
@@ -179,9 +181,10 @@ class CNNPolicy(nn.Module):
 
         return actions, logprobs, values, hidden_memory, entropies
 
-    @staticmethod
     def select_actions(
+        self,
         logits: torch.Tensor,
+        top_p: float = 0.50,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample actions from the given logits.
         Returns the sampled actions and their log-probilities.
@@ -189,6 +192,7 @@ class CNNPolicy(nn.Module):
         ---
         Args:
             logits: The logits of the actions.
+                Shape of [batch_size, n_actions].
 
         ---
         Returns:
@@ -199,8 +203,12 @@ class CNNPolicy(nn.Module):
             entropies: The entropy of the categorical distributions.
                 Shape of [batch_size,].
         """
-        distribution = Categorical(logits=logits)
-        action_ids = distribution.sample()
-        log_actions = distribution.log_prob(action_ids)
-        entropies = distribution.entropy()
+        # Sample the actions using the nucleus sampling.
+        distributions = torch.softmax(logits, dim=-1)
+        action_ids = nucleus_sampling(distributions, top_p)
+
+        # Compute the entropies of the true distribution.
+        categorical = Categorical(probs=distributions)
+        entropies = categorical.entropy()
+        log_actions = categorical.log_prob(action_ids)
         return action_ids, log_actions, entropies
