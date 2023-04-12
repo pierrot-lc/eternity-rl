@@ -14,3 +14,4 @@ updated: 2023-04-12
   - Do MCTS once the model is trained and see if it is better than the model alone.
   - Do a deeper head for each separate action.
   -- Maybe use a GPT model for this?
+  -- The roll heads need both of the tiles to understand what would be the good action distributions.
