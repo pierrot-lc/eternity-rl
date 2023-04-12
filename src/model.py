@@ -6,7 +6,7 @@ from einops import rearrange, repeat
 from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
 
-from .sampling import nucleus_sampling
+from . import sampling
 
 
 class CNNPolicy(nn.Module):
@@ -60,9 +60,9 @@ class CNNPolicy(nn.Module):
         self.predict_actions = nn.ModuleDict(
             {
                 "tile-1": nn.Linear(embedding_dim, board_width * board_height),
-                "tile-2": nn.Linear(embedding_dim, board_width * board_height),
-                "roll-1": nn.Linear(embedding_dim, 4),
-                "roll-2": nn.Linear(embedding_dim, 4),
+                "tile-2": nn.Linear(2 * embedding_dim, board_width * board_height),
+                "roll-1": nn.Linear(3 * embedding_dim, 4),
+                "roll-2": nn.Linear(3 * embedding_dim, 4),
             }
         )
 
@@ -153,18 +153,27 @@ class CNNPolicy(nn.Module):
         embed, hidden_memory = self.gru(embed, hidden_memory)
         embed = embed.squeeze(0)
 
+        # Compute values.
+        values = self.predict_value(embed)
+
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
         tile_1_id, tile_1_logprob, entropies_tile_1 = self.select_actions(tile_1)
         tile_1_emb = self.embed_tile_ids(tile_1_id)
 
-        tile_2 = self.predict_actions["tile-2"](embed + tile_1_emb)
+        # Shape of [batch_size, 2 * embedding_dim].
+        embed = torch.concat([embed, tile_1_emb], dim=-1)
+
+        tile_2 = self.predict_actions["tile-2"](embed)
         tile_2_id, tile_2_logprob, entropies_tile_2 = self.select_actions(tile_2)
         tile_2_emb = self.embed_tile_ids(tile_2_id)
 
-        roll_1 = self.predict_actions["roll-1"](embed + tile_1_emb + tile_2_emb)
+        # Shape of [batch_size, 3 * embedding_dim].
+        embed = torch.concat([embed, tile_2_emb], dim=-1)
+
+        roll_1 = self.predict_actions["roll-1"](embed)
         roll_1_id, roll_1_logprob, entropies_roll_1 = self.select_actions(roll_1)
-        roll_2 = self.predict_actions["roll-2"](embed + tile_1_emb + tile_2_emb)
+        roll_2 = self.predict_actions["roll-2"](embed)
         roll_2_id, roll_2_logprob, entropies_roll_2 = self.select_actions(roll_2)
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
@@ -176,15 +185,11 @@ class CNNPolicy(nn.Module):
             dim=1,
         )
 
-        # Compute value.
-        values = self.predict_value(embed)
-
         return actions, logprobs, values, hidden_memory, entropies
 
     def select_actions(
         self,
         logits: torch.Tensor,
-        top_p: float = 0.50,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample actions from the given logits.
         Returns the sampled actions and their log-probilities.
@@ -205,7 +210,7 @@ class CNNPolicy(nn.Module):
         """
         # Sample the actions using the nucleus sampling.
         distributions = torch.softmax(logits, dim=-1)
-        action_ids = nucleus_sampling(distributions, top_p)
+        action_ids = sampling.epsilon_greedy_sampling(distributions, epsilon=0.05)
 
         # Compute the entropies of the true distribution.
         categorical = Categorical(probs=distributions)
