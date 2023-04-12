@@ -162,9 +162,9 @@ class CNNPolicy(nn.Module):
         tile_2_id, tile_2_logprob, entropies_tile_2 = self.select_actions(tile_2)
         tile_2_emb = self.embed_tile_ids(tile_2_id)
 
-        roll_1 = self.predict_actions["roll-1"](embed + tile_1_emb)
+        roll_1 = self.predict_actions["roll-1"](embed + tile_1_emb + tile_2_emb)
         roll_1_id, roll_1_logprob, entropies_roll_1 = self.select_actions(roll_1)
-        roll_2 = self.predict_actions["roll-2"](embed + tile_2_emb)
+        roll_2 = self.predict_actions["roll-2"](embed + tile_1_emb + tile_2_emb)
         roll_2_id, roll_2_logprob, entropies_roll_2 = self.select_actions(roll_2)
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)

@@ -1,4 +1,7 @@
-"""This module present different sampling methods for action selection."""
+"""This module present different sampling methods for action selection.
+
+Those methods are useful to control the exploration and exploitation tradeoff.
+"""
 
 import torch
 from torch.distributions import Categorical
