@@ -6,8 +6,6 @@ from einops import rearrange, repeat
 from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
 
-from . import sampling
-
 
 class CNNPolicy(nn.Module):
     def __init__(
@@ -210,7 +208,7 @@ class CNNPolicy(nn.Module):
         """
         # Sample the actions using the nucleus sampling.
         distributions = torch.softmax(logits, dim=-1)
-        action_ids = sampling.epsilon_greedy_sampling(distributions, epsilon=0.05)
+        action_ids = Categorical(probs=distributions).sample()
 
         # Compute the entropies of the true distribution.
         categorical = Categorical(probs=distributions)

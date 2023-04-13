@@ -52,8 +52,8 @@ def nucleus_sampling(distributions: torch.Tensor, top_p: float) -> torch.Tensor:
             Shape [batch_size,].
     """
     distributions = nucleus_distributions(distributions, top_p)
-    categorical = Categorical(probs=nucleus_distributions)
-    sampled_actions = categorical.sample().unsqueeze(1)
+    categorical = Categorical(probs=distributions)
+    sampled_actions = categorical.sample()
 
     return sampled_actions
 
