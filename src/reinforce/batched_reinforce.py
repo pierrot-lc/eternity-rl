@@ -19,10 +19,9 @@ class Reinforce:
         self,
         env: BatchedEternityEnv,
         model: CNNPolicy,
+        optimizer: optim.Optimizer,
+        scheduler: optim.lr_scheduler.LinearLR,
         device: str,
-        optimizer: str,
-        learning_rate: float,
-        warmup_steps: int,
         value_weight: float,
         entropy_weight: float,
         gamma: float,
@@ -35,6 +34,8 @@ class Reinforce:
 
         self.env = env
         self.model = model
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.device = device
         self.value_weight = value_weight
         self.entropy_weight = entropy_weight
@@ -46,29 +47,6 @@ class Reinforce:
 
         if self.advantage != "learned":
             self.value_weight = 0
-
-        match optimizer:
-            case "adam":
-                self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
-            case "adamw":
-                self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
-            case "sgd":
-                self.optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
-            case "rmsprop":
-                self.optimizer = optim.RMSprop(
-                    self.model.parameters(), lr=learning_rate
-                )
-            case _:
-                print(f"Unknown optimizer: {optimizer}.")
-                print("Using AdamW instead.")
-                self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
-
-        self.scheduler = optim.lr_scheduler.LinearLR(
-            optimizer=self.optimizer,
-            start_factor=0.001,
-            end_factor=1.0,
-            total_iters=warmup_steps,
-        )
 
     def rollout(
         self,
@@ -214,6 +192,7 @@ class Reinforce:
         return metrics
 
     def launch_training(self, group: str, config: dict[str, Any]):
+        print(f"Launching training on device {self.device}.")
         self.model.to(self.device)
         with wandb.init(
             project="eternity-rl",
