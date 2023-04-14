@@ -15,6 +15,12 @@ from .batched_reinforce import Reinforce
         ),
         (
             torch.FloatTensor([[2, 1, 1]]),
+            torch.BoolTensor([[True, True, False]]),
+            1,
+            torch.FloatTensor([[3, 1, 0]]),
+        ),
+        (
+            torch.FloatTensor([[2, 1, 1]]),
             torch.BoolTensor([[True, True, True]]),
             0.9,
             torch.FloatTensor([[2 + 0.9 * (1 + 0.9), 1 + 0.9, 1]]),
