@@ -7,6 +7,40 @@ from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
 
 
+class Head(nn.Module):
+    def __init__(self, embedding_dim: int, n_head_layers: int, n_actions: int):
+        super().__init__()
+
+        self.residuals = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(embedding_dim, embedding_dim),
+                    nn.GELU(),
+                    nn.LayerNorm(embedding_dim),
+                )
+                for _ in range(n_head_layers)
+            ]
+        )
+        self.predict_actions = nn.Linear(embedding_dim, n_actions)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict the actions for the given game states.
+
+        ---
+        Args:
+            x: The game states.
+                Shape of [batch_size, embedding_dim].
+
+        ---
+        Returns:
+            The predicted logits actions.
+                Shape of [batch_size, n_actions].
+        """
+        for layer in self.residuals:
+            x = layer(x) + x
+        return self.predict_actions(x)
+
+
 class CNNPolicy(nn.Module):
     def __init__(
         self,
@@ -14,6 +48,7 @@ class CNNPolicy(nn.Module):
         embedding_dim: int,
         n_res_layers: int,
         n_gru_layers: int,
+        n_head_layers: int,
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
@@ -57,10 +92,21 @@ class CNNPolicy(nn.Module):
 
         self.predict_actions = nn.ModuleDict(
             {
-                "tile-1": nn.Linear(embedding_dim, board_width * board_height),
-                "tile-2": nn.Linear(2 * embedding_dim, board_width * board_height),
-                "roll-1": nn.Linear(3 * embedding_dim, 4),
-                "roll-2": nn.Linear(3 * embedding_dim, 4),
+                "tile-1": Head(
+                    embedding_dim, n_head_layers, board_width * board_height
+                ),
+                "tile-2": nn.Sequential(
+                    nn.Linear(2 * embedding_dim, embedding_dim),
+                    Head(embedding_dim, n_head_layers, board_width * board_height),
+                ),
+                "roll-1": nn.Sequential(
+                    nn.Linear(3 * embedding_dim, embedding_dim),
+                    Head(embedding_dim, n_head_layers, 4),
+                ),
+                "roll-2": nn.Sequential(
+                    nn.Linear(3 * embedding_dim, embedding_dim),
+                    Head(embedding_dim, n_head_layers, 4),
+                ),
             }
         )
 

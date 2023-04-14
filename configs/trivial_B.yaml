@@ -6,6 +6,7 @@ model:
   embedding_dim: 64
   n_res_layers: 4
   n_gru_layers: 1
+  n_head_layers: 3
   zero_init_residuals: true
 reinforce:
   optimizer: adamw
