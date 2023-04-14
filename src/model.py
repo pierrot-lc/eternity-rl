@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
@@ -8,7 +9,13 @@ from torch.distributions import Categorical
 
 
 class Head(nn.Module):
-    def __init__(self, embedding_dim: int, n_head_layers: int, n_actions: int):
+    def __init__(
+        self,
+        embedding_dim: int,
+        n_head_layers: int,
+        n_actions: int,
+        zero_init_residuals: bool,
+    ):
         super().__init__()
 
         self.residuals = nn.ModuleList(
@@ -22,6 +29,16 @@ class Head(nn.Module):
             ]
         )
         self.predict_actions = nn.Linear(embedding_dim, n_actions)
+
+        if zero_init_residuals:
+            self.init_residuals()
+
+    def init_residuals(self):
+        """Zero out the weights of the residual linear layers."""
+        for module in self.residuals.modules():
+            if isinstance(module, nn.Linear):
+                for param in module.parameters():
+                    param.data.zero_()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Predict the actions for the given game states.
@@ -93,19 +110,30 @@ class CNNPolicy(nn.Module):
         self.predict_actions = nn.ModuleDict(
             {
                 "tile-1": Head(
-                    embedding_dim, n_head_layers, board_width * board_height
+                    embedding_dim,
+                    n_head_layers,
+                    board_width * board_height,
+                    zero_init_residuals,
                 ),
                 "tile-2": nn.Sequential(
                     nn.Linear(2 * embedding_dim, embedding_dim),
-                    Head(embedding_dim, n_head_layers, board_width * board_height),
+                    nn.LayerNorm(embedding_dim),
+                    Head(
+                        embedding_dim,
+                        n_head_layers,
+                        board_width * board_height,
+                        zero_init_residuals,
+                    ),
                 ),
                 "roll-1": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
-                    Head(embedding_dim, n_head_layers, 4),
+                    nn.LayerNorm(embedding_dim),
+                    Head(embedding_dim, n_head_layers, 4, zero_init_residuals),
                 ),
                 "roll-2": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
-                    Head(embedding_dim, n_head_layers, 4),
+                    nn.LayerNorm(embedding_dim),
+                    Head(embedding_dim, n_head_layers, 4, zero_init_residuals),
                 ),
             }
         )
@@ -120,9 +148,10 @@ class CNNPolicy(nn.Module):
 
     def init_residuals(self):
         """Zero out the weights of the residual convolutional layers."""
-        for layer in self.residuals:
-            for param in layer[0].parameters():
-                param.data.zero_()
+        for module in self.residuals.modules():
+            if isinstance(module, nn.Conv2d):
+                for param in module.parameters():
+                    param.data.zero_()
 
     def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
         """Embed the timesteps.
@@ -155,7 +184,9 @@ class CNNPolicy(nn.Module):
 
     def forward(
         self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor
+    ]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -225,7 +256,12 @@ class CNNPolicy(nn.Module):
             [tile_1_logprob, roll_1_logprob, tile_2_logprob, roll_2_logprob], dim=1
         )
         entropies = torch.stack(
-            [entropies_tile_1, entropies_roll_1, entropies_tile_2, entropies_roll_2],
+            [
+                1.0 * entropies_tile_1,
+                0.01 * entropies_roll_1,
+                0.1 * entropies_tile_2,
+                0.01 * entropies_roll_2,
+            ],
             dim=1,
         )
 
@@ -250,14 +286,17 @@ class CNNPolicy(nn.Module):
             log_actions: The log-probabilities of the sampled actions.
                 Shape of [batch_size,].
             entropies: The entropy of the categorical distributions.
+                The entropies are normalized by the log of the number of actions.
                 Shape of [batch_size,].
         """
+        n_actions = logits.shape[-1]
+
         # Sample the actions using the nucleus sampling.
         distributions = torch.softmax(logits, dim=-1)
         action_ids = Categorical(probs=distributions).sample()
 
         # Compute the entropies of the true distribution.
         categorical = Categorical(probs=distributions)
-        entropies = categorical.entropy()
+        entropies = categorical.entropy() / np.log(n_actions)
         log_actions = categorical.log_prob(action_ids)
         return action_ids, log_actions, entropies

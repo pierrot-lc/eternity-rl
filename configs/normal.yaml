@@ -3,8 +3,8 @@ env:
   path: ./instances/eternity_A.txt
   reward: win
 model:
-  embedding_dim: 52
-  n_res_layers: 8
+  embedding_dim: 92
+  n_res_layers: 6
   n_gru_layers: 1
   zero_init_residuals: true
 reinforce:
