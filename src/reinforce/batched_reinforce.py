@@ -5,11 +5,10 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from einops import repeat
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
@@ -161,9 +160,9 @@ class Reinforce:
             case "learned":
                 advantages = decayed_returns - values.detach()
             case "estimated":
-                advantages = (decayed_returns - decayed_returns.mean(dim=0, keepdim=True)) / (
-                    decayed_returns.std(dim=0, keepdim=True) + 1e-7
-                )
+                advantages = (
+                    decayed_returns - decayed_returns.mean(dim=0, keepdim=True)
+                ) / (decayed_returns.std(dim=0, keepdim=True) + 1e-7)
             case "no-advantage":
                 advantages = decayed_returns
             case _:
