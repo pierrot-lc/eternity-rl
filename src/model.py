@@ -73,7 +73,6 @@ class CNNPolicy(nn.Module):
         super().__init__()
         self.embedding_dim = embedding_dim
 
-        self.position_enc = PositionalEncoding1D(embedding_dim)
         self.embed_classes = nn.Sequential(
             nn.Embedding(n_classes, embedding_dim),
             nn.LayerNorm(embedding_dim),
@@ -152,35 +151,6 @@ class CNNPolicy(nn.Module):
             if isinstance(module, nn.Conv2d):
                 for param in module.parameters():
                     param.data.zero_()
-
-    def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
-        """Embed the timesteps.
-
-        ---
-        Args:
-            timesteps: The timesteps of the game states.
-                Shape of [batch_size,].
-
-        ---
-        Returns:
-            The positional encodings for the given timesteps.
-                Shape of [batch_size, embedding_dim].
-        """
-        # Compute the positional encodings for the given timesteps.
-        max_timesteps = int(timesteps.max().item())
-        x = torch.zeros(
-            1, max_timesteps + 1, self.embedding_dim, device=timesteps.device
-        )
-        encodings = self.position_enc(x)
-        encodings = encodings.squeeze(0)  # Shape is [timesteps, embedding_dim].
-
-        # Select the right encodings for the timesteps.
-        encodings = repeat(encodings, "t e -> b t e", b=timesteps.shape[0])
-        timesteps = repeat(timesteps, "b -> b t e", t=1, e=self.embedding_dim)
-        encodings = torch.gather(encodings, dim=1, index=timesteps)
-
-        encodings = encodings.squeeze(1)  # Shape is [batch_size, embedding_dim].
-        return encodings
 
     def forward(
         self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None

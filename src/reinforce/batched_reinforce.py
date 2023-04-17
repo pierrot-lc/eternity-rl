@@ -151,15 +151,15 @@ class Reinforce:
         returns = rollout["returns"]
         values = rollout["values"]
 
-        episodes_len = masks.sum(dim=1).long() - 1
+        episodes_len = masks.sum(dim=1).long()
 
         # Compute the advantage and policy loss.
         match self.advantage:
             case "learned":
                 advantages = decayed_returns - values.detach()
             case "estimated":
-                advantages = (decayed_returns - decayed_returns.mean()) / (
-                    decayed_returns.std() + 1e-7
+                advantages = (decayed_returns - decayed_returns.mean(dim=0, keepdim=True)) / (
+                    decayed_returns.std(dim=0, keepdim=True) + 1e-7
                 )
             case "no-advantage":
                 advantages = decayed_returns
