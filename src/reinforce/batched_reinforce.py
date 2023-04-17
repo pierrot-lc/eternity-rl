@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from einops import repeat
+from torch.nn.utils import clip_grad
 from tqdm import tqdm
 
 import wandb
@@ -25,6 +26,7 @@ class Reinforce:
         value_weight: float,
         entropy_weight: float,
         gamma: float,
+        clip_value: float,
         n_batches_per_iteration: int,
         n_total_iterations: int,
         advantage: str,
@@ -40,6 +42,7 @@ class Reinforce:
         self.value_weight = value_weight
         self.entropy_weight = entropy_weight
         self.gamma = gamma
+        self.clip_value = clip_value
         self.n_total_iterations = n_total_iterations
         self.n_batches_per_iteration = n_batches_per_iteration
         self.advantage = advantage
@@ -192,8 +195,12 @@ class Reinforce:
         return metrics
 
     def launch_training(self, group: str, config: dict[str, Any]):
+        metrics = dict()
+        tot_params = 0
+
         print(f"Launching training on device {self.device}.")
         self.model.to(self.device)
+
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
@@ -220,19 +227,24 @@ class Reinforce:
                     self.optimizer.zero_grad()
                     metrics["loss/total"].backward()
 
-                # Compute the gradient norm.
-                grad_norms = []
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        grad_norms.append(p.grad.detach().data.norm())
-                grad_norms = torch.stack(grad_norms)
-                metrics["grad-norm/mean"] = grad_norms.mean()
-                metrics["grad-norm/max"] = grad_norms.max()
-                metrics["grad-norm/std"] = grad_norms.std()
-
+                # Log the metrics.
                 metrics = {k: v.cpu().item() for k, v in metrics.items()}
+
+                # Compute the gradient mean and maximum values.
+                mean_value, max_value = 0, 0
+                for tot_params, p in enumerate(self.model.parameters()):
+                    if p.grad is not None:
+                        grad = p.grad.data.abs()
+                        mean_value += grad.mean().item()
+                        max_value = max(max_value, grad.max().item())
+
+                metrics["gradients/mean"] = mean_value / (tot_params + 1)
+                metrics["gradients/max"] = max_value
+
                 metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
                 run.log(metrics)
+
+                clip_grad.clip_grad_value_(self.model.parameters(), self.clip_value)
 
                 self.optimizer.step()
                 self.scheduler.step()
@@ -273,6 +285,13 @@ class Reinforce:
             The cumulative decayed return of the games.
                 Shape of [batch_size, max_steps].
         """
+        if gamma == 1:
+            rewards = torch.flip(rewards, dims=(1,))
+            masks = torch.flip(masks, dims=(1,))
+            returns = torch.cumsum(masks * rewards, dim=1)
+            returns = torch.flip(returns, dims=(1,))
+            return returns
+
         # Compute the gamma powers.
         powers = (rewards.shape[1] - 1) - torch.arange(
             rewards.shape[1], device=rewards.device

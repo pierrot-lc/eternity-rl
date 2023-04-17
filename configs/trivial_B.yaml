@@ -21,6 +21,7 @@ reinforce:
   batch_size: 300
   value_weight: 1.0e-2
   entropy_weight: 1.0e-2
+  clip_value: 5.0
   advantage: estimated
   save_every: 1000
 seed: 0

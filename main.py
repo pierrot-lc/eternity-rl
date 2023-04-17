@@ -96,6 +96,7 @@ def init_trainer(
         config.reinforce.value_weight,
         config.reinforce.entropy_weight,
         config.reinforce.gamma,
+        config.reinforce.clip_value,
         config.reinforce.n_batches_per_iteration,
         config.reinforce.n_total_iterations,
         config.reinforce.advantage,
