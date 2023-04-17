@@ -66,6 +66,7 @@ class CNNPolicy(nn.Module):
         n_res_layers: int,
         n_gru_layers: int,
         n_head_layers: int,
+        kernel_maxpool: int,
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
@@ -97,8 +98,9 @@ class CNNPolicy(nn.Module):
             ]
         )
         self.project = nn.Sequential(
+            nn.MaxPool2d(kernel_size=kernel_maxpool),
             nn.Flatten(),
-            nn.Linear(embedding_dim * board_width * board_height, embedding_dim),
+            nn.LazyLinear(embedding_dim),
             nn.GELU(),
             nn.LayerNorm(embedding_dim),
         )

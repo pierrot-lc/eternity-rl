@@ -31,6 +31,7 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
         n_res_layers=config.model.n_res_layers,
         n_gru_layers=config.model.n_gru_layers,
         n_head_layers=config.model.n_head_layers,
+        kernel_maxpool=config.model.kernel_maxpool,
         board_width=env.size,
         board_height=env.size,
         zero_init_residuals=config.model.zero_init_residuals,
