@@ -1,10 +1,15 @@
+import os
 from pathlib import Path
 
 import hydra
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import torch.nn as nn
 import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torchinfo import summary
 
 from src.environment import BatchedEternityEnv
@@ -12,10 +17,21 @@ from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
 
+def setup_distributed(rank: int, world_size: int):
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+
+    # Initialize the process group.
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+
+def cleanup_distributed():
+    dist.destroy_process_group()
+
+
 def init_env(config: DictConfig) -> BatchedEternityEnv:
-    env_path = Path(to_absolute_path(config.env.path))
     env = BatchedEternityEnv.from_file(
-        env_path,
+        config.env.path,
         config.reinforce.batch_size,
         config.env.reward,
         config.device,
@@ -46,7 +62,7 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
     return model
 
 
-def init_optimizer(config: DictConfig, model: CNNPolicy) -> optim.Optimizer:
+def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
     optimizer_name = config.optimizer.optimizer
     lr = config.optimizer.learning_rate
     weight_decay = config.optimizer.weight_decay
@@ -84,7 +100,7 @@ def init_scheduler(
 def init_trainer(
     config: DictConfig,
     env: BatchedEternityEnv,
-    model: CNNPolicy,
+    model: nn.Module,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
@@ -105,19 +121,41 @@ def init_trainer(
     return trainer
 
 
-@hydra.main(version_base="1.3", config_path="configs", config_name="trivial_B")
-def reinforce(config: DictConfig):
+def run_trainer(rank: int, world_size: int, config: DictConfig):
+    setup_distributed(rank, world_size)
+
+    # Make sure we log training info only for the rank 0 process.
+    if rank != 0:
+        config.reinforce.save_every = -1
+
+    config.device = config.distributed[rank]
     if config.device == "auto":
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
     model = init_model(config, env)
+    model = model.to(config.device)
+    model = DDP(model, device_ids=[config.device], output_device=config.device)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
     trainer = init_trainer(config, env, model, optimizer, scheduler)
-    trainer.launch_training(config.group, OmegaConf.to_container(config))
+
+    try:
+        trainer.launch_training(config.group, OmegaConf.to_container(config))
+    except KeyboardInterrupt:
+        # Capture a potential ctrl+c to make sure we clean up distributed processes.
+        print("Caught KeyboardInterrupt. Cleaning up distributed processes...")
+    finally:
+        cleanup_distributed()
+
+
+@hydra.main(version_base="1.3", config_path="configs", config_name="trivial_B")
+def main(config: DictConfig):
+    config.env.path = Path(to_absolute_path(config.env.path))
+    world_size = len(config.distributed)
+    mp.spawn(run_trainer, nprocs=world_size, args=(world_size, config))
 
 
 if __name__ == "__main__":
     # Launch with hydra.
-    reinforce()
+    main()

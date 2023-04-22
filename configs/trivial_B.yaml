@@ -26,6 +26,7 @@ reinforce:
   save_every: 1000
 seed: 0
 device: auto
+distributed: [auto]
 hydra:
   job:
     chdir: true

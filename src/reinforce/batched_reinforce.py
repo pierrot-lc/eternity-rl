@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 import torch.optim as optim
 from einops import repeat
 from torch.nn.utils import clip_grad
@@ -12,14 +12,13 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import BatchedEternityEnv
-from ..model import CNNPolicy
 
 
 class Reinforce:
     def __init__(
         self,
         env: BatchedEternityEnv,
-        model: CNNPolicy,
+        model: nn.Module,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
@@ -228,7 +227,7 @@ class Reinforce:
                 self.optimizer.step()
                 self.scheduler.step()
 
-                if i % self.save_every == 0:
+                if i % self.save_every == 0 and self.save_every != -1:
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(
