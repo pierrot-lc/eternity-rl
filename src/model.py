@@ -3,8 +3,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import rearrange, repeat
-from positional_encodings.torch_encodings import PositionalEncoding1D
+from einops import rearrange
 from torch.distributions import Categorical
 
 
