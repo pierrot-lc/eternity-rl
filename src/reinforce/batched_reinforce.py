@@ -5,10 +5,11 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import wandb
 from einops import repeat
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
+
+import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
@@ -22,7 +23,6 @@ class Reinforce:
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
-        value_weight: float,
         entropy_weight: float,
         gamma: float,
         clip_value: float,
@@ -38,7 +38,6 @@ class Reinforce:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
-        self.value_weight = value_weight
         self.entropy_weight = entropy_weight
         self.gamma = gamma
         self.clip_value = clip_value
@@ -46,9 +45,6 @@ class Reinforce:
         self.n_batches_per_iteration = n_batches_per_iteration
         self.advantage = advantage
         self.save_every = save_every
-
-        if self.advantage != "learned":
-            self.value_weight = 0
 
     def rollout(
         self,
@@ -77,11 +73,6 @@ class Reinforce:
                 self.env.max_steps,
                 device=self.device,
             ),
-            "values": torch.zeros(
-                self.env.batch_size,
-                self.env.max_steps,
-                device=self.device,
-            ),
             "log-probs": torch.zeros(
                 self.env.batch_size,
                 self.env.max_steps,
@@ -105,15 +96,12 @@ class Reinforce:
         gru_memory = None
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, log_probs, values, gru_memory, entropies = self.model(
-                states, gru_memory
-            )
+            actions, log_probs, gru_memory, entropies = self.model(states, gru_memory)
 
             states, rewards, _, _, _ = self.env.step(actions)
 
             rollout_infos["rewards"][:, self.env.step_id - 1] = rewards
             rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
-            rollout_infos["values"][:, self.env.step_id - 1] = values.squeeze(1)
             rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
             rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
 
@@ -151,14 +139,11 @@ class Reinforce:
         masks = rollout["masks"]
         decayed_returns = rollout["decayed-returns"]
         returns = rollout["returns"]
-        values = rollout["values"]
 
         episodes_len = masks.sum(dim=1).long()
 
         # Compute the advantage and policy loss.
         match self.advantage:
-            case "learned":
-                advantages = decayed_returns - values.detach()
             case "estimated":
                 advantages = (
                     decayed_returns - decayed_returns.mean(dim=0, keepdim=True)
@@ -173,17 +158,12 @@ class Reinforce:
         )
 
         metrics["loss/policy"] = masked_loss.sum() / masks.sum()
-        metrics["loss/value"] = self.value_weight * F.mse_loss(
-            values * masks, decayed_returns, reduction="mean"
-        )
         metrics["loss/entropy"] = (
             -self.entropy_weight
             * (rollout["entropies"] * masks.unsqueeze(2)).sum()
             / masks.sum()
         )
-        metrics["loss/total"] = (
-            metrics["loss/policy"] + metrics["loss/value"] + metrics["loss/entropy"]
-        )
+        metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/entropy"]
         metrics["ep-len/mean"] = episodes_len.float().mean()
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/std"] = episodes_len.float().std()

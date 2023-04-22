@@ -94,7 +94,6 @@ def init_trainer(
         optimizer,
         scheduler,
         config.device,
-        config.reinforce.value_weight,
         config.reinforce.entropy_weight,
         config.reinforce.gamma,
         config.reinforce.clip_value,

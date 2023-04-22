@@ -139,11 +139,6 @@ class CNNPolicy(nn.Module):
             }
         )
 
-        self.predict_value = nn.Sequential(
-            nn.Linear(embedding_dim, 1),
-            nn.Tanh(),
-        )
-
         if zero_init_residuals:
             self.init_residuals()
 
@@ -156,9 +151,7 @@ class CNNPolicy(nn.Module):
 
     def forward(
         self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None
-    ) -> tuple[
-        torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor
-    ]:
+    ) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -200,9 +193,6 @@ class CNNPolicy(nn.Module):
         embed, hidden_memory = self.gru(embed, hidden_memory)
         embed = embed.squeeze(0)
 
-        # Compute values.
-        values = self.predict_value(embed)
-
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
         tile_1_id, tile_1_logprob, entropies_tile_1 = self.select_actions(tile_1)
@@ -237,7 +227,7 @@ class CNNPolicy(nn.Module):
             dim=1,
         )
 
-        return actions, logprobs, values, hidden_memory, entropies
+        return actions, logprobs, hidden_memory, entropies
 
     def select_actions(
         self,
