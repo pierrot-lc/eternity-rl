@@ -196,7 +196,7 @@ class Reinforce:
                 else range(self.n_total_iterations)
             )
 
-            for i in tqdm(iter, desc="Batch"):
+            for i in tqdm(iter, desc="Batch", disable=mode=="disabled"):
                 self.model.train()
 
                 for _ in range(self.n_batches_per_iteration):
@@ -228,7 +228,7 @@ class Reinforce:
                 self.optimizer.step()
                 self.scheduler.step()
 
-                if i % self.save_every == 0:
+                if i % self.save_every == 0 and mode != "disabled":
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(

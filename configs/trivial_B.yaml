@@ -26,7 +26,7 @@ reinforce:
   save_every: 1000
 seed: 0
 device: auto
-distributed: [auto]
+distributed: ["cuda:0", "cuda:1", "cuda:2", "cuda:3"]
 mode: online
 hydra:
   job:
