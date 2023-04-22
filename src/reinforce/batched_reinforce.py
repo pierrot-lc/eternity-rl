@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from einops import repeat
 from torch.nn.utils import clip_grad
@@ -12,13 +11,14 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import BatchedEternityEnv
+from ..model import CNNPolicy
 
 
 class Reinforce:
     def __init__(
         self,
         env: BatchedEternityEnv,
-        model: nn.Module,
+        model: CNNPolicy,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
@@ -173,12 +173,6 @@ class Reinforce:
         return metrics
 
     def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
-        metrics = dict()
-        tot_params = 0
-
-        print(f"Launching training on device {self.device}.")
-        self.model.to(self.device)
-
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
@@ -186,6 +180,15 @@ class Reinforce:
             config=config,
             mode=mode,
         ) as run:
+            metrics = dict()
+            tot_params = 0
+
+            self.model.to(self.device)
+
+            if mode != "disabled":
+                self.model.summary(self.device)
+                print(f"Launching training on device {self.device}.")
+
             # Log gradients and model parameters.
             run.watch(self.model)
 
@@ -196,7 +199,7 @@ class Reinforce:
                 else range(self.n_total_iterations)
             )
 
-            for i in tqdm(iter, desc="Batch", disable=mode=="disabled"):
+            for i in tqdm(iter, desc="Batch", disable=mode == "disabled"):
                 self.model.train()
 
                 for _ in range(self.n_batches_per_iteration):

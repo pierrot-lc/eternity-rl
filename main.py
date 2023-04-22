@@ -10,7 +10,6 @@ import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torchinfo import summary
 
 from src.environment import BatchedEternityEnv
 from src.model import CNNPolicy
@@ -51,13 +50,6 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
         board_width=env.size,
         board_height=env.size,
         zero_init_residuals=config.model.zero_init_residuals,
-    )
-    summary(
-        model,
-        input_data=[
-            torch.zeros(1, 4, env.size, env.size, dtype=torch.long),
-        ],
-        device="cpu",
     )
     return model
 
@@ -121,7 +113,7 @@ def init_trainer(
     return trainer
 
 
-def run_trainer(rank: int, world_size: int, config: DictConfig):
+def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     setup_distributed(rank, world_size)
 
     # Make sure we log training info only for the rank 0 process.
@@ -151,11 +143,28 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
         cleanup_distributed()
 
 
+def run_trainer_single_gpu(config: DictConfig):
+    if config.device == "auto":
+        config.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    env = init_env(config)
+    model = init_model(config, env)
+    model = model.to(config.device)
+    optimizer = init_optimizer(config, model)
+    scheduler = init_scheduler(config, optimizer)
+    trainer = init_trainer(config, env, model, optimizer, scheduler)
+
+    trainer.launch_training(config.group, OmegaConf.to_container(config), config.mode)
+
+
 @hydra.main(version_base="1.3", config_path="configs", config_name="trivial_B")
 def main(config: DictConfig):
     config.env.path = Path(to_absolute_path(config.env.path))
     world_size = len(config.distributed)
-    mp.spawn(run_trainer, nprocs=world_size, args=(world_size, config))
+    if world_size > 1:
+        mp.spawn(run_trainer, nprocs=world_size, args=(world_size, config))
+    else:
+        run_trainer_single_gpu(config)
 
 
 if __name__ == "__main__":

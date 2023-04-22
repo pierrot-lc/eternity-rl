@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from torch.distributions import Categorical
+from torchinfo import summary
 
 
 class Head(nn.Module):
@@ -72,6 +73,8 @@ class CNNPolicy(nn.Module):
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
+        self.board_width = board_width
+        self.board_height = board_height
 
         self.embed_classes = nn.Sequential(
             nn.Embedding(n_classes, embedding_dim),
@@ -147,6 +150,18 @@ class CNNPolicy(nn.Module):
             if isinstance(module, nn.Conv2d):
                 for param in module.parameters():
                     param.data.zero_()
+
+    def summary(self, device: str):
+        """Torchinfo summary."""
+        summary(
+            self,
+            input_data=[
+                torch.zeros(
+                    1, 4, self.board_height, self.board_width, dtype=torch.long
+                ),
+            ],
+            device=device,
+        )
 
     def forward(
         self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None
