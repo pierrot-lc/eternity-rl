@@ -126,7 +126,7 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
 
     # Make sure we log training info only for the rank 0 process.
     if rank != 0:
-        config.reinforce.save_every = -1
+        config.mode = "disabled"
 
     config.device = config.distributed[rank]
     if config.device == "auto":
@@ -141,7 +141,9 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
     trainer = init_trainer(config, env, model, optimizer, scheduler)
 
     try:
-        trainer.launch_training(config.group, OmegaConf.to_container(config))
+        trainer.launch_training(
+            config.group, OmegaConf.to_container(config), config.mode
+        )
     except KeyboardInterrupt:
         # Capture a potential ctrl+c to make sure we clean up distributed processes.
         print("Caught KeyboardInterrupt. Cleaning up distributed processes...")

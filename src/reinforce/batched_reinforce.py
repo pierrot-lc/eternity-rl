@@ -172,7 +172,7 @@ class Reinforce:
 
         return metrics
 
-    def launch_training(self, group: str, config: dict[str, Any]):
+    def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
         metrics = dict()
         tot_params = 0
 
@@ -184,6 +184,7 @@ class Reinforce:
             entity="pierrotlc",
             group=group,
             config=config,
+            mode=mode,
         ) as run:
             # Log gradients and model parameters.
             run.watch(self.model)
@@ -227,7 +228,7 @@ class Reinforce:
                 self.optimizer.step()
                 self.scheduler.step()
 
-                if i % self.save_every == 0 and self.save_every != -1:
+                if i % self.save_every == 0:
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(

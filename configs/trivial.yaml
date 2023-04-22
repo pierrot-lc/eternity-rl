@@ -27,6 +27,7 @@ reinforce:
 seed: 0
 device: auto
 distributed: [auto]
+mode: online
 hydra:
   job:
     chdir: true
