@@ -11,24 +11,9 @@ model:
   maxpool_kernel: 2
   zero_init_residuals: true
 optimizer:
-  optimizer: adamw
-  learning_rate: 1.0e-6
-  weight_decay: 1.0e-4
+  learning_rate: 1.0e-4
 scheduler:
   warmup_steps: 100
 reinforce:
-  advantage: estimated
-  gamma: 1.00
   n_total_iterations: 100000
-  n_batches_per_iteration: 1
   batch_size: 300
-  entropy_weight: 1.0e-2
-  clip_value: 5.0
-  save_every: 1000
-seed: 0
-device: auto
-distributed: []
-mode: online
-hydra:
-  job:
-    chdir: true

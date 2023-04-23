@@ -158,7 +158,7 @@ def run_trainer_single_gpu(config: DictConfig):
     trainer.launch_training(config.group, OmegaConf.to_container(config), config.mode)
 
 
-@hydra.main(version_base="1.3", config_path="configs", config_name="trivial_B")
+@hydra.main(version_base="1.3", config_path="configs", config_name="default")
 def main(config: DictConfig):
     config.env.path = Path(to_absolute_path(config.env.path))
     world_size = len(config.distributed)
