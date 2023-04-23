@@ -2,6 +2,7 @@ group: Trivial B
 env:
   path: ./instances/eternity_trivial_B.txt
   reward: win
+  max_steps: 16
 model:
   embedding_dim: 92
   n_res_layers: 4

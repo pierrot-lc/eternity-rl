@@ -2,6 +2,7 @@ group: Trivial A
 env:
   path: ./instances/eternity_trivial_A.txt
   reward: delta
+  max_steps: 4
 model:
   embedding_dim: 12
   n_res_layers: 4

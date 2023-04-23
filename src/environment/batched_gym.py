@@ -47,6 +47,7 @@ class BatchedEternityEnv(gym.Env):
         self,
         batch_instances: torch.Tensor,
         reward_type: str,
+        max_steps: int,
         device: str,
         seed: int = 0,
     ):
@@ -76,7 +77,7 @@ class BatchedEternityEnv(gym.Env):
         self.size = self.instances.shape[-1]
         self.n_pieces = self.size * self.size
         self.n_class = self.instances.max().cpu().item() + 1
-        self.max_steps = self.n_pieces
+        self.max_steps = max_steps
         self.best_matches = 2 * self.size * (self.size - 1)
         self.batch_size = self.instances.shape[0]
 
@@ -357,6 +358,7 @@ class BatchedEternityEnv(gym.Env):
         instance_path: Path,
         batch_size: int,
         reward_type: str,
+        max_steps: int,
         device: str,
         seed: int = 0,
     ):
@@ -365,4 +367,4 @@ class BatchedEternityEnv(gym.Env):
         instance = read_instance_file(instance_path)
         instance = torch.from_numpy(instance).long()
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, reward_type, device, seed)
+        return cls(instances, reward_type, max_steps, device, seed)

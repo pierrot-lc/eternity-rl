@@ -33,6 +33,7 @@ def init_env(config: DictConfig) -> BatchedEternityEnv:
         config.env.path,
         config.reinforce.batch_size,
         config.env.reward,
+        config.env.max_steps,
         config.device,
         config.seed,
     )
