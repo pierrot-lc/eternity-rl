@@ -4,7 +4,7 @@ description: Logs of my experiments and thougths.
 authors: pierrotlc
 categories: logs
 created: 2023-03-29
-updated: 2023-04-03
+updated: 2023-04-23
 version: 1.0.0
 @end
 
@@ -98,4 +98,4 @@ version: 1.0.0
    The problem is that for bigger puzzles, I won't be able to increase it
    that much, so I will surely have to use gradient accumulation.
 
-** Sweep 8: weight decay regularization
+** Sweep 8: maximum steps

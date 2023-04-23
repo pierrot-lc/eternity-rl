@@ -1,8 +1,8 @@
 group: Eternity A
 env:
   path: ./instances/eternity_A.txt
-  reward: win
-  max_steps: 32
+  reward: delta
+  max_steps: 64
 model:
   embedding_dim: 48
   n_res_layers: 6
@@ -16,4 +16,4 @@ scheduler:
   warmup_steps: 100
 reinforce:
   n_total_iterations: 5000
-  batch_size: 2000
+  batch_size: 3000
