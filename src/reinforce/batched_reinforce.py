@@ -4,11 +4,10 @@ from typing import Any
 
 import torch
 import torch.optim as optim
+import wandb
 from einops import repeat
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
