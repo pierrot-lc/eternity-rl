@@ -17,6 +17,7 @@ from src.reinforce import Reinforce
 
 
 def setup_distributed(rank: int, world_size: int):
+    """Setup distributed training."""
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
 
@@ -25,10 +26,12 @@ def setup_distributed(rank: int, world_size: int):
 
 
 def cleanup_distributed():
+    """Cleanup distributed training."""
     dist.destroy_process_group()
 
 
 def init_env(config: DictConfig) -> BatchedEternityEnv:
+    """Initialize the environment."""
     env = BatchedEternityEnv.from_file(
         config.env.path,
         config.reinforce.batch_size,
@@ -41,6 +44,7 @@ def init_env(config: DictConfig) -> BatchedEternityEnv:
 
 
 def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
+    """Initialize the model."""
     model = CNNPolicy(
         int(env.n_class),
         embedding_dim=config.model.embedding_dim,
@@ -56,6 +60,7 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
 
 
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
+    """Initialize the optimizer."""
     optimizer_name = config.optimizer.optimizer
     lr = config.optimizer.learning_rate
     weight_decay = config.optimizer.weight_decay
@@ -81,6 +86,7 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
 def init_scheduler(
     config: DictConfig, optimizer: optim.Optimizer
 ) -> optim.lr_scheduler.LinearLR:
+    """Initialize the scheduler."""
     scheduler = optim.lr_scheduler.LinearLR(
         optimizer=optimizer,
         start_factor=0.001,
@@ -97,6 +103,7 @@ def init_trainer(
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
+    """Initialize the trainer."""
     trainer = Reinforce(
         env,
         model,
@@ -115,6 +122,7 @@ def init_trainer(
 
 
 def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
+    """Run the trainer in distributed mode."""
     setup_distributed(rank, world_size)
 
     # Make sure we log training info only for the rank 0 process.
@@ -145,6 +153,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
 
 
 def run_trainer_single_gpu(config: DictConfig):
+    """Run the trainer in single GPU or CPU mode."""
     if config.device == "auto":
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -163,7 +172,7 @@ def main(config: DictConfig):
     config.env.path = Path(to_absolute_path(config.env.path))
     world_size = len(config.distributed)
     if world_size > 1:
-        mp.spawn(run_trainer, nprocs=world_size, args=(world_size, config))
+        mp.spawn(run_trainer_ddp, nprocs=world_size, args=(world_size, config))
     else:
         run_trainer_single_gpu(config)
 
