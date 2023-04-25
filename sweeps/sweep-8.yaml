@@ -12,8 +12,7 @@ parameters:
   env.reward:
     values: [win, delta]
   reinforce.n_total_iterations:
-    value: 8000
-  reinforce.learning_rate:
+    value: 2500
   seed:
     min: 1
     max: 1000

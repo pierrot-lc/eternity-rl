@@ -4,16 +4,17 @@ env:
   reward: delta
   max_steps: 64
 model:
-  embedding_dim: 48
-  n_res_layers: 6
+  embedding_dim: 18
+  n_res_layers: 4
   n_gru_layers: 2
-  n_head_layers: 5
+  n_head_layers: 3
   maxpool_kernel: 2
   zero_init_residuals: false
 optimizer:
   learning_rate: 1.0e-5
 scheduler:
-  warmup_steps: 100
+  warmup_steps: 10
 reinforce:
   n_total_iterations: 5000
-  batch_size: 3000
+  batch_size: 6000
+  clip_value: 0.5
