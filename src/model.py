@@ -144,6 +144,11 @@ class CNNPolicy(nn.Module):
         if zero_init_residuals:
             self.init_residuals()
 
+        # Init lazy layers.
+        with torch.no_grad():
+            dummy_input = self.dummy_input("cpu")
+            self.forward(dummy_input)
+
     def init_residuals(self):
         """Zero out the weights of the residual convolutional layers."""
         for module in self.residuals.modules():
@@ -151,15 +156,22 @@ class CNNPolicy(nn.Module):
                 for param in module.parameters():
                     param.data.zero_()
 
+    def dummy_input(self, device: str) -> torch.Tensor:
+        return torch.zeros(
+            1,
+            4,
+            self.board_height,
+            self.board_width,
+            dtype=torch.long,
+            device=device,
+        )
+
     def summary(self, device: str):
         """Torchinfo summary."""
+        dummy_input = self.dummy_input(device)
         summary(
             self,
-            input_data=[
-                torch.zeros(
-                    1, 4, self.board_height, self.board_width, dtype=torch.long
-                ),
-            ],
+            input_data=[dummy_input],
             device=device,
         )
 

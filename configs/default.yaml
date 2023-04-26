@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - trivial_B
+  - normal
 group: Default group
 env:
   path: ./instances/eternity_trivial_A.txt
