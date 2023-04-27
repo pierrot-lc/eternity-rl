@@ -11,10 +11,10 @@ model:
   maxpool_kernel: 2
   zero_init_residuals: false
 optimizer:
-  learning_rate: 1.0e-5
+  learning_rate: 1.0e-2
 scheduler:
   warmup_steps: 10
 reinforce:
   n_total_iterations: 20000
   batch_size: 10000
-  clip_value: 0.5
+  clip_value: 0.005

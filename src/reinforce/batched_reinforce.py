@@ -4,10 +4,12 @@ from typing import Any
 
 import torch
 import torch.optim as optim
-import wandb
 from einops import repeat
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
+
+import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
@@ -185,7 +187,10 @@ class Reinforce:
             self.model.to(self.device)
 
             if mode != "disabled":
-                self.model.summary(self.device)
+                if isinstance(self.model, DDP):
+                    self.model.module.summary(self.device)
+                else:
+                    self.model.summary(self.device)
                 print(f"Launching training on device {self.device}.")
 
             # Log gradients and model parameters.
