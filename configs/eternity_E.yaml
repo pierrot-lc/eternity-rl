@@ -1,7 +1,7 @@
 group: Eternity E
 env:
   path: ./instances/eternity_E.txt
-  reward: delta
+  reward: win
   max_steps: 500
 model:
   embedding_dim: 24
@@ -11,7 +11,7 @@ model:
   maxpool_kernel: 2
   zero_init_residuals: false
 optimizer:
-  learning_rate: 1.0e-2
+  learning_rate: 1.0e-5
 scheduler:
   warmup_steps: 10
 reinforce:

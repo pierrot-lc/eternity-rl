@@ -247,7 +247,13 @@ class Reinforce:
     def save_model(self, filepath: Path | str):
         model_state = self.model.state_dict()
         optimizer_state = self.optimizer.state_dict()
-        torch.save({"model": model_state, "optimizer": optimizer_state}, filepath)
+        torch.save(
+            {
+                "model": model_state,
+                "optimizer": optimizer_state,
+            },
+            filepath,
+        )
 
     @staticmethod
     def cumulative_decay_return(
