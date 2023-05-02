@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - eternity_E
+  - normal
 group: Default group
 env:
   path: ./instances/eternity_trivial_A.txt
@@ -13,6 +13,8 @@ model:
   n_head_layers: 1
   maxpool_kernel: 1
   zero_init_residuals: false
+  gru_as_mlp: false
+  use_time_embedding: false
 optimizer:
   learning_rate: 1.0e-3
   optimizer: adamw

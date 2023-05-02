@@ -49,12 +49,14 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
         int(env.n_class),
         embedding_dim=config.model.embedding_dim,
         n_res_layers=config.model.n_res_layers,
-        n_gru_layers=config.model.n_gru_layers,
+        n_mlp_layers=config.model.n_gru_layers,
         n_head_layers=config.model.n_head_layers,
         maxpool_kernel=config.model.maxpool_kernel,
         board_width=env.size,
         board_height=env.size,
         zero_init_residuals=config.model.zero_init_residuals,
+        gru_as_mlp=config.model.gru_as_mlp,
+        use_time_embedding=config.model.use_time_embedding,
     )
     return model
 

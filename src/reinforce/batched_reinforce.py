@@ -94,9 +94,16 @@ class Reinforce:
         }
         states, _ = self.env.reset()
         gru_memory = None
+        timesteps = torch.zeros(
+            self.env.batch_size,
+            dtype=torch.long,
+            device=self.device,
+        )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, log_probs, gru_memory, entropies = self.model(states, gru_memory)
+            actions, log_probs, gru_memory, entropies = self.model(
+                states, gru_memory, timesteps
+            )
 
             states, rewards, _, _, _ = self.env.step(actions)
 
@@ -104,6 +111,8 @@ class Reinforce:
             rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
             rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
             rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
+
+            timesteps += 1
 
         # The last terminated state is not counted in the masks,
         # so we need to shift the masks by 1 to make sure we include id.

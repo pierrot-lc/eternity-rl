@@ -3,7 +3,8 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import rearrange, repeat
+from positional_encodings.torch_encodings import PositionalEncoding1D
 from torch.distributions import Categorical
 from torchinfo import summary
 
@@ -64,17 +65,22 @@ class CNNPolicy(nn.Module):
         n_classes: int,
         embedding_dim: int,
         n_res_layers: int,
-        n_gru_layers: int,
+        n_mlp_layers: int,
         n_head_layers: int,
         maxpool_kernel: int,
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
+        gru_as_mlp: bool,
+        use_time_embedding: bool,
     ):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.board_width = board_width
         self.board_height = board_height
+        self.n_mlp_layers = n_mlp_layers
+        self.gru_as_mlp = gru_as_mlp
+        self.use_time_embedding = use_time_embedding
 
         self.embed_classes = nn.Sequential(
             nn.Embedding(n_classes, embedding_dim),
@@ -89,6 +95,9 @@ class CNNPolicy(nn.Module):
             nn.GELU(),
             nn.LayerNorm([embedding_dim, board_height, board_width]),
         )
+        if use_time_embedding:
+            self.position_enc = PositionalEncoding1D(embedding_dim)
+
         self.residuals = nn.ModuleList(
             [
                 nn.Sequential(
@@ -106,9 +115,21 @@ class CNNPolicy(nn.Module):
             nn.GELU(),
             nn.LayerNorm(embedding_dim),
         )
-        self.gru = nn.GRU(
-            embedding_dim, embedding_dim, num_layers=n_gru_layers, batch_first=False
-        )
+        if gru_as_mlp:
+            self.gru = nn.GRU(
+                embedding_dim, embedding_dim, num_layers=n_mlp_layers, batch_first=False
+            )
+        else:
+            self.mlp = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(embedding_dim, embedding_dim),
+                        nn.GELU(),
+                        nn.LayerNorm(embedding_dim),
+                    )
+                    for _ in range(n_mlp_layers)
+                ]
+            )
 
         self.predict_actions = nn.ModuleDict(
             {
@@ -147,7 +168,7 @@ class CNNPolicy(nn.Module):
         # Init lazy layers.
         with torch.no_grad():
             dummy_input = self.dummy_input("cpu")
-            self.forward(dummy_input)
+            self.forward(*dummy_input)
 
     def init_residuals(self):
         """Zero out the weights of the residual convolutional layers."""
@@ -156,8 +177,10 @@ class CNNPolicy(nn.Module):
                 for param in module.parameters():
                     param.data.zero_()
 
-    def dummy_input(self, device: str) -> torch.Tensor:
-        return torch.zeros(
+    def dummy_input(
+        self, device: str
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        tiles = torch.zeros(
             1,
             4,
             self.board_height,
@@ -165,18 +188,62 @@ class CNNPolicy(nn.Module):
             dtype=torch.long,
             device=device,
         )
+        gru_hidden_state = torch.zeros(
+            1,
+            self.n_mlp_layers,
+            self.embedding_dim,
+            dtype=torch.float,
+            device=device,
+        )
+        timesteps = torch.zeros(
+            1,
+            dtype=torch.long,
+            device=device,
+        )
+        return tiles, gru_hidden_state, timesteps
 
     def summary(self, device: str):
         """Torchinfo summary."""
         dummy_input = self.dummy_input(device)
         summary(
             self,
-            input_data=[dummy_input],
+            input_data=[*dummy_input],
+            depth=2,
             device=device,
         )
 
+    def embed_timesteps(self, timesteps: torch.Tensor) -> torch.Tensor:
+        """Embed the timesteps.
+        ---
+        Args:
+            timesteps: The timesteps of the game states.
+                Shape of [batch_size,].
+        ---
+        Returns:
+            The positional encodings for the given timesteps.
+                Shape of [batch_size, embedding_dim].
+        """
+        # Compute the positional encodings for the given timesteps.
+        max_timesteps = int(timesteps.max().item())
+        x = torch.zeros(
+            1, max_timesteps + 1, self.embedding_dim, device=timesteps.device
+        )
+        encodings = self.position_enc(x).to(timesteps.device)
+        encodings = encodings.squeeze(0)  # Shape is [timesteps, embedding_dim].
+
+        # Select the right encodings for the timesteps.
+        encodings = repeat(encodings, "t e -> b t e", b=timesteps.shape[0])
+        timesteps = repeat(timesteps, "b -> b t e", t=1, e=self.embedding_dim)
+        encodings = torch.gather(encodings, dim=1, index=timesteps)
+
+        encodings = encodings.squeeze(1)  # Shape is [batch_size, embedding_dim].
+        return encodings
+
     def forward(
-        self, tiles: torch.Tensor, hidden_memory: Optional[torch.Tensor] = None
+        self,
+        tiles: torch.Tensor,
+        hidden_memory: Optional[torch.Tensor] = None,
+        timesteps: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], torch.Tensor]:
         """Predict the actions and value for the given game states.
 
@@ -185,7 +252,11 @@ class CNNPolicy(nn.Module):
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
             hidden_memory: Memory of the GRU.
+                Optional, used when GRU is used as MLP.
                 Tensor of shape of [n_gru_layers, embedding_dim].
+            timestep: The timestep of the game states.
+                Optional, used when timesteps encodings are used.
+                Tensor of shape [batch_size,].
 
         ---
         Returns:
@@ -196,10 +267,14 @@ class CNNPolicy(nn.Module):
             values: The value of the given game states.
                 Shape [batch_size, 1].
             hidden_memory: Updated memory of the GRU.
-                Shape of [n_gru_layers, embedding_dim].
+                Shape of [n_mlp_layers, embedding_dim].
             entropies: The entropy of the predicted actions.
                 Shape of [batch_size, 4].
         """
+        assert (
+            timesteps is not None or not self.use_time_embedding
+        ), "Timesteps are required when use_timesteps is True."
+
         # Compute game embeddings.
         tiles = rearrange(tiles, "b t w h -> b h w t")
         embed = self.embed_classes(tiles)
@@ -214,10 +289,21 @@ class CNNPolicy(nn.Module):
         embed = self.project(embed)
         # Shape is of [batch_size, embedding_dim].
 
-        # Add and remove the sequence length dimension.
-        embed = embed.unsqueeze(0)
-        embed, hidden_memory = self.gru(embed, hidden_memory)
-        embed = embed.squeeze(0)
+        if self.use_time_embedding:
+            # Compute the positional encodings for the given timesteps.
+            encodings = self.embed_timesteps(timesteps)
+
+            # Add the positional encodings to the game embeddings.
+            embed = embed + encodings
+
+        if self.gru_as_mlp:
+            # Add and remove the sequence length dimension.
+            embed = embed.unsqueeze(0)
+            embed, hidden_memory = self.gru(embed, hidden_memory)
+            embed = embed.squeeze(0)
+        else:
+            for layer in self.mlp:
+                embed = layer(embed)
 
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
