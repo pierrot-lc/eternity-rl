@@ -189,8 +189,8 @@ class CNNPolicy(nn.Module):
             device=device,
         )
         gru_hidden_state = torch.zeros(
-            1,
             self.n_mlp_layers,
+            1,
             self.embedding_dim,
             dtype=torch.float,
             device=device,
