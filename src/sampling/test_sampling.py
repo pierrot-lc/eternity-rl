@@ -1,7 +1,11 @@
 import pytest
 import torch
 
-from .sampling import epsilon_greedy_distributions, nucleus_distributions
+from .sampling import (
+    epsilon_distributions,
+    epsilon_greedy_distributions,
+    nucleus_distributions,
+)
 
 
 @pytest.mark.parametrize(
@@ -72,9 +76,47 @@ def test_nucleus_distributions(
         ),
     ],
 )
-def test_greedy_distribution(
+def test_greedy_distributions(
     distributions: torch.Tensor, epsilon: float, true_distributions: torch.Tensor
 ):
     assert torch.allclose(
         epsilon_greedy_distributions(distributions, epsilon), true_distributions
+    )
+
+
+@pytest.mark.parametrize(
+    "distributions, epsilon, true_distributions",
+    [
+        (
+            torch.FloatTensor([[0.1, 0.2, 0.3, 0.4]]),
+            0.0,
+            torch.FloatTensor([[0.1, 0.2, 0.3, 0.4]]),
+        ),
+        (
+            torch.FloatTensor([[0.0, 0.0, 0.0, 1.0]]),
+            0.05,
+            torch.FloatTensor([[0.0125, 0.0125, 0.0125, 0.9625]]),
+        ),
+        (
+            torch.FloatTensor(
+                [
+                    [0.4, 0.2, 0.2, 0.2],
+                    [0.2, 0.2, 0.2, 0.4],
+                ]
+            ),
+            0.05,
+            torch.FloatTensor(
+                [
+                    [0.3925, 0.2025, 0.2025, 0.2025],
+                    [0.2025, 0.2025, 0.2025, 0.3925],
+                ]
+            ),
+        ),
+    ],
+)
+def test_epsilon_distributions(
+    distributions: torch.Tensor, epsilon: float, true_distributions: torch.Tensor
+):
+    assert torch.allclose(
+        epsilon_distributions(distributions, epsilon), true_distributions
     )

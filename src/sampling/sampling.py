@@ -91,7 +91,8 @@ def epsilon_greedy_sampling(
     distributions: torch.Tensor, epsilon: float
 ) -> torch.Tensor:
     """Sample actions from the given distributions using
-    the epsilon-greedy method.
+    the epsilon-greedy method. It samples the greedy action
+    with probability 1 - epsilon and samples a random action otherwise.
 
     ---
     Args:
@@ -105,6 +106,44 @@ def epsilon_greedy_sampling(
             Shape [batch_size,].
     """
     distributions = epsilon_greedy_distributions(distributions, epsilon)
+    categorical = Categorical(probs=distributions)
+    sampled_actions = categorical.sample()
+
+    return sampled_actions
+
+
+def epsilon_distributions(distributions: torch.Tensor, epsilon: float) -> torch.Tensor:
+    """Compute the epsilon distributions from the given distributions."""
+    _, n_actions = distributions.shape
+
+    # Create the random distributions.
+    random_probs = torch.zeros_like(
+        distributions, dtype=torch.float, device=distributions.device
+    )
+    random_probs = random_probs.fill_(1 / n_actions)
+
+    # Combine the two distributions.
+    epsilon_distributions = (1 - epsilon) * distributions + epsilon * random_probs
+    return epsilon_distributions
+
+
+def epsilon_sampling(distributions: torch.Tensor, epsilon: float) -> torch.Tensor:
+    """Sample actions from the given distributions using
+    the epsilon method. It samples using the given distribution
+    with probability 1 - epsilon and samples a random action otherwise.
+
+    ---
+    Args:
+        distributions: The distributions of the actions.
+            Shape of [batch_size, n_actions].
+        epsilon: The probability of sampling a random action.
+
+    ---
+    Returns:
+        The sampled actions.
+            Shape [batch_size,].
+    """
+    distributions = epsilon_distributions(distributions, epsilon)
     categorical = Categorical(probs=distributions)
     sampled_actions = categorical.sample()
 
