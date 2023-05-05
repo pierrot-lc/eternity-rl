@@ -332,9 +332,9 @@ class CNNPolicy(nn.Module):
         entropies = torch.stack(
             [
                 1.0 * entropies_tile_1,
-                0.01 * entropies_roll_1,
-                0.1 * entropies_tile_2,
-                0.01 * entropies_roll_2,
+                0.1 * entropies_roll_1,
+                0.5 * entropies_tile_2,
+                0.1 * entropies_roll_2,
             ],
             dim=1,
         )
