@@ -10,6 +10,7 @@ import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch_optimizer import Lamb
 
 from src.environment import BatchedEternityEnv
 from src.model import CNNPolicy
@@ -71,6 +72,7 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
         "adam": optim.Adam,
         "sgd": optim.SGD,
         "rmsprop": optim.RMSprop,
+        "lamb": Lamb,
     }
 
     if optimizer_name not in optimizers:

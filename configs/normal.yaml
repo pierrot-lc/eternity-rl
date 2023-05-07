@@ -10,10 +10,11 @@ model:
   n_head_layers: 3
   maxpool_kernel: 2
   zero_init_residuals: false
-  gru_as_mlp: true
+  gru_as_mlp: false
   use_time_embedding: false
 optimizer:
-  learning_rate: 1.0e-3
+  optimizer: adamw
+  learning_rate: 1.0e-4
 scheduler:
   warmup_steps: 10
 reinforce:
