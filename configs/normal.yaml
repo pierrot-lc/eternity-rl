@@ -1,4 +1,4 @@
-group: Time Encoding
+group: Reproduce Normal
 env:
   path: ./instances/eternity_A.txt
   reward: win
@@ -10,11 +10,14 @@ model:
   n_head_layers: 3
   maxpool_kernel: 2
   zero_init_residuals: false
+  gru_as_mlp: true
+  use_time_embedding: false
 optimizer:
-  learning_rate: 1.0e-2
+  learning_rate: 1.0e-3
 scheduler:
   warmup_steps: 10
 reinforce:
   n_total_iterations: 10000
-  batch_size: 10000
+  batch_size: 4000
+  entropy_weight: 1.0e-5
   clip_value: 0.005
