@@ -1,17 +1,20 @@
 group: Trivial A
 env:
   path: ./instances/eternity_trivial_A.txt
-  reward: delta
-  max_steps: 4
+  reward: win
+  max_steps: 8
 model:
-  embedding_dim: 12
-  n_res_layers: 4
+  embedding_dim: 6
+  n_res_layers: 2
   n_gru_layers: 1
   n_head_layers: 1
   maxpool_kernel: 1
   zero_init_residuals: false
 optimizer:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-5
 reinforce:
-  n_total_iterations: 2000
-  batch_size: 600
+  advantage: estimated
+  entropy_weight: 0.0e-5
+  batch_size: 1024
+  rollout_buffer_size: 16000
+  n_batches_per_rollouts: 500

@@ -15,6 +15,4 @@ optimizer:
 scheduler:
   warmup_steps: 1
 reinforce:
-  n_total_iterations: 2000
-  batch_size: 13000
-  clip_value: 0.001
+  n_total_rollouts: 2000

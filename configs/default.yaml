@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - normal
+  - trivial
 group: Default group
 env:
   path: ./instances/eternity_trivial_A.txt
@@ -24,9 +24,10 @@ scheduler:
 reinforce:
   advantage: estimated
   gamma: 1.00
-  n_total_iterations: 2000
-  n_batches_per_iteration: 1
-  batch_size: 600
+  batch_size: 128
+  rollout_buffer_size: 4000
+  n_total_rollouts: 2000
+  n_batches_per_rollouts: 100
   entropy_weight: 1.0e-5
   clip_value: 5.0
   save_every: 500

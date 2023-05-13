@@ -74,11 +74,11 @@ class BatchedEternityEnv(gym.Env):
         self.rng = torch.Generator(device).manual_seed(seed)
 
         # Instances infos.
-        self.size = self.instances.shape[-1]
-        self.n_pieces = self.size * self.size
-        self.n_class = self.instances.max().cpu().item() + 1
+        self.board_size = self.instances.shape[-1]
+        self.n_pieces = self.board_size * self.board_size
+        self.n_classes = int(self.instances.max().cpu().item() + 1)
         self.max_steps = max_steps
-        self.best_matches = 2 * self.size * (self.size - 1)
+        self.best_matches = 2 * self.board_size * (self.board_size - 1)
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
@@ -124,7 +124,8 @@ class BatchedEternityEnv(gym.Env):
         ---
         Args:
             actions: Batch of actions to apply.
-                Long tensor of shape of [batch_size, tile_id_1, shift_1, tile_id_2, shift_2].
+                Long tensor of shape of [batch_size, actions]
+                where actions are a tuple (tile_id_1, shift_1, tile_id_2, shift_2).
 
         ---
         Returns:
@@ -135,15 +136,17 @@ class BatchedEternityEnv(gym.Env):
             terminated: Whether the environments are terminated (won).
                 Shape of [batch_size,].
             truncated: Whether the environments are truncated (max steps reached).
-                Shape of [batch_size,].
             infos: Additional infos.
+                - `just_won`: Whether the environments has just been won.
         """
+        infos = dict()
         self.step_id += 1
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
 
         # Save the previous matches (useful for the `delta` reward).
         previous_matches = self.matches
+        previous_terminated = self.terminated.clone()
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
@@ -153,27 +156,22 @@ class BatchedEternityEnv(gym.Env):
         matches = self.matches
 
         # Maintain the previous terminated states.
-        self.terminated |= self.matches == self.best_matches
+        self.terminated |= matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
+        infos["just_won"] = self.terminated & ~previous_terminated
 
         match self.reward_type:
             case "win":  # Only give a reward at the end of the episode.
                 if not self.truncated:
-                    rewards = matches * self.terminated / self.best_matches
+                    rewards = matches * infos["just_won"] / self.best_matches
                 else:
-                    rewards = matches / self.best_matches
+                    rewards = matches * ~self.terminated / self.best_matches
             case "delta":  # Give a reward at each step.
                 rewards = (matches - previous_matches) / self.best_matches
             case _:
                 raise ValueError(f"Unknown reward type {self.reward_type}.")
 
-        return (
-            self.render(),
-            rewards,
-            self.terminated,
-            self.truncated,
-            dict(),
-        )
+        return self.render(), rewards, self.terminated, self.truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
@@ -201,8 +199,8 @@ class BatchedEternityEnv(gym.Env):
             self.instances,
             "(b h w) c -> b c h w",
             b=self.batch_size,
-            h=self.size,
-            w=self.size,
+            h=self.board_size,
+            w=self.board_size,
         )
 
     def swap_tiles(self, tile_ids_1: torch.Tensor, tile_ids_2: torch.Tensor):
@@ -229,8 +227,8 @@ class BatchedEternityEnv(gym.Env):
             self.instances,
             "(b h w) c -> b c h w",
             b=self.batch_size,
-            h=self.size,
-            w=self.size,
+            h=self.board_size,
+            w=self.board_size,
         )
 
     @property
@@ -263,7 +261,7 @@ class BatchedEternityEnv(gym.Env):
         """Scrambles the instances to start from a new valid configuration."""
         # Scrambles the tiles.
         self.instances = rearrange(
-            self.instances, "b c h w -> b (h w) c", w=self.size
+            self.instances, "b c h w -> b (h w) c", w=self.board_size
         )  # Shape of [batch_size, n_pieces, 4].
         permutations = torch.stack(
             [
@@ -291,8 +289,8 @@ class BatchedEternityEnv(gym.Env):
             self.instances,
             "(b h w) c -> b c h w",
             b=self.batch_size,
-            h=self.size,
-            w=self.size,
+            h=self.board_size,
+            w=self.board_size,
         )
 
     def render(self, mode: str = "computer") -> torch.Tensor:
