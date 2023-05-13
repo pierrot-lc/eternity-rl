@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from .batched_reinforce import Reinforce
+from .reinforce import Reinforce
 
 
 @pytest.mark.parametrize(

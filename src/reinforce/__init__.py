@@ -1,1 +1,1 @@
-from .batched_reinforce import Reinforce
+from .reinforce import Reinforce

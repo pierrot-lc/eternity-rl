@@ -1,218 +1,309 @@
-from itertools import accumulate
+from itertools import count
+from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 import torch.optim as optim
-from torch.nn.utils.clip_grad import clip_grad_norm_
+from einops import repeat
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.utils import clip_grad
 from tqdm import tqdm
 
 import wandb
 
-from ..environment.gym import EternityEnv
+from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
 
 
 class Reinforce:
     def __init__(
         self,
-        env: EternityEnv,
+        env: BatchedEternityEnv,
         model: CNNPolicy,
+        optimizer: optim.Optimizer,
+        scheduler: optim.lr_scheduler.LinearLR,
         device: str,
-        learning_rate: float,
+        entropy_weight: float,
         gamma: float,
-        n_batches: int,
-        batch_size: int,
+        clip_value: float,
+        n_batches_per_iteration: int,
+        n_total_iterations: int,
+        advantage: str,
+        save_every: int,
     ):
+        assert n_batches_per_iteration > 0
+
         self.env = env
         self.model = model
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.device = device
-        self.rng = np.random.default_rng()
+        self.entropy_weight = entropy_weight
         self.gamma = gamma
-        self.n_batches = n_batches
-        self.batch_size = batch_size
+        self.clip_value = clip_value
+        self.n_total_iterations = n_total_iterations
+        self.n_batches_per_iteration = n_batches_per_iteration
+        self.advantage = advantage
+        self.save_every = save_every
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
-        self.episodes_history = []
+    def rollout(
+        self,
+    ) -> dict[str, torch.Tensor]:
+        """Simulates a batch of games and returns the cumulated rewards
+        and the logit of the actions taken.
 
-    def select_tile(
-        self, tile_logits: dict[str, torch.Tensor]
-    ) -> tuple[np.ndarray, torch.Tensor]:
-        """Sample the tile actions using the policy prediction."""
-        actions = []
-        log_actions = []
-        for action_name in ["tile", "roll"]:
-            logits = tile_logits[action_name]
-            distribution = torch.softmax(logits, dim=-1)
-            action = self.rng.choice(
-                np.arange(logits.shape[1]),
-                size=(1,),
-                p=distribution.cpu().detach().numpy()[0],
+        ---
+        Returns:
+            decayed-returns: The cumulated rewards of the games.
+                Shape of [batch_size, max_steps].
+            log-probs: The logit of the actions taken.
+                Shape of [batch_size, max_steps, 4].
+            entropies: The entropy of the actions distributions.
+                Shape of [batch_size, max_steps, 4].
+            values: The value of the games state.
+                Shape of [batch_size, max_steps].
+            masks: The mask indicating whether the game is terminated.
+                Shape of [batch_size, max_steps].
+            returns: The cumulated rewards (without decay) of the games.
+                Shape of [batch_size,].
+        """
+        rollout_infos = {
+            "rewards": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+            ),
+            "log-probs": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "entropies": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "masks": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+                dtype=torch.bool,
+            ),
+        }
+        states, _ = self.env.reset()
+        gru_memory = None
+        timesteps = torch.zeros(
+            self.env.batch_size,
+            dtype=torch.long,
+            device=self.device,
+        )
+
+        while not self.env.truncated and not torch.all(self.env.terminated):
+            actions, log_probs, gru_memory, entropies = self.model(
+                states, gru_memory, timesteps
             )
 
-            actions.append(action)
-            log_actions.append(torch.log(distribution[0, action] + 1e-5))
+            states, rewards, _, _, _ = self.env.step(actions)
 
-        return (np.array(actions), torch.concat(log_actions))
+            rollout_infos["rewards"][:, self.env.step_id - 1] = rewards
+            rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
+            rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
+            rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
 
-    def rollout(self):
-        """Do a simple episode rollout using the current model's policy.
+            timesteps += 1
 
-        It saves the history so that the gradient can be later computed.
+        # The last terminated state is not counted in the masks,
+        # so we need to shift the masks by 1 to make sure we include id.
+        masks = rollout_infos["masks"]
+        masks = torch.roll(masks, shifts=1, dims=(1,))
+        masks[:, 0] = True
+        rollout_infos["masks"] = masks
+
+        # Compute the cumulated rewards.
+        rewards = rollout_infos["rewards"]
+        rollout_infos["decayed-returns"] = Reinforce.cumulative_decay_return(
+            rewards, masks, self.gamma
+        )
+        rollout_infos["returns"] = (rewards * masks).sum(dim=1)
+
+        return rollout_infos
+
+    def compute_metrics(
+        self,
+        rollout: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor]:
+        """Compute the metrics of the batched rollout.
+
+        ---
+        Args:
+            rollout: The batched rollout outputs.
+
+        ---
+        Returns:
+            A dictionary of metrics of the batched rollout.
         """
-        env, model, device = self.env, self.model, self.device
+        metrics = dict()
+        masks = rollout["masks"]
+        decayed_returns = rollout["decayed-returns"]
+        returns = rollout["returns"]
 
-        state = env.reset()
-        done = False
+        episodes_len = masks.sum(dim=1).long()
 
-        rewards, log_actions = [], []
-        while not done:
-            state = torch.LongTensor(state).to(device).unsqueeze(0)
-            tile_1, tile_2 = model(state)
-            act_1, log_act_1 = self.select_tile(tile_1)
-            act_2, log_act_2 = self.select_tile(tile_2)
+        # Compute the advantage and policy loss.
+        match self.advantage:
+            case "estimated":
+                advantages = (
+                    decayed_returns - decayed_returns.mean(dim=0, keepdim=True)
+                ) / (decayed_returns.std(dim=0, keepdim=True) + 1e-7)
+            case "no-advantage":
+                advantages = decayed_returns
+            case _:
+                raise ValueError(f"Unknown advantage: {self.advantage}.")
 
-            action = np.concatenate((act_1, act_2), axis=0)
-            log_actions.append(torch.concat((log_act_1, log_act_2), dim=0))
+        masked_loss = (
+            -rollout["log-probs"] * advantages.unsqueeze(2) * masks.unsqueeze(2)
+        )
 
-            state, reward, done, _ = env.step(action)
-            rewards.append(reward)
+        metrics["loss/policy"] = masked_loss.sum() / masks.sum()
+        metrics["loss/entropy"] = (
+            -self.entropy_weight
+            * (rollout["entropies"] * masks.unsqueeze(2)).sum()
+            / masks.sum()
+        )
+        metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/entropy"]
+        metrics["ep-len/mean"] = episodes_len.float().mean()
+        metrics["ep-len/min"] = episodes_len.min()
+        metrics["ep-len/std"] = episodes_len.float().std()
+        metrics["return/mean"] = returns.mean()
+        metrics["return/max"] = returns.max()
+        metrics["return/std"] = returns.std()
 
-        rewards = torch.tensor(rewards, device=device)  # Shape of [ep_len,].
-        log_actions = torch.stack(log_actions, dim=0)  # Shape of [ep_len, 4].
-
-        # Compute the cumulated returns.
-        rewards = torch.flip(rewards, dims=(0,))
-        returns = list(accumulate(rewards, lambda R, r: r + self.gamma * R))
-        returns = torch.tensor(returns, device=device)
-        returns = torch.flip(returns, dims=(0,))
-
-        self.episodes_history.append((log_actions, returns))
-
-    def compute_metrics(self) -> dict[str, torch.Tensor]:
-        """Compute the loss and the metrics to log."""
-        # Compute some basic metrics.
-        episodes_lengths, episodes_return = [], []
-        for _, returns in self.episodes_history:
-            episodes_lengths.append(returns.shape[0])
-            episodes_return.append(returns[-1])
-
-        episodes_lengths = torch.FloatTensor(episodes_lengths)
-        episodes_return = torch.FloatTensor(episodes_return)
-
-        # Compute the mean and std of the returns.
-        mean_return = episodes_return.mean()
-        std_return = episodes_return.std()
-
-        loss = torch.tensor(0.0, device=self.device)
-        for log_actions, returns in self.episodes_history:
-            returns = (returns - mean_return) / (std_return + 1e-5)
-            loss += -(log_actions * returns.unsqueeze(1)).mean()
-
-        metrics = {
-            "loss": loss,
-            "return": mean_return,
-            "return_std": std_return,
-            "ep_len": episodes_lengths.mean(),
-        }
         return metrics
 
-    def launch_training(self, config: dict[str, Any]):
-        """Train the model and log everything to wandb."""
-        optim = self.optimizer
-        self.model.to(self.device)
+    def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
+            group=group,
             config=config,
+            mode=mode,
         ) as run:
-            for epoch_id in tqdm(range(self.n_batches)):
+            metrics = dict()
+            tot_params = 0
+
+            self.model.to(self.device)
+
+            if mode != "disabled":
+                if isinstance(self.model, DDP):
+                    self.model.module.summary(self.device)
+                else:
+                    self.model.summary(self.device)
+                print(f"Launching training on device {self.device}.")
+
+            # Log gradients and model parameters.
+            run.watch(self.model)
+
+            # Infinite loop if n_batches is -1.
+            iter = (
+                count(0)
+                if self.n_total_iterations == -1
+                else range(self.n_total_iterations)
+            )
+
+            for i in tqdm(iter, desc="Batch", disable=mode == "disabled"):
                 self.model.train()
-                self.episodes_history = []
 
-                for _ in range(self.batch_size):
-                    self.rollout()
+                for _ in range(self.n_batches_per_iteration):
+                    rollout = self.rollout()
+                    metrics = self.compute_metrics(rollout)
 
-                metrics = self.compute_metrics()
-                optim.zero_grad()
-                metrics["loss"].backward()
-                clip_grad_norm_(self.model.parameters(), 1)
-                optim.step()
+                    self.optimizer.zero_grad()
+                    metrics["loss/total"].backward()
 
                 # Log the metrics.
-                metrics = {
-                    metric_name: metric_value.cpu().item()
-                    for metric_name, metric_value in metrics.items()
-                }
+                metrics = {k: v.cpu().item() for k, v in metrics.items()}
+
+                # Compute the gradient mean and maximum values.
+                mean_value, max_value = 0, 0
+                for tot_params, p in enumerate(self.model.parameters()):
+                    if p.grad is not None:
+                        grad = p.grad.data.abs()
+                        mean_value += grad.mean().item()
+                        max_value = max(max_value, grad.max().item())
+
+                metrics["gradients/mean"] = mean_value / (tot_params + 1)
+                metrics["gradients/max"] = max_value
+
+                metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
                 run.log(metrics)
 
-                if epoch_id % 100 == 0:
-                    # Log a sample of the current policy.
-                    self.make_gif("./logs/sample.gif")
-                    run.log({"sample": wandb.Video("./logs/sample.gif", fps=1)})
+                clip_grad.clip_grad_value_(self.model.parameters(), self.clip_value)
 
-    def make_gif(self, path: str):
-        env, model = self.env, self.model
-        device = self.device
+                self.optimizer.step()
+                self.scheduler.step()
 
-        model.to(device)
-        model.eval()
-        state = env.reset()
-        done = False
+                if i % self.save_every == 0 and mode != "disabled":
+                    self.save_model("model.pt")
+                    self.env.save_best_env("board.png")
+                    run.log(
+                        {
+                            "best board": wandb.Image("board.png"),
+                        }
+                    )
 
-        images = []
-        while not done:
-            state = torch.LongTensor(state).to(device).unsqueeze(0)
-            tile_1, tile_2 = model(state)
-            act_1, _ = self.select_tile(tile_1)
-            act_2, _ = self.select_tile(tile_2)
+    def save_model(self, filepath: Path | str):
+        model_state = self.model.state_dict()
+        optimizer_state = self.optimizer.state_dict()
+        torch.save(
+            {
+                "model": model_state,
+                "optimizer": optimizer_state,
+            },
+            filepath,
+        )
 
-            action = np.concatenate((act_1, act_2), axis=0)
+    @staticmethod
+    def cumulative_decay_return(
+        rewards: torch.Tensor, masks: torch.Tensor, gamma: float
+    ) -> torch.Tensor:
+        """Compute the cumulative decayed return of a batch of games.
+        It is efficiently implemented using tensor operations.
+        Thanks to the kind stranger here: https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2.
+        This function may not be numerically stable.
 
-            state, _, done, _ = env.step(action)
-            image = env.render(mode="rgb_array")
-            images.append(image)
+        ---
+        Args:
+            rewards: The rewards of the games.
+                Shape of [batch_size, max_steps].
+            masks: The mask indicating which steps are actual plays.
+                Shape of [batch_size, max_steps].
+            gamma: The discount factor.
 
-        # Make a gif of the episode based on the images.
-        import imageio
+        ---
+        Returns:
+            The cumulative decayed return of the games.
+                Shape of [batch_size, max_steps].
+        """
+        if gamma == 1:
+            rewards = torch.flip(rewards, dims=(1,))
+            masks = torch.flip(masks, dims=(1,))
+            returns = torch.cumsum(masks * rewards, dim=1)
+            returns = torch.flip(returns, dims=(1,))
+            return returns
 
-        imageio.mimwrite(path, images, fps=1)
+        # Compute the gamma powers.
+        powers = (rewards.shape[1] - 1) - torch.arange(
+            rewards.shape[1], device=rewards.device
+        )
+        powers = gamma**powers
+        powers = repeat(powers, "t -> b t", b=rewards.shape[0])
 
+        # Compute the cumulative decayed return.
+        rewards = torch.flip(rewards, dims=(1,))
+        masks = torch.flip(masks, dims=(1,))
+        returns = torch.cumsum(masks * rewards * powers, dim=1) / powers
+        returns = torch.flip(returns, dims=(1,))
 
-def simple_reinforce(config: dict[str, Any]):
-    from torchinfo import summary
-
-    env = EternityEnv(
-        instance_path=config["env"]["path"],
-        reward_type=config["env"]["reward_type"],
-    )
-    model = CNNPolicy(
-        env.n_class,
-        embedding_dim=config["model"]["embedding_dim"],
-        n_layers=config["model"]["n_layers"],
-        board_width=env.size,
-        board_height=env.size,
-    )
-    if config["reinforce"]["model_path"] != "":
-        model.load_state_dict(torch.load(config["reinforce"]["model_path"])["model"])
-
-    summary(
-        model,
-        input_size=(4, env.size, env.size),
-        batch_dim=0,
-        dtypes=[
-            torch.long,
-        ],
-        device=config["device"],
-    )
-
-    trainer = Reinforce(
-        env,
-        model,
-        config["device"],
-        config["reinforce"]["learning_rate"],
-        config["reinforce"]["gamma"],
-        config["reinforce"]["n_batches"],
-        config["reinforce"]["batch_size"],
-    )
-    trainer.launch_training(config)
+        return returns
