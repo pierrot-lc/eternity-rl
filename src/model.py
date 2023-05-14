@@ -200,7 +200,7 @@ class CNNPolicy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        return tiles, gru_hidden_state, timesteps
+        return (tiles,)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -339,9 +339,7 @@ class CNNPolicy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        hidden_memory: Optional[torch.Tensor] = None,
-        timesteps: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> torch.Tensor:
         """Predict the actions and value for the given game states.
 
         ---
@@ -362,7 +360,7 @@ class CNNPolicy(nn.Module):
             hidden_memory: Updated memory of the GRU.
                 Shape of [n_mlp_layers, embedding_dim].
         """
-        embed = self.backbone_forward(tiles, hidden_memory, timesteps)
+        embed = self.backbone_forward(tiles)
 
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
@@ -387,7 +385,7 @@ class CNNPolicy(nn.Module):
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
 
-        return actions, hidden_memory
+        return actions
 
     @staticmethod
     def sample_actions(logits: torch.Tensor) -> torch.Tensor:

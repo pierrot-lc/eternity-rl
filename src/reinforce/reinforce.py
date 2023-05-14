@@ -60,15 +60,9 @@ class Reinforce:
         )
 
         states, _ = self.env.reset()
-        gru_memory = None
-        timesteps = torch.zeros(
-            self.env.batch_size,
-            dtype=torch.long,
-            device=self.device,
-        )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, gru_memory = self.model(states, gru_memory, timesteps)
+            actions = self.model(states)
             states, rewards, _, _, infos = self.env.step(actions)
             rollout_buffer.store(
                 states,
@@ -76,7 +70,6 @@ class Reinforce:
                 rewards,
                 ~self.env.terminated | infos["just_won"],
             )
-            timesteps += 1
 
         rollout_buffer.finalize(self.advantage, self.gamma)
 
@@ -92,6 +85,7 @@ class Reinforce:
             tiles=sample["observations"], actions=sample["actions"]
         )
         loss = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
+        print("batch update:", loss)
         loss = loss - self.entropy_weight * entropies.mean()
 
         loss.backward()
@@ -182,6 +176,7 @@ class Reinforce:
             tiles=sample["observations"], actions=sample["actions"]
         )
         metrics["loss/policy"] = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
+        print("evaluate:", metrics["loss/policy"])
         metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
         metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/entropy"]
         metrics["loss/total"].backward()  # To compute gradients.
