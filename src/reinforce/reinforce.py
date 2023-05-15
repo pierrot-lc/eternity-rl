@@ -85,8 +85,7 @@ class Reinforce:
             tiles=sample["observations"], actions=sample["actions"]
         )
         loss = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
-        print("batch update:", loss)
-        loss = loss - self.entropy_weight * entropies.mean()
+        # loss = loss - self.entropy_weight * entropies.mean()
 
         loss.backward()
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
@@ -162,7 +161,6 @@ class Reinforce:
         metrics["return/mean"] = returns.mean()
         metrics["return/max"] = returns.max()
         metrics["return/std"] = returns.std()
-        print(metrics["return/mean"])
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
@@ -176,7 +174,6 @@ class Reinforce:
             tiles=sample["observations"], actions=sample["actions"]
         )
         metrics["loss/policy"] = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
-        print("evaluate:", metrics["loss/policy"])
         metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
         metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/entropy"]
         metrics["loss/total"].backward()  # To compute gradients.

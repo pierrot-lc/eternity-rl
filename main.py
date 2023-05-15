@@ -56,7 +56,6 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
         board_width=env.board_size,
         board_height=env.board_size,
         zero_init_residuals=config.model.zero_init_residuals,
-        gru_as_mlp=config.model.gru_as_mlp,
         use_time_embedding=config.model.use_time_embedding,
     )
     return model

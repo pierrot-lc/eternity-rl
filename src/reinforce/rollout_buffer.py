@@ -121,7 +121,7 @@ class RolloutBuffer:
         self.flatten_action = einops.rearrange(self.action_buffer, "b t c -> (b t) c")
         self.flatten_advantage = einops.rearrange(self.advantage_buffer, "b t -> (b t)")
 
-        # Compute the valid steps we can sample from.
+        # Compute the valid steps we can sample from (those that are not masked).
         steps = torch.arange(start=0, end=self.max_steps * self.buffer_size)
         steps = einops.rearrange(steps, "(b t) -> b t", b=self.buffer_size)
         self.valid_steps = steps[self.mask_buffer]  # Valid steps we can sample from.

@@ -71,7 +71,6 @@ class CNNPolicy(nn.Module):
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
-        gru_as_mlp: bool,
         use_time_embedding: bool,
     ):
         super().__init__()
@@ -79,7 +78,6 @@ class CNNPolicy(nn.Module):
         self.board_width = board_width
         self.board_height = board_height
         self.n_mlp_layers = n_mlp_layers
-        self.gru_as_mlp = gru_as_mlp
         self.use_time_embedding = use_time_embedding
 
         self.embed_classes = nn.Sequential(
@@ -115,21 +113,16 @@ class CNNPolicy(nn.Module):
             nn.GELU(),
             nn.LayerNorm(embedding_dim),
         )
-        if gru_as_mlp:
-            self.gru = nn.GRU(
-                embedding_dim, embedding_dim, num_layers=n_mlp_layers, batch_first=False
-            )
-        else:
-            self.mlp = nn.ModuleList(
-                [
-                    nn.Sequential(
-                        nn.Linear(embedding_dim, embedding_dim),
-                        nn.GELU(),
-                        nn.LayerNorm(embedding_dim),
-                    )
-                    for _ in range(n_mlp_layers)
-                ]
-            )
+        self.mlp = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(embedding_dim, embedding_dim),
+                    nn.GELU(),
+                    nn.LayerNorm(embedding_dim),
+                )
+                for _ in range(n_mlp_layers)
+            ]
+        )
 
         self.predict_actions = nn.ModuleDict(
             {
@@ -188,13 +181,6 @@ class CNNPolicy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        gru_hidden_state = torch.zeros(
-            self.n_mlp_layers,
-            1,
-            self.embedding_dim,
-            dtype=torch.float,
-            device=device,
-        )
         timesteps = torch.zeros(
             1,
             dtype=torch.long,
@@ -243,7 +229,6 @@ class CNNPolicy(nn.Module):
     def backbone_forward(
         self,
         tiles: torch.Tensor,
-        hidden_memory: Optional[torch.Tensor] = None,
         timesteps: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         assert (
@@ -270,14 +255,8 @@ class CNNPolicy(nn.Module):
             # Add the positional encodings to the game embeddings.
             embed = embed + encodings
 
-        if self.gru_as_mlp:
-            # Add and remove the sequence length dimension.
-            embed = embed.unsqueeze(0)
-            embed, hidden_memory = self.gru(embed, hidden_memory)
-            embed = embed.squeeze(0)
-        else:
-            for layer in self.mlp:
-                embed = layer(embed)
+        for layer in self.mlp:
+            embed = layer(embed)
 
         return embed
 
