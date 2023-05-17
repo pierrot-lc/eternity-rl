@@ -1,8 +1,8 @@
 group: Trivial A
 env:
   path: ./instances/eternity_trivial_A.txt
-  reward: delta
-  max_steps: 4
+  reward: win
+  max_steps: 8
 model:
   embedding_dim: 12
   n_res_layers: 4
