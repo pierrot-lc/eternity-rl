@@ -98,7 +98,7 @@ class RolloutBuffer:
         self.pointer %= self.max_steps
 
     def finalize(self, advantage_type: str, gamma: float):
-        """Compute the returns and advantages for the trajectories."""
+        """Compute the returns and advantages of the trajectories."""
         self.return_buffer = RolloutBuffer.cumulative_decay_return(
             self.reward_buffer, self.mask_buffer, gamma
         )

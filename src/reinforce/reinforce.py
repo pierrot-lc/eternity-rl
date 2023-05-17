@@ -50,7 +50,7 @@ class Reinforce:
 
     @torch.no_grad()
     def do_rollouts(self) -> RolloutBuffer:
-        """Simuates a bunch of rollouts and returns a prepared rollout buffer."""
+        """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         rollout_buffer = RolloutBuffer(
             buffer_size=self.env.batch_size,
             max_steps=self.env.max_steps,
@@ -84,7 +84,7 @@ class Reinforce:
         logprobs, entropies = self.model.logprobs(
             tiles=sample["observations"], actions=sample["actions"]
         )
-        loss = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
+        loss = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
         # loss = loss - self.entropy_weight * entropies.mean()
 
         loss.backward()
