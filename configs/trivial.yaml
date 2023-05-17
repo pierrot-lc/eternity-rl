@@ -4,8 +4,8 @@ env:
   reward: win
   max_steps: 8
 model:
-  embedding_dim: 6
-  n_res_layers: 2
+  embedding_dim: 12
+  n_res_layers: 4
   n_gru_layers: 1
   n_head_layers: 1
   maxpool_kernel: 1
@@ -15,7 +15,7 @@ optimizer:
 reinforce:
   advantage: estimated
   entropy_weight: 1.0e-5
-  batch_size: 2000
-  rollout_buffer_size: 2000
+  batch_size: 600
+  rollout_buffer_size: 600
   n_batches_per_rollouts: 1
-  n_total_rollouts: 20000
+  n_total_rollouts: 2000
