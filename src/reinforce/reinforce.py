@@ -48,7 +48,7 @@ class Reinforce:
         self.advantage = advantage
         self.save_every = save_every
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def do_rollouts(self) -> RolloutBuffer:
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         rollout_buffer = RolloutBuffer(
@@ -61,8 +61,35 @@ class Reinforce:
 
         states, _ = self.env.reset()
 
+        rollout_infos = {
+            "rewards": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+            ),
+            "log-probs": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "entropies": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                4,
+                device=self.device,
+            ),
+            "masks": torch.zeros(
+                self.env.batch_size,
+                self.env.max_steps,
+                device=self.device,
+                dtype=torch.bool,
+            ),
+        }
+
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions = self.model(states)
+            actions, log_probs = self.model(states)
+            # log_probs, entropies = self.model.logprobs(states, actions)
             states, rewards, _, _, infos = self.env.step(actions)
             rollout_buffer.store(
                 states,
@@ -71,7 +98,31 @@ class Reinforce:
                 ~self.env.terminated | infos["just_won"],
             )
 
+            rollout_infos["rewards"][:, self.env.step_id - 1] = rewards
+            rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
+            # rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
+            rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
+
+        masks = rollout_infos["masks"]
+        masks = torch.roll(masks, shifts=1, dims=(1,))
+        masks[:, 0] = True
+        rollout_infos["masks"] = masks
+
         rollout_buffer.finalize(self.advantage, self.gamma)
+
+        rollout_infos["returns"] = rollout_buffer.cumulative_decay_return(
+            rollout_infos["rewards"], rollout_infos["masks"], 1.0
+        )
+        print(rollout_infos["returns"][:, 0].mean())
+        self.optimizer.zero_grad()
+        loss = (
+            -rollout_infos["log-probs"]
+            * rollout_infos["returns"].unsqueeze(2)
+            * rollout_infos["masks"].unsqueeze(2)
+        ).sum() / rollout_infos["masks"].sum()
+        loss.backward()
+        clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
+        self.optimizer.step()
 
         return rollout_buffer
 
@@ -127,13 +178,13 @@ class Reinforce:
                 self.model.train()
                 rollout_buffer = self.do_rollouts()
 
-                for _ in tqdm(
-                    range(self.n_batches_per_rollouts),
-                    desc="Batch",
-                    disable=mode == "disabled",
-                    leave=False,
-                ):
-                    self.do_batch_update(rollout_buffer)
+                # for _ in tqdm(
+                #     range(self.n_batches_per_rollouts),
+                #     desc="Batch",
+                #     disable=mode == "disabled",
+                #     leave=False,
+                # ):
+                #     self.do_batch_update(rollout_buffer)
 
                 metrics = self.evaluate()
                 run.log(metrics)
