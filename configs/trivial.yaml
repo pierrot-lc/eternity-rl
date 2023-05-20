@@ -9,7 +9,6 @@ model:
   n_gru_layers: 1
   n_head_layers: 1
   maxpool_kernel: 1
-  zero_init_residuals: false
 optimizer:
   learning_rate: 1.0e-3
 reinforce:

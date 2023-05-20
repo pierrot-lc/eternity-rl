@@ -1,11 +1,11 @@
 defaults:
   - _self_
-  - normal
+  - trivial
 group: Default group
 env:
   path: ./instances/eternity_trivial_A.txt
   reward: win
-  max_steps: 4
+  max_steps: 8
 model:
   embedding_dim: 12
   n_res_layers: 4
@@ -18,7 +18,7 @@ model:
 optimizer:
   learning_rate: 1.0e-3
   optimizer: adamw
-  weight_decay: 1.0e-4
+  weight_decay: 0.0e-4
 scheduler:
   warmup_steps: 1
 reinforce:
@@ -27,7 +27,7 @@ reinforce:
   n_total_iterations: 2000
   n_batches_per_iteration: 1
   batch_size: 600
-  entropy_weight: 1.0e-5
+  entropy_weight: 0.0e-5
   clip_value: 5.0
   save_every: 500
 seed: 0
