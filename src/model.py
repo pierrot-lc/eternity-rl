@@ -369,7 +369,8 @@ class CNNPolicy(nn.Module):
 
     @staticmethod
     def sample_actions(logits: torch.Tensor) -> torch.Tensor:
-        categorical = Categorical(logits=logits)
+        distributions = torch.softmax(logits, dim=-1)
+        categorical = Categorical(probs=distributions)
         action_ids = categorical.sample()
         logprobs = categorical.log_prob(action_ids)
         return action_ids, logprobs
@@ -396,7 +397,8 @@ class CNNPolicy(nn.Module):
                 The entropies are normalized by the log of the number of actions.
                 Shape of [batch_size,].
         """
-        categorical = Categorical(logits=logits)
+        distributions = torch.softmax(logits, dim=-1)
+        categorical = Categorical(probs=distributions)
         n_actions = logits.shape[-1]
 
         entropies = categorical.entropy() / np.log(n_actions)

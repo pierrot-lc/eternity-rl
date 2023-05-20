@@ -113,7 +113,7 @@ class Reinforce:
         rollout_infos["returns"] = rollout_buffer.cumulative_decay_return(
             rollout_infos["rewards"], rollout_infos["masks"], 1.0
         )
-        print(rollout_infos["returns"][:, 0].mean())
+        # print(rollout_infos["returns"][:, 0].mean())
         self.optimizer.zero_grad()
         loss = (
             -rollout_infos["log-probs"]
@@ -123,6 +123,7 @@ class Reinforce:
         loss.backward()
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
+        self.scheduler.step()
 
         return rollout_buffer
 
