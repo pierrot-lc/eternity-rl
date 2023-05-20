@@ -62,64 +62,51 @@ class Reinforce:
         states, _ = self.env.reset()
 
         rollout_infos = {
-            "rewards": torch.zeros(
-                self.env.batch_size,
-                self.env.max_steps,
-                device=self.device,
-            ),
             "log-probs": torch.zeros(
                 self.env.batch_size,
                 self.env.max_steps,
                 4,
                 device=self.device,
             ),
-            "entropies": torch.zeros(
-                self.env.batch_size,
-                self.env.max_steps,
-                4,
-                device=self.device,
-            ),
-            "masks": torch.zeros(
-                self.env.batch_size,
-                self.env.max_steps,
-                device=self.device,
-                dtype=torch.bool,
-            ),
         }
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, log_probs = self.model(states)
-            # log_probs, entropies = self.model.logprobs(states, actions)
+            actions = self.model(states)
+            log_probs, entropies = self.model.logprobs(states, actions)
             states, rewards, _, _, infos = self.env.step(actions)
             rollout_buffer.store(
                 states,
                 actions,
                 rewards,
-                ~self.env.terminated | infos["just_won"],
+                ~self.env.terminated,  # TODO: add "just won" mask.
             )
 
-            rollout_infos["rewards"][:, self.env.step_id - 1] = rewards
             rollout_infos["log-probs"][:, self.env.step_id - 1] = log_probs
-            # rollout_infos["entropies"][:, self.env.step_id - 1] = entropies
-            rollout_infos["masks"][:, self.env.step_id - 1] = ~self.env.terminated
-
-        masks = rollout_infos["masks"]
-        masks = torch.roll(masks, shifts=1, dims=(1,))
-        masks[:, 0] = True
-        rollout_infos["masks"] = masks
 
         rollout_buffer.finalize(self.advantage, self.gamma)
 
-        rollout_infos["returns"] = rollout_buffer.cumulative_decay_return(
-            rollout_infos["rewards"], rollout_infos["masks"], 1.0
-        )
-        # print(rollout_infos["returns"][:, 0].mean())
+        self.model.train()
         self.optimizer.zero_grad()
+
+        # TODO: understand why this does not works.
+        import einops
+
+        obs = einops.rearrange(
+            rollout_buffer.observation_buffer, "b s c h w -> (b s) c h w"
+        )
+        actions = einops.rearrange(rollout_buffer.action_buffer, "b s n -> (b s) n")
+        logprobs, _ = self.model.logprobs(
+            obs.to(self.device), actions=actions.to(self.device)
+        )
+        logprobs = einops.rearrange(logprobs, "(b s) n -> b s n", b=self.env.batch_size)
+
         loss = (
-            -rollout_infos["log-probs"]
-            * rollout_infos["returns"].unsqueeze(2)
-            * rollout_infos["masks"].unsqueeze(2)
-        ).sum() / rollout_infos["masks"].sum()
+            # -rollout_infos["log-probs"]
+            -logprobs
+            * rollout_buffer.advantage_buffer.unsqueeze(2).to(self.device)
+            * rollout_buffer.mask_buffer.unsqueeze(2).to(self.device)
+        ).sum() / rollout_buffer.mask_buffer.unsqueeze(2).to(self.device).sum()
+
         loss.backward()
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
@@ -129,14 +116,31 @@ class Reinforce:
 
     def do_batch_update(self, rollout_buffer: RolloutBuffer):
         """Performs a batch update on the model."""
+        import einops
+
         self.model.train()
         self.optimizer.zero_grad()
 
-        sample = rollout_buffer.sample(self.batch_size)
-        logprobs, entropies = self.model.logprobs(
-            tiles=sample["observations"], actions=sample["actions"]
+        obs = einops.rearrange(
+            rollout_buffer.observation_buffer, "b s c h w -> (b s) c h w"
         )
-        loss = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
+        actions = einops.rearrange(rollout_buffer.action_buffer, "b s n -> (b s) n")
+        logprobs, _ = self.model.logprobs(
+            obs.to(self.device), actions=actions.to(self.device)
+        )
+        logprobs = einops.rearrange(logprobs, "(b s) n -> b s n", b=self.env.batch_size)
+        loss = (
+            -logprobs
+            * rollout_buffer.advantage_buffer.unsqueeze(2).to(self.device)
+            * rollout_buffer.mask_buffer.unsqueeze(2).to(self.device)
+        ).sum() / rollout_buffer.mask_buffer.unsqueeze(2).to(self.device).sum()
+
+        # sample = rollout_buffer.sample(self.batch_size * self.env.max_steps)
+        # print(sample["advantages"].shape)
+        # logprobs, entropies = self.model.logprobs(
+        #     tiles=sample["observations"], actions=sample["actions"]
+        # )
+        # loss = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
         # loss = loss - self.entropy_weight * entropies.mean()
 
         loss.backward()
@@ -213,6 +217,7 @@ class Reinforce:
         metrics["return/mean"] = returns.mean()
         metrics["return/max"] = returns.max()
         metrics["return/std"] = returns.std()
+        print(metrics["return/mean"])
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
