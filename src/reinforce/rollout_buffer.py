@@ -99,8 +99,6 @@ class RolloutBuffer:
 
     def finalize(self, advantage_type: str, gamma: float):
         """Compute the returns and advantages of the trajectories."""
-        self.mask_buffer = torch.roll(self.mask_buffer, shifts=1, dims=(1,))
-        self.mask_buffer[:, 0] = True
         self.return_buffer = RolloutBuffer.cumulative_decay_return(
             self.reward_buffer, self.mask_buffer, gamma
         )
