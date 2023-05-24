@@ -62,23 +62,44 @@ class Reinforce:
         states, _ = self.env.reset()
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions = self.model(states)
+            actions, _ = self.model(states)
             new_states, rewards, _, _, infos = self.env.step(actions)
             rollout_buffer.store(
                 states,
                 actions,
                 rewards,
-                ~self.env.terminated | infos["just_won"],  # TODO: add "just won" mask.
+                ~self.env.terminated | infos["just_won"],
             )
 
             states = new_states
 
         rollout_buffer.finalize(self.advantage, self.gamma)
 
-        self.model.train()
-        self.optimizer.zero_grad()
-
         return rollout_buffer
+
+    def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        losses = dict()
+        _, probs = self.model(sample["observations"])
+
+        logprobs, entropies = [], []
+        for i in range(len(probs)):
+            l, e = self.model.logprob_actions(probs[i], sample["actions"][:, i])
+            logprobs.append(l)
+            entropies.append(e)
+
+        logprobs = torch.stack(logprobs, dim=1)
+        entropies = [
+            1.0 * entropies[0],
+            0.1 * entropies[1],
+            0.5 * entropies[2],
+            0.1 * entropies[3],
+        ]
+        entropies = torch.stack(entropies, dim=1)
+
+        losses["policy"] = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
+        losses["entropy"] = -self.entropy_weight * entropies.mean()
+        losses["total"] = sum(losses.values())
+        return losses
 
     def do_batch_update(self, rollout_buffer: RolloutBuffer):
         """Performs a batch update on the model."""
@@ -86,13 +107,9 @@ class Reinforce:
         self.optimizer.zero_grad()
 
         sample = rollout_buffer.sample(self.batch_size)
-        logprobs, entropies = self.model.logprobs(
-            tiles=sample["observations"], actions=sample["actions"]
-        )
-        loss = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
-        loss = loss - self.entropy_weight * entropies.mean()
+        losses = self.compute_loss(sample)
+        losses["total"].backward()
 
-        loss.backward()
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
         self.scheduler.step()
@@ -172,19 +189,17 @@ class Reinforce:
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/std"] = episodes_len.std()
 
-        # Compute gradients and losses.
+        # Compute losses.
         batch_size = min(10 * self.batch_size, self.env.batch_size)
         sample = rollout_buffer.sample(batch_size)
-        logprobs, entropies = self.model.logprobs(
-            tiles=sample["observations"], actions=sample["actions"]
-        )
-        metrics["loss/policy"] = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
-        metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
-        metrics["loss/total"] = metrics["loss/policy"] + metrics["loss/entropy"]
-        metrics["loss/total"].backward()  # To compute gradients.
+        losses = self.compute_loss(sample)
+        for k, v in losses.items():
+            metrics[f"loss/{k}"] = v
+
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
 
         # Compute the gradient mean and maximum values.
+        losses["total"].backward()
         mean_value, max_value, tot_params = 0, 0, 0
         for tot_params, p in enumerate(self.model.parameters()):
             if p.grad is not None:

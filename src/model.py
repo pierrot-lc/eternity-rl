@@ -260,65 +260,10 @@ class CNNPolicy(nn.Module):
 
         return embed
 
-    def logprobs(
-        self, tiles: torch.Tensor, actions: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute the log-probilities of the given actions for the given tiles.
-        Also returns the entropy of the action distributions.
-
-        ---
-        Returns:
-            logprobs: The log probabilities of the predicted actions.
-                Shape of [batch_size, 4].
-            entropies: The entropy of the predicted actions.
-                Shape of [batch_size, 4].
-        """
-        embed = self.backbone_forward(tiles)
-
-        tile_1 = self.predict_actions["tile-1"](embed)
-        tile_1_logprob, entropies_tile_1 = self.logprob_actions(tile_1, actions[:, 0])
-        tile_1_emb = self.embed_tile_ids(actions[:, 0])
-
-        # Shape of [batch_size, 2 * embedding_dim].
-        embed = torch.concat([embed, tile_1_emb], dim=-1)
-
-        tile_2 = self.predict_actions["tile-2"](embed)
-        tile_2_logprob, entropies_tile_2 = self.logprob_actions(tile_2, actions[:, 2])
-        tile_2_emb = self.embed_tile_ids(actions[:, 2])
-
-        # Shape of [batch_size, 3 * embedding_dim].
-        embed = torch.concat([embed, tile_2_emb], dim=-1)
-
-        roll_1 = self.predict_actions["roll-1"](embed)
-        roll_1_logprob, entropies_roll_1 = self.logprob_actions(roll_1, actions[:, 1])
-
-        roll_2 = self.predict_actions["roll-2"](embed)
-        roll_2_logprob, entropies_roll_2 = self.logprob_actions(roll_2, actions[:, 3])
-
-        logprobs = torch.stack(
-            [
-                tile_1_logprob,
-                roll_1_logprob,
-                tile_2_logprob,
-                roll_2_logprob,
-            ],
-            dim=1,
-        )
-        entropies = torch.stack(
-            [
-                1.0 * entropies_tile_1,
-                0.1 * entropies_roll_1,
-                0.5 * entropies_tile_2,
-                0.1 * entropies_roll_2,
-            ],
-            dim=1,
-        )
-        return logprobs, entropies
-
     def forward(
         self,
         tiles: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -336,8 +281,8 @@ class CNNPolicy(nn.Module):
         Returns:
             actions: The predicted actions.
                 Shape of [batch_size, 4].
-            hidden_memory: Updated memory of the GRU.
-                Shape of [n_mlp_layers, embedding_dim].
+            probs: Distribution output of all heads.
+                List of tensor of shape [batch_size, n_actions].
         """
         embed = self.backbone_forward(tiles)
 
@@ -363,8 +308,10 @@ class CNNPolicy(nn.Module):
         roll_2_id = self.sample_actions(roll_2)
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
+        logits = [tile_1, roll_1, tile_2, roll_2]
+        probs = [torch.softmax(logit, dim=-1) for logit in logits]
 
-        return actions
+        return actions, probs
 
     @staticmethod
     def sample_actions(logits: torch.Tensor) -> torch.Tensor:
