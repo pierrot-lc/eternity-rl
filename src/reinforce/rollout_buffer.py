@@ -28,6 +28,10 @@ class RolloutBuffer:
             (self.buffer_size, self.max_steps, 4, self.board_size, self.board_size),
             dtype=torch.int64,
         )
+        self.timestep_buffer = torch.zeros(
+            (self.buffer_size, self.max_steps),
+            dtype=torch.int64,
+        )
         self.action_buffer = torch.zeros(
             (self.buffer_size, self.max_steps, 4),
             dtype=torch.int64,
@@ -49,19 +53,6 @@ class RolloutBuffer:
             dtype=torch.bool,
         )
 
-        # Flattened buffers for sampling.
-        self.flatten_observation = torch.zeros(
-            (self.buffer_size * self.max_steps, 4, self.board_size, self.board_size),
-            dtype=torch.int64,
-        )
-        self.flatten_action = torch.zeros(
-            (self.buffer_size * self.max_steps, 4),
-            dtype=torch.int64,
-        )
-        self.flatten_advantage = torch.zeros(
-            (self.buffer_size * self.max_steps),
-            dtype=torch.float32,
-        )
         self.valid_steps = torch.zeros(
             (self.buffer_size * self.max_steps),
             dtype=torch.int64,
@@ -72,6 +63,7 @@ class RolloutBuffer:
     def store(
         self,
         observations: torch.Tensor,
+        timesteps: torch.Tensor,
         actions: torch.Tensor,
         rewards: torch.Tensor,
         masks: torch.Tensor,
@@ -90,6 +82,7 @@ class RolloutBuffer:
                 Shape of [batch_size,].
         """
         self.observation_buffer[:, self.pointer] = observations.cpu()
+        self.timestep_buffer[:, self.pointer] = timesteps.cpu()
         self.action_buffer[:, self.pointer] = actions.cpu()
         self.reward_buffer[:, self.pointer] = rewards.cpu()
         self.mask_buffer[:, self.pointer] = masks.cpu()
@@ -114,13 +107,6 @@ class RolloutBuffer:
             case _:
                 raise ValueError(f"Unknown advantage type: {advantage_type}")
 
-        # To sample efficiently from the buffers.
-        self.flatten_observation = einops.rearrange(
-            self.observation_buffer, "b t c h w -> (b t) c h w"
-        )
-        self.flatten_action = einops.rearrange(self.action_buffer, "b t c -> (b t) c")
-        self.flatten_advantage = einops.rearrange(self.advantage_buffer, "b t -> (b t)")
-
         # Compute the valid steps we can sample from (those that are not masked).
         steps = torch.arange(start=0, end=self.max_steps * self.buffer_size)
         steps = einops.rearrange(steps, "(b t) -> b t", b=self.buffer_size)
@@ -139,6 +125,8 @@ class RolloutBuffer:
             A batch of samples as a dictionary:
                 - observations: Batch of observations.
                     Shape of [batch_size, 4, board_size, board_size].
+                - timesteps: Batch of timesteps.
+                    Shape of [batch_size,].
                 - actions: Batch of actions.
                     Shape of [batch_sizen, 4].
                 - advantages: Batch of advantages.
@@ -149,10 +137,55 @@ class RolloutBuffer:
         steps = self.valid_steps[indices]
 
         return {
-            "observations": self.flatten_observation[steps].to(self.device),
-            "actions": self.flatten_action[steps].to(self.device),
-            "advantages": self.flatten_advantage[steps].to(self.device),
+            "observations": self.flatten_observations[steps].to(self.device),
+            "timesteps": self.flatten_timesteps[steps].to(self.device),
+            "actions": self.flatten_actions[steps].to(self.device),
+            "advantages": self.flatten_advantages[steps].to(self.device),
         }
+
+    @property
+    def flatten_observations(self) -> torch.Tensor:
+        """Flatten the observations buffer.
+
+        ---
+        Returns:
+            The flattened observations buffer.
+                Shape of [buffer_size * max_steps, 4, board_size, board_size].
+        """
+        return einops.rearrange(self.observation_buffer, "b t c h w -> (b t) c h w")
+
+    @property
+    def flatten_actions(self) -> torch.Tensor:
+        """Flatten the actions buffer.
+
+        ---
+        Returns:
+            The flattened actions buffer.
+                Shape of [buffer_size * max_steps, 4].
+        """
+        return einops.rearrange(self.action_buffer, "b t c -> (b t) c")
+
+    @property
+    def flatten_advantages(self) -> torch.Tensor:
+        """Flatten the advantages buffer.
+
+        ---
+        Returns:
+            The flattened advantages buffer.
+                Shape of [buffer_size * max_steps].
+        """
+        return einops.rearrange(self.advantage_buffer, "b t -> (b t)")
+
+    @property
+    def flatten_timesteps(self) -> torch.Tensor:
+        """Flatten the timesteps buffer.
+
+        ---
+        Returns:
+            The flattened timesteps buffer.
+                Shape of [buffer_size * max_steps].
+        """
+        return einops.rearrange(self.timestep_buffer, "b t -> (b t)")
 
     @staticmethod
     def cumulative_decay_return(

@@ -1,18 +1,32 @@
 group: Trivial B
+
 env:
   path: ./instances/eternity_trivial_B.txt
   reward: delta
-  max_steps: 64
+  max_steps: 24
+
 model:
   embedding_dim: 12
   n_res_layers: 4
   n_gru_layers: 1
-  n_head_layers: 3
-  maxpool_kernel: 2
+  n_head_layers: 1
+  maxpool_kernel: 1
   zero_init_residuals: false
+  use_time_embedding: true
 optimizer:
   learning_rate: 1.0e-3
+  optimizer: adamw
+  weight_decay: 0.0e-4
 scheduler:
   warmup_steps: 1
 reinforce:
-  n_total_rollouts: 2000
+  advantage: estimated
+  entropy_weight: 1.0e-5
+  total_rollouts: 2000
+  gamma: 1.00
+  clip_value: 0.5
+  save_every: 500
+rollout_buffer:
+  buffer_size: 2000  # Number of played games in a single buffer.
+  batches_per_rollouts: 1  # Number of times we sample from the buffer.
+  batch_size: 4000  # Number of samples in a single batch.

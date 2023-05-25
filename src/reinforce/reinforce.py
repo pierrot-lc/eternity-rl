@@ -60,18 +60,25 @@ class Reinforce:
         )
 
         states, _ = self.env.reset()
+        timesteps = torch.zeros(
+            self.env.batch_size,
+            dtype=torch.long,
+            device=self.device,
+        )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, _ = self.model(states)
+            actions, _ = self.model(states, timesteps)
             new_states, rewards, _, _, infos = self.env.step(actions)
             rollout_buffer.store(
                 states,
+                timesteps,
                 actions,
                 rewards,
                 ~self.env.terminated | infos["just_won"],
             )
 
             states = new_states
+            timesteps += 1
 
         rollout_buffer.finalize(self.advantage, self.gamma)
 
@@ -79,7 +86,7 @@ class Reinforce:
 
     def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         losses = dict()
-        _, probs = self.model(sample["observations"])
+        _, probs = self.model(sample["observations"], sample["timesteps"])
 
         logprobs, entropies = [], []
         for i in range(len(probs)):
@@ -96,7 +103,7 @@ class Reinforce:
         ]
         entropies = torch.stack(entropies, dim=1)
 
-        losses["policy"] = (-logprobs * sample["advantages"].unsqueeze(1)).mean()
+        losses["policy"] = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
         losses["entropy"] = -self.entropy_weight * entropies.mean()
         losses["total"] = sum(losses.values())
         return losses

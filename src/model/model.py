@@ -25,11 +25,8 @@ class CNNPolicy(nn.Module):
         use_time_embedding: bool,
     ):
         super().__init__()
-        self.embedding_dim = embedding_dim
         self.board_width = board_width
         self.board_height = board_height
-        self.n_mlp_layers = n_mlp_layers
-        self.use_time_embedding = use_time_embedding
 
         self.embed_tile_ids = nn.Sequential(
             nn.Embedding(board_width * board_height, embedding_dim),
@@ -83,9 +80,7 @@ class CNNPolicy(nn.Module):
             dummy_input = self.dummy_input("cpu")
             self.forward(*dummy_input)
 
-    def dummy_input(
-        self, device: str
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def dummy_input(self, device: str) -> tuple[torch.Tensor, torch.Tensor]:
         tiles = torch.zeros(
             1,
             4,
@@ -99,7 +94,7 @@ class CNNPolicy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        return (tiles,)
+        return tiles, timesteps
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -114,6 +109,7 @@ class CNNPolicy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
+        timesteps: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Predict the actions and value for the given game states.
 
@@ -121,9 +117,6 @@ class CNNPolicy(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            hidden_memory: Memory of the GRU.
-                Optional, used when GRU is used as MLP.
-                Tensor of shape of [n_gru_layers, embedding_dim].
             timestep: The timestep of the game states.
                 Optional, used when timesteps encodings are used.
                 Tensor of shape [batch_size,].
@@ -135,7 +128,7 @@ class CNNPolicy(nn.Module):
             probs: Distribution output of all heads.
                 List of tensor of shape [batch_size, n_actions].
         """
-        embed = self.backbone(tiles)
+        embed = self.backbone(tiles, timesteps)
 
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)

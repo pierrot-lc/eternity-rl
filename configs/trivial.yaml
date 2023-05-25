@@ -10,7 +10,7 @@ model:
   n_head_layers: 1
   maxpool_kernel: 1
   zero_init_residuals: false
-  use_time_embedding: false
+  use_time_embedding: true
 optimizer:
   learning_rate: 1.0e-3
   optimizer: adamw
@@ -25,6 +25,6 @@ reinforce:
   clip_value: 5.0
   save_every: 500
 rollout_buffer:
-  buffer_size: 600 # Number of played games in a single buffer.
-  batches_per_rollouts: 1 # Number of times we sample from the buffer.
-  batch_size: 4800 # Number of samples in a single batch.
+  buffer_size: 600  # Number of played games in a single buffer.
+  batches_per_rollouts: 1  # Number of times we sample from the buffer.
+  batch_size: 4800  # Number of samples in a single batch.
