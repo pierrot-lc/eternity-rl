@@ -35,7 +35,7 @@ def init_env(config: DictConfig) -> BatchedEternityEnv:
     """Initialize the environment."""
     env = BatchedEternityEnv.from_file(
         config.env.path,
-        config.reinforce.rollout_buffer_size,
+        config.rollout_buffer.buffer_size,
         config.env.reward,
         config.env.max_steps,
         config.device,
@@ -116,9 +116,9 @@ def init_trainer(
         config.reinforce.entropy_weight,
         config.reinforce.gamma,
         config.reinforce.clip_value,
-        config.reinforce.batch_size,
-        config.reinforce.n_batches_per_rollouts,
-        config.reinforce.n_total_rollouts,
+        config.rollout_buffer.batch_size,
+        config.rollout_buffer.batches_per_rollouts,
+        config.reinforce.total_rollouts,
         config.reinforce.advantage,
         config.reinforce.save_every,
     )

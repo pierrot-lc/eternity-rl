@@ -27,12 +27,12 @@ class Reinforce:
         gamma: float,
         clip_value: float,
         batch_size: int,
-        n_batches_per_rollouts: int,
-        n_total_rollouts: int,
+        batches_per_rollouts: int,
+        total_rollouts: int,
         advantage: str,
         save_every: int,
     ):
-        assert n_batches_per_rollouts > 0
+        assert batches_per_rollouts > 0
 
         self.env = env
         self.model = model
@@ -43,8 +43,8 @@ class Reinforce:
         self.gamma = gamma
         self.clip_value = clip_value
         self.batch_size = batch_size
-        self.n_total_rollouts = n_total_rollouts
-        self.n_batches_per_rollouts = n_batches_per_rollouts
+        self.total_rollouts = total_rollouts
+        self.batches_per_rollouts = batches_per_rollouts
         self.advantage = advantage
         self.save_every = save_every
 
@@ -83,7 +83,7 @@ class Reinforce:
 
         logprobs, entropies = [], []
         for i in range(len(probs)):
-            l, e = self.model.logprob_actions(probs[i], sample["actions"][:, i])
+            l, e = self.model.logprobs(probs[i], sample["actions"][:, i])
             logprobs.append(l)
             entropies.append(e)
 
@@ -137,8 +137,8 @@ class Reinforce:
             # Infinite loop if n_batches is -1.
             iter = (
                 count(0)
-                if self.n_total_rollouts == -1
-                else range(self.n_total_rollouts)
+                if self.total_rollouts == -1
+                else range(self.total_rollouts)
             )
 
             for i in tqdm(
@@ -150,7 +150,7 @@ class Reinforce:
                 rollout_buffer = self.do_rollouts()
 
                 for _ in tqdm(
-                    range(self.n_batches_per_rollouts),
+                    range(self.batches_per_rollouts),
                     desc="Batch",
                     disable=mode == "disabled",
                     leave=False,
