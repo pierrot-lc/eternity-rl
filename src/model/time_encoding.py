@@ -3,8 +3,9 @@ Giving this to the model makes the observation fully Markovian.
 """
 import torch
 import torch.nn as nn
-from positional_encodings.torch_encodings import PositionalEncoding1D
 from einops import repeat
+from positional_encodings.torch_encodings import PositionalEncoding1D
+
 
 class TimeEncoding(nn.Module):
     def __init__(self, embedding_dim: int):

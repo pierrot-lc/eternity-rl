@@ -6,8 +6,8 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from torchinfo import summary
 
-from .head import Head
 from .backbone import Backbone
+from .head import Head
 
 
 class CNNPolicy(nn.Module):
@@ -35,7 +35,17 @@ class CNNPolicy(nn.Module):
             nn.Embedding(board_width * board_height, embedding_dim),
             nn.LayerNorm(embedding_dim),
         )
-        self.backbone = Backbone(n_classes, board_width, board_height, embedding_dim, n_res_layers, n_mlp_layers, maxpool_kernel, use_time_embedding, zero_init_residuals)
+        self.backbone = Backbone(
+            n_classes,
+            board_width,
+            board_height,
+            embedding_dim,
+            n_res_layers,
+            n_mlp_layers,
+            maxpool_kernel,
+            use_time_embedding,
+            zero_init_residuals,
+        )
 
         self.predict_actions = nn.ModuleDict(
             {

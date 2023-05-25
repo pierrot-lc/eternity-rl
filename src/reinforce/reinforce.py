@@ -135,11 +135,7 @@ class Reinforce:
             run.watch(self.model)
 
             # Infinite loop if n_batches is -1.
-            iter = (
-                count(0)
-                if self.total_rollouts == -1
-                else range(self.total_rollouts)
-            )
+            iter = count(0) if self.total_rollouts == -1 else range(self.total_rollouts)
 
             for i in tqdm(
                 iter,
