@@ -15,9 +15,9 @@ class CNNPolicy(nn.Module):
         self,
         n_classes: int,
         embedding_dim: int,
-        n_res_layers: int,
-        n_mlp_layers: int,
-        n_head_layers: int,
+        res_layers: int,
+        mlp_layers: int,
+        head_layers: int,
         maxpool_kernel: int,
         board_width: int,
         board_height: int,
@@ -37,8 +37,8 @@ class CNNPolicy(nn.Module):
             board_width,
             board_height,
             embedding_dim,
-            n_res_layers,
-            n_mlp_layers,
+            res_layers,
+            mlp_layers,
             maxpool_kernel,
             use_time_embedding,
             zero_init_residuals,
@@ -48,7 +48,7 @@ class CNNPolicy(nn.Module):
             {
                 "tile-1": Head(
                     embedding_dim,
-                    n_head_layers,
+                    head_layers,
                     board_width * board_height,
                     zero_init_residuals,
                 ),
@@ -57,7 +57,7 @@ class CNNPolicy(nn.Module):
                     nn.LayerNorm(embedding_dim),
                     Head(
                         embedding_dim,
-                        n_head_layers,
+                        head_layers,
                         board_width * board_height,
                         zero_init_residuals,
                     ),
@@ -65,12 +65,12 @@ class CNNPolicy(nn.Module):
                 "roll-1": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
                     nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, n_head_layers, 4, zero_init_residuals),
+                    Head(embedding_dim, head_layers, 4, zero_init_residuals),
                 ),
                 "roll-2": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
                     nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, n_head_layers, 4, zero_init_residuals),
+                    Head(embedding_dim, head_layers, 4, zero_init_residuals),
                 ),
             }
         )

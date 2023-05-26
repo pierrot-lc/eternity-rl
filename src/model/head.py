@@ -6,7 +6,7 @@ class Head(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        n_head_layers: int,
+        head_layers: int,
         n_actions: int,
         zero_init_residuals: bool,
     ):
@@ -19,7 +19,7 @@ class Head(nn.Module):
                     nn.GELU(),
                     nn.LayerNorm(embedding_dim),
                 )
-                for _ in range(n_head_layers)
+                for _ in range(head_layers)
             ]
         )
         self.predict_actions = nn.Linear(embedding_dim, n_actions)

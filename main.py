@@ -49,9 +49,9 @@ def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
     model = CNNPolicy(
         n_classes=env.n_classes,
         embedding_dim=config.exp.model.embedding_dim,
-        n_res_layers=config.exp.model.n_res_layers,
-        n_mlp_layers=config.exp.model.n_gru_layers,
-        n_head_layers=config.exp.model.n_head_layers,
+        res_layers=config.exp.model.res_layers,
+        mlp_layers=config.exp.model.mlp_layers,
+        head_layers=config.exp.model.head_layers,
         maxpool_kernel=config.exp.model.maxpool_kernel,
         board_width=env.board_size,
         board_height=env.board_size,

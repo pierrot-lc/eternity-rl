@@ -14,8 +14,8 @@ class Backbone(nn.Module):
         board_width: int,
         board_height: int,
         embedding_dim: int,
-        n_res_layers: int,
-        n_mlp_layers: int,
+        res_layers: int,
+        mlp_layers: int,
         maxpool_kernel: int,
         use_time_encoding: bool,
         zero_init_residuals: bool,
@@ -39,7 +39,7 @@ class Backbone(nn.Module):
                     nn.GELU(),
                     nn.LayerNorm([embedding_dim, board_height, board_width]),
                 )
-                for _ in range(n_res_layers)
+                for _ in range(res_layers)
             ]
         )
         self.project = nn.Sequential(
@@ -56,7 +56,7 @@ class Backbone(nn.Module):
                     nn.GELU(),
                     nn.LayerNorm(embedding_dim),
                 )
-                for _ in range(n_mlp_layers)
+                for _ in range(mlp_layers)
             ]
         )
 
