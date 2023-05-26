@@ -22,11 +22,11 @@ scheduler:
 reinforce:
   advantage: estimated
   entropy_weight: 0.0e-5
-  total_rollouts: 2000
+  total_rollouts: 10000
   gamma: 1.00
   clip_value: 0.05
   save_every: 500
 rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.
   batches_per_rollouts: 1  # Number of times we sample from the buffer.
-  batch_size: 4000  # Number of samples in a single batch.
+  batch_size: 10000  # Number of samples in a single batch.
