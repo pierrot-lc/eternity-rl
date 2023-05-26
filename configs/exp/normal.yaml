@@ -1,0 +1,36 @@
+group: Reproduce Normal
+
+env:
+  path: ./instances/eternity_A.txt
+  reward: win
+  max_steps: 64
+
+model:
+  embedding_dim: 18
+  res_layers: 4
+  mlp_layers: 2
+  head_layers: 3
+  maxpool_kernel: 2
+  zero_init_residuals: false
+  use_time_embedding: true
+
+optimizer:
+  optimizer: adamw
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+
+scheduler:
+  warmup_steps: 10
+
+reinforce:
+  advantage: estimated
+  entropy_weight: 1.0e-5
+  total_rollouts: 10000
+  gamma: 1.00
+  clip_value: 0.005
+  save_every: 500
+
+rollout_buffer:
+  buffer_size: 10000  # Number of played games in a single buffer.
+  batches_per_rollouts: 1  # Number of times we sample from the buffer.
+  batch_size: 100000  # Number of samples in a single batch.
