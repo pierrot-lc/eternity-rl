@@ -168,6 +168,7 @@ class BatchedEternityEnv(gym.Env):
                     rewards = matches * ~self.terminated / self.best_matches
             case "delta":  # Give a reward at each step.
                 rewards = (matches - previous_matches) / self.best_matches
+                rewards = rewards * ~previous_terminated
             case _:
                 raise ValueError(f"Unknown reward type {self.reward_type}.")
 
