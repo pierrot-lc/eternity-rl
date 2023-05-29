@@ -17,7 +17,7 @@ model:
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-3
-  weight_decay: 1.0e-4
+  weight_decay: 1.0e-5
 
 scheduler:
   warmup_steps: 10
@@ -31,6 +31,6 @@ reinforce:
   save_every: 500
 
 rollout_buffer:
-  buffer_size: 5000  # Number of played games in a single buffer.
+  buffer_size: 4000  # Number of played games in a single buffer.
   batches_per_rollouts: 1  # Number of times we sample from the buffer.
-  batch_size: 100000  # Number of samples in a single batch.
+  batch_size: 256000  # Number of samples in a single batch.
