@@ -4,11 +4,10 @@ from typing import Any
 
 import torch
 import torch.optim as optim
+import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
@@ -119,7 +118,6 @@ class Reinforce:
 
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
-        self.scheduler.step()
 
     def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
         with wandb.init(
@@ -159,6 +157,8 @@ class Reinforce:
                     leave=False,
                 ):
                     self.do_batch_update(rollout_buffer)
+
+                self.scheduler.step()
 
                 metrics = self.evaluate()
                 run.log(metrics)
