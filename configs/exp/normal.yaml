@@ -2,7 +2,7 @@ group: Reproduce Normal
 
 env:
   path: ./instances/eternity_A.txt
-  reward: win
+  reward: delta
   max_steps: 64
 
 model:
@@ -16,7 +16,7 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-5
   weight_decay: 1.0e-5
 
 scheduler:
@@ -26,11 +26,11 @@ reinforce:
   advantage: estimated
   entropy_weight: 1.0e-5
   total_rollouts: 10000
-  gamma: 1.00
-  clip_value: 0.05
+  gamma: 0.95
+  clip_value: 0.5
   save_every: 500
 
 rollout_buffer:
   buffer_size: 4000  # Number of played games in a single buffer.
-  batches_per_rollouts: 1  # Number of times we sample from the buffer.
-  batch_size: 256000  # Number of samples in a single batch.
+  batches_per_rollouts: 2  # Number of times we sample from the buffer.
+  batch_size: 100000  # Number of samples in a single batch.
