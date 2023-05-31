@@ -99,9 +99,7 @@ class RolloutBuffer:
         match advantage_type:
             case "estimated":
                 returns = self.return_buffer[:, 0]
-                self.advantage_buffer = (self.return_buffer - returns.mean()) / (
-                    returns.std() + 1e-8
-                )
+                self.advantage_buffer = self.return_buffer - returns.mean()
             case "no-advantage":
                 self.advantage_buffer = self.return_buffer
             case _:
