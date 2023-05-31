@@ -89,7 +89,11 @@ class Reinforce:
 
         logprobs, entropies = [], []
         for i in range(len(probs)):
-            l, e = self.model.logprobs(probs[i], sample["actions"][:, i])
+            if type(self.model) is DDP:
+                l, e = self.model.module.logprobs(probs[i], sample["actions"][:, i])
+            else:
+                l, e = self.model.logprobs(probs[i], sample["actions"][:, i])
+
             logprobs.append(l)
             entropies.append(e)
 

@@ -4,7 +4,7 @@ defaults:
 
 seed: 0
 device: auto
-distributed: []
+distributed: [cuda:0, cuda:1, cuda:2]
 mode: online
 
 hydra:
