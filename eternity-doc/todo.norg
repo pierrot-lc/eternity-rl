@@ -23,3 +23,4 @@ updated: 2023-06-02
   - (x) A multi-GPU training.
   - ( ) Add critic loss to the actor loss.
   - ( ) Reward function not sensible to potential bad ending moves.
+  - ( ) Remove old code (supervised, mcts, ...).
