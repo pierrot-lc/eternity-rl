@@ -161,12 +161,15 @@ class BatchedEternityEnv(gym.Env):
         infos["just_won"] = self.terminated & ~previous_terminated
 
         match self.reward_type:
-            case "win":  # Only give a reward at the end of the episode.
+            case "win":
+                # Only give a reward at the end of the episode.
+                # Either when the environment is done or if the episode is truncated.
                 if not self.truncated:
                     rewards = matches * infos["just_won"] / self.best_matches
                 else:
                     rewards = matches * ~self.terminated / self.best_matches
-            case "delta":  # Give a reward at each step.
+            case "delta":
+                # Give a reward at each step.
                 rewards = (matches - previous_matches) / self.best_matches
                 rewards = rewards * ~previous_terminated
             case _:

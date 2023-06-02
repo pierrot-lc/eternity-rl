@@ -78,6 +78,21 @@ class Backbone(nn.Module):
         tiles: torch.Tensor,
         timesteps: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Embed the game state.
+
+        ---
+        Args:
+            tiles: The game state.
+                Tensor of shape [batch_size, 4, board_height, board_width].
+            timestep: The timestep of the game states.
+                Optional, used when timesteps encodings are used.
+                Tensor of shape [batch_size,].
+
+        ---
+        Returns:
+            The embedding of the game state.
+                Shape of [batch_size, embedding_dim].
+        """
         assert (
             timesteps is not None or not self.use_time_encoding
         ), "Timesteps are required when use_timesteps is True."

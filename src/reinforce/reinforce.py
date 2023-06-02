@@ -4,10 +4,11 @@ from typing import Any
 
 import torch
 import torch.optim as optim
-import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
+
+import wandb
 
 from ..environment import BatchedEternityEnv
 from ..model import CNNPolicy
@@ -124,6 +125,20 @@ class Reinforce:
         self.optimizer.step()
 
     def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
+        """Launches the training loop.
+
+        ---
+        Args:
+            group: The name of the group for the run.
+                Useful for grouping runs together.
+            config: The configuration of the run.
+                Only used for logging purposes.
+            mode: The mode of the run. Can be:
+                - "online": The run is logged online to W&B.
+                - "offline": The run is logged offline to W&B.
+                - "disabled": The run does not produce any output.
+                    Useful for multi-GPU training.
+        """
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
