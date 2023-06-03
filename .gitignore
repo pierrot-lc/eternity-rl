@@ -8,3 +8,7 @@ data/
 **/.pytest_cache/
 outputs/
 poetry.lock
+pdm.lock
+.pdm-python
+dist/
+build/
