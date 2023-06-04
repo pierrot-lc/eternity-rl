@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_optimizer import Lamb
 
-from src.environment import BatchedEternityEnv
+from src.environment import EternityEnv
 from src.model import CNNPolicy
 from src.reinforce import Reinforce
 
@@ -31,9 +31,9 @@ def cleanup_distributed():
     dist.destroy_process_group()
 
 
-def init_env(config: DictConfig) -> BatchedEternityEnv:
+def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
-    env = BatchedEternityEnv.from_file(
+    env = EternityEnv.from_file(
         config.exp.env.path,
         config.exp.rollout_buffer.buffer_size,
         config.exp.env.reward,
@@ -44,7 +44,7 @@ def init_env(config: DictConfig) -> BatchedEternityEnv:
     return env
 
 
-def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
+def init_model(config: DictConfig, env: EternityEnv) -> CNNPolicy:
     """Initialize the model."""
     model = CNNPolicy(
         n_classes=env.n_classes,
@@ -101,7 +101,7 @@ def init_scheduler(
 
 def init_trainer(
     config: DictConfig,
-    env: BatchedEternityEnv,
+    env: EternityEnv,
     model: nn.Module,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,

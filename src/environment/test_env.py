@@ -1,17 +1,26 @@
+from itertools import product
 from pathlib import Path
 
 import einops
-import numpy as np
 import pytest
 import torch
 
-from .batched_gym import BatchedEternityEnv
-from .gym import ENV_DIR, ENV_ORDERED, EternityEnv, next_instance, read_instance_file
+from .gym import (
+    EAST,
+    ENV_DIR,
+    ENV_ORDERED,
+    NORTH,
+    SOUTH,
+    WEST,
+    EternityEnv,
+    next_instance,
+    read_instance_file,
+)
 
 
 def test_read_instance():
     instance = read_instance_file(Path("instances/eternity_A.txt"))
-    real = np.array(
+    real = torch.LongTensor(
         [
             [
                 [0, 0, 0, 0],
@@ -39,10 +48,10 @@ def test_read_instance():
             ],
         ]
     )
-    assert np.all(instance[:, 0, 0] == np.array([0, 1, 2, 0]))
-    assert np.all(instance[:, 3, 3] == np.array([1, 0, 0, 7]))
-    assert np.all(instance[:, 3, 2] == np.array([4, 7, 0, 3]))
-    assert np.all(instance == real)
+    assert torch.all(instance[:, 0, 0] == torch.LongTensor([0, 1, 2, 0]))
+    assert torch.all(instance[:, 3, 3] == torch.LongTensor([1, 0, 0, 7]))
+    assert torch.all(instance[:, 3, 2] == torch.LongTensor([4, 7, 0, 3]))
+    assert torch.all(instance == real)
 
 
 def test_env_sizes():
@@ -55,134 +64,51 @@ def test_env_sizes():
 
 
 def test_matches_tiles():
-    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
-    assert env.count_matches() == 12
-    assert env.count_tile_matches((0, 0)) == 1
-    assert env.count_tile_matches((1, 2)) == 3
+    def count_tile_matches(instance: torch.Tensor, x: int, y: int) -> int:
+        matches = 0
+        tile = instance[:, y, x]
+        size = instance.shape[-1]
 
-    env.reset()
-    rng = np.random.default_rng(0)
-    for _ in range(10):
-        action = np.array(
-            [
-                rng.integers(0, env.n_pieces - 1),
-                rng.integers(0, 4),
-                rng.integers(0, env.n_pieces - 1),
-                rng.integers(0, 4),
-            ]
+        tile_sides = [NORTH, EAST, SOUTH, WEST]
+        other_sides = [SOUTH, WEST, NORTH, EAST]
+        other_coords = [
+            (y + 1, x),
+            (y, x + 1),
+            (y - 1, x),
+            (y, x - 1),
+        ]
+
+        for side_t, side_o, coords_o in zip(tile_sides, other_sides, other_coords):
+            if not (0 <= coords_o[0] < size) or not (0 <= coords_o[1] < size):
+                continue  # Those coords are outside the square.
+
+            tile_class = tile[side_t]
+            other_class = instance[side_o, coords_o[0], coords_o[1]]
+
+            # Do not count walls as matches.
+            matches += int(tile_class == other_class != 0)  # Ignore walls.
+
+        return matches
+
+    def count_matches(instance: torch.Tensor) -> int:
+        # Count all matches between each tile.
+        size = instance.shape[-1]
+        matches = sum(
+            count_tile_matches(instance, x, y)
+            for x, y in product(range(size), range(size))
         )
-        _, _, done, _ = env.step(action)
-        if done:
-            return
+        matches = matches // 2  # Sides have all been checked twice.
+        return matches
 
-        assert env.count_matches() == env.matches
-
-
-@pytest.mark.parametrize(
-    "coords_1, coords_2",
-    [
-        ((0, 0), (3, 2)),
-        ((0, 0), (2, 1)),
-        ((0, 0), (0, 0)),
-        ((1, 2), (2, 1)),
-    ],
-)
-def test_swap_tiles(coords_1: tuple[int, int], coords_2: tuple[int, int]):
-    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
-
-    tile_1 = env.instance[:, coords_1[0], coords_1[1]].copy()
-    tile_2 = env.instance[:, coords_2[0], coords_2[1]].copy()
-    env.swap_tiles(coords_1, coords_2)
-
-    assert np.all(tile_1 == env.instance[:, coords_2[0], coords_2[1]])
-    assert np.all(tile_2 == env.instance[:, coords_1[0], coords_1[1]])
-
-
-@pytest.mark.parametrize(
-    "instance_1, instance_2",
-    [
-        (
-            "eternity_trivial_A.txt",
-            "eternity_trivial_B.txt",
-        ),
-        (
-            "eternity_A.txt",
-            "eternity_B.txt",
-        ),
-        (
-            "eternity_C.txt",
-            "eternity_D.txt",
-        ),
-        (
-            "eternity_E.txt",
-            "eternity_complet.txt",
-        ),
-    ],
-)
-def test_instance_upgrade(instance_1: str, instance_2: str):
-    assert next_instance(ENV_DIR / instance_1) == ENV_DIR / instance_2
-
-
-@pytest.mark.parametrize(
-    "coords, roll_value", [((0, 0), 1), ((3, 2), -1), ((1, 1), 10)]
-)
-def test_roll_tiles(coords: tuple[int, int], roll_value: int):
-    env = EternityEnv(instance_path=Path("instances/eternity_A.txt"))
-    tile = env.instance[:, coords[0], coords[1]].copy()
-
-    env.roll_tile(coords, roll_value)
-    assert np.all(env.instance[:, coords[0], coords[1]] == np.roll(tile, roll_value))
-
-
-@pytest.mark.parametrize(
-    "instance_path",
-    [
-        "eternity_trivial_A.txt",
-        "eternity_trivial_B.txt",
-        "eternity_A.txt",
-    ],
-)
-def test_reset(instance_path: str):
-    env = EternityEnv(instance_path=ENV_DIR / instance_path)
-    env.reset()
-    matches = env.count_matches()
-    instance = env.instance
-    tot_steps = env.tot_steps
-    env.reset(instance.copy(), tot_steps)
-    assert env.count_matches() == matches
-    assert np.all(env.instance == instance)
-    assert env.tot_steps == tot_steps
-
-    env.reset(instance.copy())
-    assert env.count_matches() == matches
-    assert np.all(env.instance == instance)
-    assert env.tot_steps == 0
-
-    env.reset()
-    assert np.any(env.instance != instance)  # It should pass, but we may get unlucky.
-    assert env.tot_steps == 0
-
-
-@pytest.mark.parametrize(
-    "instance_path",
-    [
-        "eternity_trivial_A.txt",
-        "eternity_trivial_B.txt",
-        "eternity_A.txt",
-    ],
-)
-def test_batch_matches(instance_path: str):
-    env = EternityEnv(instance_path=ENV_DIR / instance_path)
-    instance = env.render()
-    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
-    instances = torch.stack(instances)
-    env = BatchedEternityEnv(instances, "win", 4, "cpu")
-
-    matches = env.matches
-
-    for instance, instance_match in zip(instances, matches):
-        env = EternityEnv(instance=instance.numpy())
-        assert env.count_matches() == instance_match.item()
+    env = EternityEnv.from_file(
+        Path("./instances/eternity_A.txt"), 10, "win", 10, "cpu"
+    )
+    assert torch.all(env.matches == 12)
+    for _ in range(10):
+        env.reset()
+        matches = env.matches
+        for instance_id, instance in enumerate(env.instances):
+            assert count_matches(instance) == matches[instance_id]
 
 
 @pytest.mark.parametrize(
@@ -194,12 +120,8 @@ def test_batch_matches(instance_path: str):
     ],
 )
 def test_batch_scramble(instance_path: str):
-    env = EternityEnv(instance_path=ENV_DIR / instance_path)
-    reference = torch.LongTensor(env.reset())
-    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
-    instances = torch.stack(instances)
-    env = BatchedEternityEnv(instances, "win", 4, "cpu")
-
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "win", 10, "cpu")
+    reference = env.instances[0].clone()
     env.scramble_instances()
 
     def compare_pieces(piece_1: torch.Tensor, piece_2: torch.Tensor) -> bool:
@@ -231,7 +153,7 @@ def test_batch_scramble(instance_path: str):
 def test_batch_roll():
     input_tensor = torch.randn((10, 5))
     shifts = torch.randint(low=-15, high=15, size=(len(input_tensor),))
-    rolled_tensor = BatchedEternityEnv.batched_roll(input_tensor, shifts)
+    rolled_tensor = EternityEnv.batched_roll(input_tensor, shifts)
 
     for inpt, shift, rolled in zip(input_tensor, shifts, rolled_tensor):
         assert torch.all(torch.roll(inpt, shift.item()) == rolled)
@@ -246,23 +168,20 @@ def test_batch_roll():
     ],
 )
 def test_batch_roll_action(instance_path):
-    env = EternityEnv(instance_path=ENV_DIR / instance_path)
-    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
-    instances = torch.stack(instances)
-
-    env = BatchedEternityEnv(instances, "win", 4, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "win", 10, "cpu")
+    instance_reference = env.instances[0].clone()
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     shifts = torch.randint(low=0, high=4, size=(env.batch_size,))
     env.roll_tiles(tile_ids, shifts)
 
-    for instance_ref, instance_rolled, tile_id, shift in zip(
-        instances, env.instances, tile_ids, shifts
-    ):
-        env = EternityEnv(instance=instance_ref.numpy())
-        coords = (tile_id.item() // env.size, tile_id.item() % env.size)
-        env.roll_tile(coords, shift.item())
+    for instance_rolled, tile_id, shift in zip(env.instances, tile_ids, shifts):
+        coords = (tile_id.item() // env.board_size, tile_id.item() % env.board_size)
+        instance_copy = instance_reference.clone()
+        instance_copy[:, coords[0], coords[1]] = torch.roll(
+            instance_copy[:, coords[0], coords[1]], shift.item()
+        )
 
-        assert torch.all(torch.LongTensor(env.instance) == instance_rolled)
+        assert torch.all(instance_copy == instance_rolled)
 
 
 @pytest.mark.parametrize(
@@ -274,22 +193,49 @@ def test_batch_roll_action(instance_path):
     ],
 )
 def test_batch_swap_action(instance_path):
-    env = EternityEnv(instance_path=ENV_DIR / instance_path)
-    instances = [torch.LongTensor(env.reset().copy()) for _ in range(10)]
-    instances = torch.stack(instances)
-
-    env = BatchedEternityEnv(instances, "win", 4, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "win", 10, "cpu")
+    instance_reference = env.instances[0].clone()
     tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     env.swap_tiles(tile_ids_1, tile_ids_2)
 
-    for instance_ref, instance_rolled, tile_id_1, tile_id_2 in zip(
-        instances, env.instances, tile_ids_1, tile_ids_2
+    for instance_swapped, tile_id_1, tile_id_2 in zip(
+        env.instances, tile_ids_1, tile_ids_2
     ):
-        env = EternityEnv(instance=instance_ref.numpy())
         coords = [
-            (c.item() // env.size, c.item() % env.size) for c in [tile_id_1, tile_id_2]
+            (c.item() // env.board_size, c.item() % env.board_size)
+            for c in [tile_id_1, tile_id_2]
         ]
-        env.swap_tiles(coords[0], coords[1])
+        instance_copy = instance_reference.clone()
+        tile = instance_copy[:, coords[0][0], coords[0][1]].clone()
+        instance_copy[:, coords[0][0], coords[0][1]] = instance_copy[
+            :, coords[1][0], coords[1][1]
+        ]
+        instance_copy[:, coords[1][0], coords[1][1]] = tile
 
-        assert torch.all(torch.LongTensor(env.instance) == instance_rolled)
+        assert torch.all(instance_copy == instance_swapped)
+
+
+@pytest.mark.parametrize(
+    "instance_1, instance_2",
+    [
+        (
+            "eternity_trivial_A.txt",
+            "eternity_trivial_B.txt",
+        ),
+        (
+            "eternity_A.txt",
+            "eternity_B.txt",
+        ),
+        (
+            "eternity_C.txt",
+            "eternity_D.txt",
+        ),
+        (
+            "eternity_E.txt",
+            "eternity_complet.txt",
+        ),
+    ],
+)
+def test_instance_upgrade(instance_1: str, instance_2: str):
+    assert next_instance(ENV_DIR / instance_1) == ENV_DIR / instance_2

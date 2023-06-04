@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 import wandb
 
-from ..environment import BatchedEternityEnv
+from ..environment import EternityEnv
 from ..model import CNNPolicy
 from .rollout_buffer import RolloutBuffer
 
@@ -18,7 +18,7 @@ from .rollout_buffer import RolloutBuffer
 class Reinforce:
     def __init__(
         self,
-        env: BatchedEternityEnv,
+        env: EternityEnv,
         model: CNNPolicy,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,

@@ -1,14 +1,28 @@
-import os
-from itertools import product
+"""A batched version of the environment.
+All actions are made on the batch.
+"""
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any
 
-import einops
 import gymnasium as gym
 import gymnasium.spaces as spaces
 import numpy as np
+import torch
+from einops import rearrange, repeat
 
 from .draw import draw_instance
+
+ENV_DIR = Path("./instances")
+ENV_ORDERED = [
+    "eternity_trivial_A.txt",
+    "eternity_trivial_B.txt",
+    "eternity_A.txt",
+    "eternity_B.txt",
+    "eternity_C.txt",
+    "eternity_D.txt",
+    "eternity_E.txt",
+    "eternity_complet.txt",
+]
 
 # Ids of the sides of the tiles.
 # The y-axis has its origin at the bottom.
@@ -23,290 +37,394 @@ ORIGIN_SOUTH = 1
 ORIGIN_WEST = 2
 ORIGIN_EAST = 3
 
-WALL_ID = 0
+# Defines convs that will compute vertical and horizontal matches.
+# Shapes are [out_channels, in_channels, kernel_height, kernel_width].
+# See `BatchedEternityEnv.matches` for more information.
+# Don't forget that the y-axis is reversed!!
+HORIZONTAL_CONV = torch.zeros((1, 4, 2, 1))
+HORIZONTAL_CONV[0, SOUTH, 1, 0] = 1
+HORIZONTAL_CONV[0, NORTH, 0, 0] = -1
 
-ENV_DIR = Path("./instances")
-ENV_ORDERED = [
-    "eternity_trivial_A.txt",
-    "eternity_trivial_B.txt",
-    "eternity_A.txt",
-    "eternity_B.txt",
-    "eternity_C.txt",
-    "eternity_D.txt",
-    "eternity_E.txt",
-    "eternity_complet.txt",
-]
+VERTICAL_CONV = torch.zeros((1, 4, 1, 2))
+VERTICAL_CONV[0, EAST, 0, 0] = 1
+VERTICAL_CONV[0, WEST, 0, 1] = -1
+
+# Convs to detect the 0-0 matches.
+HORIZONTAL_ZERO_CONV = torch.zeros((1, 4, 2, 1))
+HORIZONTAL_ZERO_CONV[0, SOUTH, 1, 0] = 1
+HORIZONTAL_ZERO_CONV[0, NORTH, 0, 0] = 1
+
+VERTICAL_ZERO_CONV = torch.zeros((1, 4, 1, 2))
+VERTICAL_ZERO_CONV[0, EAST, 0, 0] = 1
+VERTICAL_ZERO_CONV[0, WEST, 0, 1] = 1
 
 
 class EternityEnv(gym.Env):
-    metadata = {"render.modes": ["rgb_array", "computer"]}
+    """A batched version of the environment.
+    All computations are done on GPU using torch tensors
+    instead of numpy arrays.
+    """
+
+    metadata = {"render.modes": ["computer"]}
 
     def __init__(
         self,
-        instance: Optional[np.ndarray] = None,
-        instance_path: Optional[Union[Path, str]] = None,
-        reward_type: str = "win_ratio",
-        reward_penalty: float = 0.0,
+        instances: torch.Tensor,
+        reward_type: str,
+        max_steps: int,
+        device: str,
         seed: int = 0,
     ):
-        super().__init__()
-
-        assert (instance is None) ^ (instance_path is None)
-
-        self.rng = np.random.default_rng(seed)
-        self.instance = instance if instance is not None else np.zeros((4, 0, 0))
-        self.instance_path = instance_path
-        if instance_path is not None:
-            self.instance = read_instance_file(
-                instance_path
-            )  # Shape is [4, size, size].
-
-        self.size = self.instance.shape[-1]
-        self.n_class = self.instance.max() + 1
-        self.n_pieces = self.size * self.size
-        self.max_steps = self.n_pieces * 4
-        self.best_matches = (
-            2
-            * self.size
-            * (self.size - 1)  # Inner matches.
-            # + 4 * self.size  # Walls matches at the borders.
-        )
-        self.matches = 0
-        self.tot_steps = 0
-
-        self.action_space = spaces.MultiDiscrete(
-            [
-                self.n_pieces,  # Tile id to swap
-                self.n_pieces,  # Tile id to swap
-                4,  # How much rolls for the first tile
-                4,  # How much rolls for the second tile
-            ]
-        )
-
-        self.observation_space = spaces.Box(
-            low=0, high=1, shape=self.render().shape, dtype=np.uint8
-        )
-
-        self.reward_type = reward_type
-        self.reward_penalty = reward_penalty
-
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, dict]:
-        """Swap the two chosen tiles and orient them in the best possible way.
+        """Initialize the environment.
 
         ---
         Args:
-            action: Id of the tiles to swap and their rolling shift values.
-                In the form of [tile_1_id, roll_1, tile_2_id, roll_2].
+            instances: The instances of this environment.
+                Long tensor of shape of [batch_size, 4, size, size].
+            reward_type: The type of reward to use.
+                Can be either "delta" or "win".
+            max_steps: The maximum number of steps.
+            device: The device to use.
+            seed: The seed for the random number generator.
+        """
+        assert len(instances.shape) == 4, "Tensor must have 4 dimensions."
+        assert instances.shape[1] == 4, "The pieces must have 4 sides."
+        assert instances.shape[2] == instances.shape[3], "Instances are not squares."
+        assert torch.all(instances >= 0), "Classes must be positives."
+        assert reward_type in ["delta", "win"], "Unknown reward type."
+
+        super().__init__()
+        self.instances = instances.to(device)
+        self.reward_type = reward_type
+        self.device = device
+        self.rng = torch.Generator(device).manual_seed(seed)
+
+        # Instances infos.
+        self.board_size = self.instances.shape[-1]
+        self.n_pieces = self.board_size * self.board_size
+        self.n_classes = int(self.instances.max().cpu().item() + 1)
+        self.max_steps = max_steps
+        self.best_matches = 2 * self.board_size * (self.board_size - 1)
+        self.batch_size = self.instances.shape[0]
+
+        # Dynamic infos.
+        self.step_id = 0
+        self.truncated = False
+        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
+
+        # Spaces
+        # Those spaces do not take into account that
+        # this env is a batch of multiple instances.
+        self.action_space = spaces.MultiDiscrete(
+            [
+                self.n_pieces,  # Tile id to swap.
+                self.n_pieces,  # Tile id to swap.
+                4,  # How much rolls for the first tile.
+                4,  # How much rolls for the first tile.
+            ]
+        )
+        self.observation_space = spaces.Box(
+            low=0, high=1, shape=self.instances.shape[1:], dtype=np.uint8
+        )
+
+    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
+        """Reset the environment.
+
+        Scrambles the instances and reset their infos.
+        """
+        self.scramble_instances()
+        self.step_id = 0
+        self.truncated = False
+        self.terminated = torch.zeros(
+            self.batch_size, dtype=torch.bool, device=self.device
+        )
+
+        return self.render(), dict()
+
+    @torch.no_grad()
+    def step(
+        self, actions: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, bool, dict[str, Any]]:
+        """Do a batched step through all instances.
+
+        ---
+        Args:
+            actions: Batch of actions to apply.
+                Long tensor of shape of [batch_size, actions]
+                where actions are a tuple (tile_id_1, shift_1, tile_id_2, shift_2).
 
         ---
         Returns:
-            observation: Array of observation, output of self.render.
-            reward: Number of matching sides.
-            done: Is there still sides that are not matched?
-            info: -
+            observations: The observation of the environments.
+                Shape of [batch_size, 4, size, size].
+            rewards: The reward of the environments.
+                Shape of [batch_size,].
+            terminated: Whether the environments are terminated (won).
+                Shape of [batch_size,].
+            truncated: Whether the environments are truncated (max steps reached).
+            infos: Additional infos.
+                - `just_won`: Whether the environments has just been won.
         """
+        infos = dict()
+        self.step_id += 1
+        tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
+        shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
+
+        # Save the previous matches (useful for the `delta` reward).
         previous_matches = self.matches
+        previous_terminated = self.terminated.clone()
 
-        rolls = [a for a in action[1::2]]
-        coords = [(a // self.size, a % self.size) for a in action[::2]]
+        self.roll_tiles(tiles_id_1, shifts_1)
+        self.roll_tiles(tiles_id_2, shifts_2)
+        self.swap_tiles(tiles_id_1, tiles_id_2)
 
-        # Roll tiles.
-        self.roll_tile(coords[0], rolls[0])
-        self.roll_tile(coords[1], rolls[1])
+        # New matches counts.
+        matches = self.matches
 
-        # Swap tiles.
-        self.swap_tiles(coords[0], coords[1])
-
-        self.matches = self.count_matches()
-        self.tot_steps += 1
-
-        observation = self.render()
-        win = self.matches == self.best_matches
-        timeout = self.tot_steps == self.max_steps
-        done = win or timeout
+        # Maintain the previous terminated states.
+        self.terminated |= matches == self.best_matches
+        self.truncated = self.step_id >= self.max_steps
+        infos["just_won"] = self.terminated & ~previous_terminated
 
         match self.reward_type:
-            case "win_ratio":
-                reward = self.matches / self.best_matches if done else 0
             case "win":
-                reward = int(win)
+                # Only give a reward at the end of the episode.
+                # Either when the environment is done or if the episode is truncated.
+                if not self.truncated:
+                    rewards = matches * infos["just_won"] / self.best_matches
+                else:
+                    rewards = matches * ~self.terminated / self.best_matches
             case "delta":
-                reward = (self.matches - previous_matches) / self.best_matches
-            case "penalty":
-                reward = 0
+                # Give a reward at each step.
+                rewards = (matches - previous_matches) / self.best_matches
+                rewards = rewards * ~previous_terminated
             case _:
-                raise RuntimeError(f"Unknown reward type: {self.reward_type}.")
+                raise ValueError(f"Unknown reward type {self.reward_type}.")
 
-        reward -= self.reward_penalty  # Small penalty at each step.
+        return self.render(), rewards, self.terminated, self.truncated, infos
 
-        info = {
-            "matches": self.matches,
-            "ratio": self.matches / self.best_matches,
-            "win": win,
-        }
+    def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
+        """Rolls tiles at the given ids for the given shifts.
+        It actually shifts all tiles, but with 0-shifts
+        except for the pointed tile ids.
 
-        if win and self.instance_path == os.path.join(ENV_DIR, "eternity_complet.txt"):
-            self.render(mode="rgb_array", output_file=Path("solution.png"))
+        ---
+        Args:
+            tile_ids: The id of the tiles to roll.
+                Shape of [batch_size,].
+            shifts: The number of shifts for each tile.
+                Shape of [batch_size,].
+        """
+        total_shifts = torch.zeros(
+            self.batch_size * self.n_pieces, dtype=torch.long, device=self.device
+        )
+        offsets = torch.arange(
+            0, self.batch_size * self.n_pieces, self.n_pieces, device=self.device
+        )
+        total_shifts[tile_ids + offsets] = shifts
 
-        return observation, reward, done, info
+        self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
+        self.instances = self.batched_roll(self.instances, total_shifts)
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.board_size,
+            w=self.board_size,
+        )
 
-    def reset(
-        self,
-        instance: Optional[np.ndarray] = None,
-        tot_steps: Optional[int] = None,
-    ) -> np.ndarray:
-        """Scramble the tiles and randomly orient them."""
-        if instance is None:
-            # Randomly mix the tiles to create a new instance.
-            instance = self.instance
-            height = instance.shape[1]
-            instance = einops.rearrange(instance, "c h w -> (h w) c")
+    def swap_tiles(self, tile_ids_1: torch.Tensor, tile_ids_2: torch.Tensor):
+        """Swap two tiles in each element of the batch.
 
-            # Scramble the tiles.
-            instance = self.rng.permutation(instance, axis=0)
+        ---
+        Args:
+            tile_ids_1: The id of the first tiles to swap.
+                Shape of [batch_size,].
+            tile_ids_2: The id of the second tiles to swap.
+                Shape of [batch_size,].
+        """
+        offsets = torch.arange(
+            0, self.batch_size * self.n_pieces, self.n_pieces, device=self.device
+        )
+        tile_ids_1 = tile_ids_1 + offsets
+        tile_ids_2 = tile_ids_2 + offsets
+        self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
+        self.instances[tile_ids_1], self.instances[tile_ids_2] = (
+            self.instances[tile_ids_2],
+            self.instances[tile_ids_1],
+        )
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.board_size,
+            w=self.board_size,
+        )
 
-            # Randomly orient the tiles.
-            for tile_id, tile in enumerate(instance):
-                shift_value = self.rng.integers(low=0, high=4)
-                instance[tile_id] = np.roll(tile, shift_value)
+    @property
+    def matches(self) -> torch.Tensor:
+        """The number of matches for each instance.
+        Uses convolutions to vectorize the computations.
 
-            instance = einops.rearrange(instance, "(h w) c -> c h w", h=height)
+        The main idea is to compute the sum $class_id_1 - class_id_2$,
+        where "1" and "2" represents two neighbour tiles.
+        If this sum equals to 0, then the class_id are the same.
 
-        self.instance = instance
-        self.matches = self.count_matches()
-        self.tot_steps = tot_steps if tot_steps is not None else 0
+        We still have to make sure that we're not computing 0-0 matchings,
+        so we also compute $class_id_1 + class_id_2$ and check if this is equal
+        to 0 (which would mean that both class_id are equal to 0).
+        """
+        n_matches = torch.zeros(self.batch_size, device=self.device)
 
-        return self.render()
+        for conv in [HORIZONTAL_CONV, VERTICAL_CONV]:
+            res = torch.conv2d(self.instances.float(), conv.to(self.device))
+            n_matches += (res == 0).float().flatten(start_dim=1).sum(dim=1)
 
-    def render(
-        self, mode: str = "computer", output_file: Optional[Union[str, Path]] = None
-    ) -> np.ndarray:
-        """Transform the instance into an observation.
+        # Remove the 0-0 matches from the count.
+        for conv in [HORIZONTAL_ZERO_CONV, VERTICAL_ZERO_CONV]:
+            res = torch.conv2d(self.instances.float(), conv.to(self.device))
+            n_matches -= (res == 0).float().flatten(start_dim=1).sum(dim=1)
 
-        The observation is a map of shape [4, size, size].
+        return n_matches.long()
+
+    def scramble_instances(self):
+        """Scrambles the instances to start from a new valid configuration."""
+        # Scrambles the tiles.
+        self.instances = rearrange(
+            self.instances, "b c h w -> b (h w) c", w=self.board_size
+        )  # Shape of [batch_size, n_pieces, 4].
+        permutations = torch.stack(
+            [
+                torch.randperm(self.n_pieces, generator=self.rng, device=self.device)
+                for _ in range(self.batch_size)
+            ]
+        )  # Shape of [batch_size, n_pieces].
+        # Permute tiles according to `permutations`.
+        for instance_id in range(self.batch_size):
+            self.instances[instance_id] = self.instances[instance_id][
+                permutations[instance_id]
+            ]
+
+        # Randomly rolls the tiles.
+        shifts = torch.randint(
+            low=0,
+            high=4,
+            size=(self.batch_size * self.n_pieces,),
+            generator=self.rng,
+            device=self.device,
+        )
+        self.instances = rearrange(self.instances, "b p c -> (b p) c")
+        self.instances = self.batched_roll(self.instances, shifts)
+        self.instances = rearrange(
+            self.instances,
+            "(b h w) c -> b c h w",
+            b=self.batch_size,
+            h=self.board_size,
+            w=self.board_size,
+        )
+
+    def render(self, mode: str = "computer") -> torch.Tensor:
+        """Render the environment.
+
+        ---
+        Args:
+            mode: The rendering type.
+
+        ---
+        Returns:
+            The observation of shape [batch_size, 4, size, size].
         """
         match mode:
             case "computer":
-                return self.instance
-            case "rgb_array":
-                return draw_instance(self.instance, self.count_matches(), output_file)
+                return self.instances
             case _:
                 raise RuntimeError(f"Unknown rendering type: {mode}.")
 
-    def count_tile_matches(self, coords: tuple[int, int]) -> int:
-        """Count the matches a tile has with its neighbours.
-        Walls are not counted as matches.
+    def save_best_env(self, filepath: Path | str):
+        """Render the best environment and save it on disk."""
+        best_env = self.matches.argmax()
+        best_score = self.matches[best_env].cpu().item()
+        board = self.instances[best_env].cpu().numpy()
+        draw_instance(board, best_score, filepath)
+
+    @staticmethod
+    def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:
+        """Batched version of `torch.roll`.
+        It applies a circular shifts to the last dimension of the tensor.
+
+        ---
+        Args:
+            input_tensor: The tensor to roll.
+                Shape of [batch_size, hidden_size].
+            shifts: The number of shifts for each element of the batch.
+                Shape of [batch_size,].
+
+        ---
+        Returns:
+            The rolled tensor.
         """
-        matches = 0
-        tile = self.instance[:, coords[0], coords[1]]
+        batch_size, hidden_size = input_tensor.shape
+        # In the right range of values (circular shift).
+        shifts = shifts % hidden_size
+        # To match the same direction as `torch.roll`.
+        shifts = hidden_size - shifts
 
-        tile_sides = [NORTH, EAST, SOUTH, WEST]
-        other_sides = [SOUTH, WEST, NORTH, EAST]
-        other_coords = [
-            (coords[0] + 1, coords[1]),  # (y, x)
-            (coords[0], coords[1] + 1),
-            (coords[0] - 1, coords[1]),
-            (coords[0], coords[1] - 1),
-        ]
+        # Compute the indices that will select the right part of the extended tensor.
+        offsets = torch.arange(hidden_size, device=input_tensor.device)
+        offsets = repeat(offsets, "h -> b h", b=batch_size)
+        select_indices = shifts.unsqueeze(1) + offsets
 
-        for side_t, side_o, coords_o in zip(tile_sides, other_sides, other_coords):
-            if not (0 <= coords_o[0] < self.size) or not (0 <= coords_o[1] < self.size):
-                continue  # Those coords are outside the square.
+        # Extend the input tensor with circular padding.
+        input_tensor = torch.concat((input_tensor, input_tensor), dim=1)
 
-            tile_class = tile[side_t]
-            other_class = self.instance[side_o, coords_o[0], coords_o[1]]
+        rolled_tensor = torch.gather(input_tensor, dim=1, index=select_indices)
+        return rolled_tensor
 
-            # Do not count walls as matches.
-            matches += int(tile_class == other_class != WALL_ID)
-
-        return matches
-
-    def count_walls_matches(self, coords: tuple[int, int]) -> int:
-        """Count all walls matches for the given tile.
-        A wall is considered a match if it is at the border of the map.
-        """
-        matches = 0
-        tile = self.instance[:, coords[0], coords[1]]
-
-        if coords[0] == 0 and tile[SOUTH] == WALL_ID:
-            matches += 1
-        if coords[0] == self.size - 1 and tile[NORTH] == WALL_ID:
-            matches += 1
-        if coords[1] == 0 and tile[WEST] == WALL_ID:
-            matches += 1
-        if coords[1] == self.size - 1 and tile[EAST] == WALL_ID:
-            matches += 1
-
-        return matches
-
-    def count_matches(self) -> int:
-        """Count all matches for the current state."""
-        # Count all matches between each tile.
-        matches = sum(
-            self.count_tile_matches((y, x))
-            for x, y in product(range(self.size), range(self.size))
-        )
-        matches = matches // 2  # Sides have all been checked twice.
-
-        # Count all matches between walls and borders.
-        # matches += sum(
-        #     self.count_walls_matches((y, x))
-        #     for x, y in product(range(self.size), range(self.size))
-        # )
-
-        return matches
-
-    def swap_tiles(
-        self, tile_1_coords: tuple[int, int], tile_2_coords: tuple[int, int]
+    @classmethod
+    def from_file(
+        cls,
+        instance_path: Path,
+        batch_size: int,
+        reward_type: str,
+        max_steps: int,
+        device: str,
+        seed: int = 0,
     ):
-        """Swap the two given tiles."""
-        tile_1 = self.instance[:, tile_1_coords[0], tile_1_coords[1]].copy()
-        tile_2 = self.instance[:, tile_2_coords[0], tile_2_coords[1]]
-
-        self.instance[:, tile_1_coords[0], tile_1_coords[1]] = tile_2
-        self.instance[:, tile_2_coords[0], tile_2_coords[1]] = tile_1
-
-    def roll_tile(self, coords: tuple[int, int], shift_value: int):
-        """Reorient the tile by doing a circular shift."""
-        self.instance[:, coords[0], coords[1]] = np.roll(
-            self.instance[:, coords[0], coords[1]], shift_value
-        )
-
-    def seed(self, seed: int):
-        """Modify the seed."""
-        self.rng = np.random.default_rng(seed)
+        instance = read_instance_file(instance_path)
+        instances = repeat(instance, "c h w -> b c h w", b=batch_size)
+        return cls(instances, reward_type, max_steps, device, seed)
 
 
-def read_instance_file(instance_path: Union[Path, str]) -> np.ndarray:
+def read_instance_file(instance_path: Path | str) -> torch.Tensor:
     """Read the instance file and return a matrix containing the ordered elements.
 
-    Output
-    ------
+    ---
+    Returns:
         data: Matrix containing each tile.
             Shape of [4, y-axis, x-axis].
             Origin is in the bottom left corner.
     """
     with open(instance_path, "r") as instance_file:
         instance_file = iter(instance_file)
-
         n = int(next(instance_file))
+        data = torch.zeros((4, n * n), dtype=torch.long)
 
-        data = np.zeros((4, n * n), dtype=np.uint8)
+        # Read all tiles.
         for element_id, element in enumerate(instance_file):
             class_ids = element.split(" ")
             class_ids = [int(c) for c in class_ids]
-            data[:, element_id] = class_ids
 
-    for tile_id in range(data.shape[-1]):
-        tile = data[:, tile_id]
-        tile[NORTH], tile[EAST], tile[SOUTH], tile[WEST] = (
-            tile[ORIGIN_NORTH],
-            tile[ORIGIN_EAST],
-            tile[ORIGIN_SOUTH],
-            tile[ORIGIN_WEST],
-        )
+            # Put the classes in the right order according to our convention.
+            class_ids[NORTH], class_ids[EAST], class_ids[SOUTH], class_ids[WEST] = (
+                class_ids[ORIGIN_NORTH],
+                class_ids[ORIGIN_EAST],
+                class_ids[ORIGIN_SOUTH],
+                class_ids[ORIGIN_WEST],
+            )
 
-    data = data.reshape((4, n, n))
+            data[:, element_id] = torch.tensor(class_ids)
+
+    data = rearrange(data, "c (h w) -> c h w", h=n, w=n)
     return data
 
 
