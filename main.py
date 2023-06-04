@@ -34,10 +34,10 @@ def cleanup_distributed():
 def init_env(config: DictConfig) -> BatchedEternityEnv:
     """Initialize the environment."""
     env = BatchedEternityEnv.from_file(
-        config.env.path,
-        config.reinforce.batch_size,
-        config.env.reward,
-        config.env.max_steps,
+        config.exp.env.path,
+        config.exp.rollout_buffer.buffer_size,
+        config.exp.env.reward,
+        config.exp.env.max_steps,
         config.device,
         config.seed,
     )
@@ -47,26 +47,25 @@ def init_env(config: DictConfig) -> BatchedEternityEnv:
 def init_model(config: DictConfig, env: BatchedEternityEnv) -> CNNPolicy:
     """Initialize the model."""
     model = CNNPolicy(
-        int(env.n_class),
-        embedding_dim=config.model.embedding_dim,
-        n_res_layers=config.model.n_res_layers,
-        n_mlp_layers=config.model.n_gru_layers,
-        n_head_layers=config.model.n_head_layers,
-        maxpool_kernel=config.model.maxpool_kernel,
-        board_width=env.size,
-        board_height=env.size,
-        zero_init_residuals=config.model.zero_init_residuals,
-        gru_as_mlp=config.model.gru_as_mlp,
-        use_time_embedding=config.model.use_time_embedding,
+        n_classes=env.n_classes,
+        embedding_dim=config.exp.model.embedding_dim,
+        res_layers=config.exp.model.res_layers,
+        mlp_layers=config.exp.model.mlp_layers,
+        head_layers=config.exp.model.head_layers,
+        maxpool_kernel=config.exp.model.maxpool_kernel,
+        board_width=env.board_size,
+        board_height=env.board_size,
+        zero_init_residuals=config.exp.model.zero_init_residuals,
+        use_time_embedding=config.exp.model.use_time_embedding,
     )
     return model
 
 
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
     """Initialize the optimizer."""
-    optimizer_name = config.optimizer.optimizer
-    lr = config.optimizer.learning_rate
-    weight_decay = config.optimizer.weight_decay
+    optimizer_name = config.exp.optimizer.optimizer
+    lr = config.exp.optimizer.learning_rate
+    weight_decay = config.exp.optimizer.weight_decay
     optimizers = {
         "adamw": optim.AdamW,
         "adam": optim.Adam,
@@ -95,7 +94,7 @@ def init_scheduler(
         optimizer=optimizer,
         start_factor=0.001,
         end_factor=1.0,
-        total_iters=config.scheduler.warmup_steps,
+        total_iters=config.exp.scheduler.warmup_steps,
     )
     return scheduler
 
@@ -114,13 +113,14 @@ def init_trainer(
         optimizer,
         scheduler,
         config.device,
-        config.reinforce.entropy_weight,
-        config.reinforce.gamma,
-        config.reinforce.clip_value,
-        config.reinforce.n_batches_per_iteration,
-        config.reinforce.n_total_iterations,
-        config.reinforce.advantage,
-        config.reinforce.save_every,
+        config.exp.reinforce.entropy_weight,
+        config.exp.reinforce.gamma,
+        config.exp.reinforce.clip_value,
+        config.exp.rollout_buffer.batch_size,
+        config.exp.rollout_buffer.batches_per_rollouts,
+        config.exp.reinforce.total_rollouts,
+        config.exp.reinforce.advantage,
+        config.exp.reinforce.save_every,
     )
     return trainer
 
@@ -147,7 +147,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
 
     try:
         trainer.launch_training(
-            config.group, OmegaConf.to_container(config), config.mode
+            config.exp.group, OmegaConf.to_container(config), config.mode
         )
     except KeyboardInterrupt:
         # Capture a potential ctrl+c to make sure we clean up distributed processes.
@@ -168,12 +168,14 @@ def run_trainer_single_gpu(config: DictConfig):
     scheduler = init_scheduler(config, optimizer)
     trainer = init_trainer(config, env, model, optimizer, scheduler)
 
-    trainer.launch_training(config.group, OmegaConf.to_container(config), config.mode)
+    trainer.launch_training(
+        config.exp.group, OmegaConf.to_container(config), config.mode
+    )
 
 
 @hydra.main(version_base="1.3", config_path="configs", config_name="default")
 def main(config: DictConfig):
-    config.env.path = Path(to_absolute_path(config.env.path))
+    config.exp.env.path = Path(to_absolute_path(config.exp.env.path))
     world_size = len(config.distributed)
     if world_size > 1:
         mp.spawn(run_trainer_ddp, nprocs=world_size, args=(world_size, config))

@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from .reinforce import Reinforce
+from .rollout_buffer import RolloutBuffer
 
 
 @pytest.mark.parametrize(
@@ -52,5 +53,5 @@ def test_cumulative_decay_return(
     returns: torch.Tensor,
 ):
     assert torch.allclose(
-        Reinforce.cumulative_decay_return(rewards, masks, gamma), returns
+        RolloutBuffer.cumulative_decay_return(rewards, masks, gamma), returns
     )
