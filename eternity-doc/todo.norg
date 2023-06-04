@@ -3,24 +3,15 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-06-02
+updated: 2023-06-04
 @end
 
 * TODO
-  - (=) Explore the importance of the multiple HPs.
-  -- (=) WandB sweeps.
-  -- (=) Model size.
-  -- (=) Learning rate, optimizer, betas...
-  -- (=) Gamma factor.
-  -- (=) Number of max steps.
-  -- (=) Reward type.
-  -- (=) Timesteps in value network and in policy?
-  -- (=) Value network weight.
-  -- (=) Warmup?
-  -- (=) Model init.
-  - (_) A cleaner version of the MCTS.
+  - ( ) Explore the importance of the multiple HPs.
+  -- ( ) Timesteps
+  -- ( ) Model init.
+  -- ( ) MLP for timesteps processing.
   - ( ) Mixing MCTS with neural networks -> AlphaZero.
-  - (x) A multi-GPU training.
   - ( ) Add critic loss to the actor loss.
   - ( ) Reward function not sensible to potential bad ending moves.
-  - ( ) Remove old code (supervised, mcts, ...).
+  -- Curriculum learning?

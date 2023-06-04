@@ -127,6 +127,8 @@ class CNNPolicy(nn.Module):
                 Shape of [batch_size, 4].
             probs: Distribution output of all heads.
                 List of tensor of shape [batch_size, n_actions].
+            values: The predicted values.
+                Shape of [batch_size, 1].
         """
         embed = self.backbone(tiles, timesteps)
 

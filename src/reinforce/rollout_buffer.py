@@ -100,6 +100,7 @@ class RolloutBuffer:
             case "estimated":
                 returns = self.return_buffer[:, 0]
                 self.advantage_buffer = self.return_buffer - returns.mean()
+                self.advantage_buffer = self.advantage_buffer / (returns.std() + 1e-5)
             case "no-advantage":
                 self.advantage_buffer = self.return_buffer
             case _:
@@ -139,6 +140,7 @@ class RolloutBuffer:
             "timesteps": self.flatten_timesteps[steps].to(self.device),
             "actions": self.flatten_actions[steps].to(self.device),
             "advantages": self.flatten_advantages[steps].to(self.device),
+            "returns": self.flatten_returns[steps].to(self.device),
         }
 
     @property
@@ -162,6 +164,17 @@ class RolloutBuffer:
                 Shape of [buffer_size * max_steps, 4].
         """
         return einops.rearrange(self.action_buffer, "b t c -> (b t) c")
+
+    @property
+    def flatten_returns(self) -> torch.Tensor:
+        """Flatten the returns buffer.
+
+        ---
+        Returns:
+            The flattened returns buffer.
+                Shape of [buffer_size * max_steps].
+        """
+        return einops.rearrange(self.return_buffer, "b t -> (b t)")
 
     @property
     def flatten_advantages(self) -> torch.Tensor:

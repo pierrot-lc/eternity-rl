@@ -98,16 +98,18 @@ class Reinforce:
             logprobs.append(l)
             entropies.append(e)
 
-        logprobs = torch.stack(logprobs, dim=1)
         entropies = [
             1.0 * entropies[0],
             0.1 * entropies[1],
             0.5 * entropies[2],
             0.1 * entropies[3],
         ]
+        logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        losses["policy"] = -(logprobs * sample["advantages"].unsqueeze(1)).mean()
+        losses["policy"] = -(
+            logprobs * sample["advantages"].unsqueeze(1).detach()
+        ).mean()
         losses["entropy"] = -self.entropy_weight * entropies.mean()
         losses["total"] = sum(losses.values())
         return losses
