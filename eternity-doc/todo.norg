@@ -11,7 +11,10 @@ updated: 2023-06-04
   -- ( ) Timesteps
   -- ( ) Model init.
   -- ( ) MLP for timesteps processing.
-  - ( ) Mixing MCTS with neural networks -> AlphaZero.
-  - ( ) Add critic loss to the actor loss.
+  - (=) Mixing MCTS with neural networks -> AlphaZero.
+  -- (=) Is it possible to implement it in parallel on GPU?
+  - (x) Add critic loss to the actor loss.
+  -- It is not working so well, maybe because i'm doing MC sampling,
+     or maybe because i'm doing it wrong.
   - ( ) Reward function not sensible to potential bad ending moves.
   -- Curriculum learning?
