@@ -15,22 +15,22 @@ model:
   use_time_embedding: true
 
 optimizer:
-  learning_rate: 5.0e-4
+  learning_rate: 1.0e-4
   optimizer: adamw
-  weight_decay: 0.0e-4
+  weight_decay: 1.0e-3
 
 scheduler:
   warmup_steps: 1
 
 reinforce:
-  advantage: estimated
+  advantage: no-advantage
   entropy_weight: 1.0e-5
-  total_rollouts: 2000
+  total_rollouts: 10000
   gamma: 1.00
   clip_value: 0.05
   save_every: 500
 
 rollout_buffer:
-  buffer_size: 200  # Number of played games in a single buffer.
+  buffer_size: 2000  # Number of played games in a single buffer.
   batches_per_rollouts: 10  # Number of times we sample from the buffer.
-  batch_size: 1000  # Number of samples in a single batch.
+  batch_size: 2000  # Number of samples in a single batch.
