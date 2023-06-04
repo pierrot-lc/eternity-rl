@@ -166,11 +166,14 @@ class EternityEnv(gym.Env):
                 - `just_won`: Whether the environments has just been won.
         """
         infos = dict()
+
+        # Remove actions for already terminated environments.
+        actions[self.terminated] = 0
+
         self.step_id += 1
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
 
-        # Save the previous matches (useful for the `delta` reward).
         previous_matches = self.matches
         previous_terminated = self.terminated.clone()
 
