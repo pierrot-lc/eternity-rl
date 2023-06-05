@@ -6,11 +6,11 @@ env:
   max_steps: 48
 
 model:
-  embedding_dim: 18
-  res_layers: 4
+  embedding_dim: 32
+  res_layers: 5
   mlp_layers: 1
-  head_layers: 2
-  maxpool_kernel: 1
+  head_layers: 3
+  maxpool_kernel: 2
   zero_init_residuals: false
   use_time_embedding: true
 
@@ -31,6 +31,6 @@ reinforce:
   save_every: 500
 
 rollout_buffer:
-  buffer_size: 2000  # Number of played games in a single buffer.
-  batches_per_rollouts: 50  # Number of times we sample from the buffer.
-  batch_size: 2000  # Number of samples in a single batch.
+  buffer_size: 10_000  # Number of played games in a single buffer.
+  batches_per_rollouts: 10  # Number of times we sample from the buffer.
+  batch_size: 10_000  # Number of samples in a single batch.
