@@ -181,8 +181,9 @@ class Reinforce:
 
                 self.scheduler.step()
 
-                metrics = self.evaluate()
-                run.log(metrics)
+                if i % 10 == 0 and mode != "disabled":
+                    metrics = self.evaluate()
+                    run.log(metrics)
 
                 if i % self.save_every == 0 and mode != "disabled":
                     self.save_model("model.pt")
