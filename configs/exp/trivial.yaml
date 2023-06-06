@@ -34,3 +34,5 @@ rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.
   batches_per_rollouts: 10  # Number of times we sample from the buffer.
   batch_size: 2000  # Number of samples in a single batch.
+
+checkpoint:

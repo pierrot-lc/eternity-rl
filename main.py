@@ -74,11 +74,6 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
         "lamb": Lamb,
     }
 
-    if optimizer_name not in optimizers:
-        print(f"Unknown optimizer: {optimizer_name}.")
-        print("Using AdamW instead.")
-        optimizer_name = "adamw"
-
     optimizer = optimizers[optimizer_name](
         model.parameters(), lr=lr, weight_decay=weight_decay
     )
@@ -125,6 +120,18 @@ def init_trainer(
     return trainer
 
 
+def reload_checkpoint(config: DictConfig, trainer: Reinforce):
+    """Reload a checkpoint."""
+    if config.exp.checkpoint is None:
+        return
+
+    checkpoint_path = Path(to_absolute_path(config.exp.checkpoint))
+    state_dict = torch.load(checkpoint_path, map_location=config.device)
+    trainer.model.load_state_dict(state_dict["model"])
+    trainer.optimizer.load_state_dict(state_dict["optimizer"])
+    print(f"Checkpoint from {checkpoint_path} loaded.")
+
+
 def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     """Run the trainer in distributed mode."""
     setup_distributed(rank, world_size)
@@ -144,6 +151,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
     trainer = init_trainer(config, env, model, optimizer, scheduler)
+    reload_checkpoint(config, trainer)
 
     try:
         trainer.launch_training(
@@ -167,6 +175,7 @@ def run_trainer_single_gpu(config: DictConfig):
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
     trainer = init_trainer(config, env, model, optimizer, scheduler)
+    reload_checkpoint(config, trainer)
 
     trainer.launch_training(
         config.exp.group, OmegaConf.to_container(config), config.mode
