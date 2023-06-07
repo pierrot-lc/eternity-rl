@@ -276,6 +276,11 @@ class EternityEnv(gym.Env):
         We still have to make sure that we're not computing 0-0 matchings,
         so we also compute $class_id_1 + class_id_2$ and check if this is equal
         to 0 (which would mean that both class_id are equal to 0).
+
+        ---
+        Returns:
+            The number of matches for each instance.
+                Shape of [batch_size,].
         """
         n_matches = torch.zeros(self.batch_size, device=self.device)
 
