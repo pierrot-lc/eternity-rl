@@ -17,8 +17,10 @@ class RolloutBuffer:
         self.board_size = board_size
         self.n_classes = n_classes
         self.device = device
+        self.pointer = 0
 
         self.create_buffers()
+        self.reset()
 
     def create_buffers(self):
         """Create buffers of shape `[buffer_size, max_steps`].
@@ -66,6 +68,8 @@ class RolloutBuffer:
             device=self.device,
         )
 
+    def reset(self):
+        """Reset the buffer."""
         self.pointer = 0
 
     def store(

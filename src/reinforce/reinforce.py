@@ -48,10 +48,8 @@ class Reinforce:
         self.advantage = advantage
         self.save_every = save_every
 
-    @torch.no_grad()
-    def do_rollouts(self) -> RolloutBuffer:
-        """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
-        rollout_buffer = RolloutBuffer(
+        # Instantiate the rollout buffer once.
+        self.rollout_buffer = RolloutBuffer(
             buffer_size=self.env.batch_size,
             max_steps=self.env.max_steps,
             board_size=self.env.board_size,
@@ -59,6 +57,10 @@ class Reinforce:
             device=self.device,
         )
 
+    @torch.no_grad()
+    def do_rollouts(self) -> RolloutBuffer:
+        """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
+        self.rollout_buffer.reset()
         states, _ = self.env.reset()
         timesteps = torch.zeros(
             self.env.batch_size,
@@ -69,7 +71,7 @@ class Reinforce:
         while not self.env.truncated and not torch.all(self.env.terminated):
             actions, _ = self.model(states, timesteps)
             new_states, rewards, _, _, infos = self.env.step(actions)
-            rollout_buffer.store(
+            self.rollout_buffer.store(
                 states,
                 timesteps,
                 actions,
@@ -80,12 +82,15 @@ class Reinforce:
             states = new_states
             timesteps += 1
 
-        rollout_buffer.finalize(self.advantage, self.gamma)
+        self.rollout_buffer.finalize(self.advantage, self.gamma)
 
-        return rollout_buffer
+        return self.rollout_buffer
 
     def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         losses = dict()
+        for key, value in sample.items():
+            sample[key] = value.to(self.device)
+
         _, probs = self.model(sample["observations"], sample["timesteps"])
 
         logprobs, entropies = [], []
