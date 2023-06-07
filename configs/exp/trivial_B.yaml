@@ -1,3 +1,4 @@
+---
 group: Trivial B
 
 env:
@@ -28,7 +29,6 @@ reinforce:
   total_rollouts: 5000
   gamma: 1.00
   clip_value: 0.05
-  save_every: 500
 
 rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.

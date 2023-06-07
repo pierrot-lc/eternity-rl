@@ -115,7 +115,6 @@ def init_trainer(
         config.exp.rollout_buffer.batches_per_rollouts,
         config.exp.reinforce.total_rollouts,
         config.exp.reinforce.advantage,
-        config.exp.reinforce.save_every,
     )
     return trainer
 

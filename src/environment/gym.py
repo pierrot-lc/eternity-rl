@@ -91,7 +91,6 @@ class EternityEnv(gym.Env):
         assert instances.shape[1] == 4, "The pieces must have 4 sides."
         assert instances.shape[2] == instances.shape[3], "Instances are not squares."
         assert torch.all(instances >= 0), "Classes must be positives."
-        assert reward_type in ["delta", "win"], "Unknown reward type."
 
         super().__init__()
         self.instances = instances.to(device)
@@ -111,6 +110,7 @@ class EternityEnv(gym.Env):
         self.step_id = 0
         self.truncated = False
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
+        self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
 
         # Spaces
         # Those spaces do not take into account that
@@ -138,6 +138,7 @@ class EternityEnv(gym.Env):
         self.terminated = torch.zeros(
             self.batch_size, dtype=torch.bool, device=self.device
         )
+        self.max_matches = self.matches
 
         return self.render(), dict()
 
@@ -188,6 +189,7 @@ class EternityEnv(gym.Env):
         self.terminated |= matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
         infos["just_won"] = self.terminated & ~previous_terminated
+        self.max_matches = torch.max(self.max_matches, matches)
 
         match self.reward_type:
             case "win":
@@ -197,6 +199,13 @@ class EternityEnv(gym.Env):
                     rewards = matches * infos["just_won"] / self.best_matches
                 else:
                     rewards = matches * ~self.terminated / self.best_matches
+            case "max":
+                # Only give a reward at the end of the episode.
+                # Either when the environment is done or if the episode is truncated.
+                if not self.truncated:
+                    rewards = self.max_matches * infos["just_won"] / self.best_matches
+                else:
+                    rewards = self.max_matches * ~self.terminated / self.best_matches
             case "delta":
                 # Give a reward at each step.
                 rewards = (matches - previous_matches) / self.best_matches

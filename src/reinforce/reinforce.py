@@ -30,7 +30,6 @@ class Reinforce:
         batches_per_rollouts: int,
         total_rollouts: int,
         advantage: str,
-        save_every: int,
     ):
         assert batches_per_rollouts > 0
 
@@ -46,7 +45,6 @@ class Reinforce:
         self.total_rollouts = total_rollouts
         self.batches_per_rollouts = batches_per_rollouts
         self.advantage = advantage
-        self.save_every = save_every
 
         # Instantiate the rollout buffer once.
         self.rollout_buffer = RolloutBuffer(
@@ -190,7 +188,7 @@ class Reinforce:
                     metrics = self.evaluate()
                     run.log(metrics)
 
-                if i % self.save_every == 0 and mode != "disabled":
+                if i % 500 == 0 and mode != "disabled":
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(
