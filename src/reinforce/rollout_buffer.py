@@ -27,35 +27,43 @@ class RolloutBuffer:
         self.observation_buffer = torch.zeros(
             (self.buffer_size, self.max_steps, 4, self.board_size, self.board_size),
             dtype=torch.int64,
+            device=self.device,
         )
         self.timestep_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.int64,
+            device=self.device,
         )
         self.action_buffer = torch.zeros(
             (self.buffer_size, self.max_steps, 4),
             dtype=torch.int64,
+            device=self.device,
         )
         self.reward_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.float32,
+            device=self.device,
         )
         self.return_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.float32,
+            device=self.device,
         )
         self.advantage_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.float32,
+            device=self.device,
         )
         self.mask_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.bool,
+            device=self.device,
         )
 
         self.valid_steps = torch.zeros(
             (self.buffer_size * self.max_steps),
             dtype=torch.int64,
+            device=self.device,
         )
 
         self.pointer = 0
@@ -81,11 +89,11 @@ class RolloutBuffer:
             masks: Batch of masks.
                 Shape of [batch_size,].
         """
-        self.observation_buffer[:, self.pointer] = observations.cpu()
-        self.timestep_buffer[:, self.pointer] = timesteps.cpu()
-        self.action_buffer[:, self.pointer] = actions.cpu()
-        self.reward_buffer[:, self.pointer] = rewards.cpu()
-        self.mask_buffer[:, self.pointer] = masks.cpu()
+        self.observation_buffer[:, self.pointer] = observations.to(self.device)
+        self.timestep_buffer[:, self.pointer] = timesteps.to(self.device)
+        self.action_buffer[:, self.pointer] = actions.to(self.device)
+        self.reward_buffer[:, self.pointer] = rewards.to(self.device)
+        self.mask_buffer[:, self.pointer] = masks.to(self.device)
 
         self.pointer += 1
         self.pointer %= self.max_steps
@@ -107,7 +115,9 @@ class RolloutBuffer:
                 raise ValueError(f"Unknown advantage type: {advantage_type}")
 
         # Compute the valid steps we can sample from (those that are not masked).
-        steps = torch.arange(start=0, end=self.max_steps * self.buffer_size)
+        steps = torch.arange(
+            start=0, end=self.max_steps * self.buffer_size, device=self.device
+        )
         steps = einops.rearrange(steps, "(b t) -> b t", b=self.buffer_size)
         self.valid_steps = steps[self.mask_buffer]  # Valid steps we can sample from.
 
@@ -132,15 +142,15 @@ class RolloutBuffer:
                     Shape of [batch_size,].
         """
         # Without replacement.
-        indices = torch.randperm(len(self.valid_steps))[:batch_size]
+        indices = torch.randperm(len(self.valid_steps), device=self.device)[:batch_size]
         steps = self.valid_steps[indices]
 
         return {
-            "observations": self.flatten_observations[steps].to(self.device),
-            "timesteps": self.flatten_timesteps[steps].to(self.device),
-            "actions": self.flatten_actions[steps].to(self.device),
-            "advantages": self.flatten_advantages[steps].to(self.device),
-            "returns": self.flatten_returns[steps].to(self.device),
+            "observations": self.flatten_observations[steps],
+            "timesteps": self.flatten_timesteps[steps],
+            "actions": self.flatten_actions[steps],
+            "advantages": self.flatten_advantages[steps],
+            "returns": self.flatten_returns[steps],
         }
 
     @property
