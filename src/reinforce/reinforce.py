@@ -223,8 +223,7 @@ class Reinforce:
         metrics["ep-len/std"] = episodes_len.std()
 
         # Compute losses.
-        batch_size = min(10 * self.batch_size, self.env.batch_size)
-        sample = rollout_buffer.sample(batch_size)
+        sample = rollout_buffer.sample(self.batch_size)
         losses = self.compute_loss(sample)
         for k, v in losses.items():
             metrics[f"loss/{k}"] = v

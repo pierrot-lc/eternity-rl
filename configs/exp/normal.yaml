@@ -31,7 +31,7 @@ reinforce:
   clip_value: 5.0
 
 rollout_buffer:
-  buffer_size: 81_920  # Number of played games in a single buffer.
+  buffer_size: 163_840  # Number of played games in a single buffer.
   batches_per_rollouts: 200  # Number of times we sample from the buffer.
   batch_size: 40_960  # Number of samples in a single batch.
 
