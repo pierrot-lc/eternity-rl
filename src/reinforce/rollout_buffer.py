@@ -238,9 +238,11 @@ class RolloutBuffer:
         if gamma == 1:
             rewards = torch.flip(rewards, dims=(1,))
             masks = torch.flip(masks, dims=(1,))
-            returns = torch.cumsum(masks * rewards, dim=1)
+            returns = torch.cummax(masks * rewards, dim=1).values
             returns = torch.flip(returns, dims=(1,))
             return returns
+        else:
+            raise NotImplementedError()
 
         # Compute the gamma powers.
         powers = (rewards.shape[1] - 1) - torch.arange(
