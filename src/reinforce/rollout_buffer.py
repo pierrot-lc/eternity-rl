@@ -157,6 +157,51 @@ class RolloutBuffer:
             "returns": self.flatten_returns[steps],
         }
 
+    @staticmethod
+    def cumulative_decay_return(
+        rewards: torch.Tensor, masks: torch.Tensor, gamma: float
+    ) -> torch.Tensor:
+        """Compute the cumulative decayed return of a batch of games.
+        It is efficiently implemented using tensor operations.
+
+        Thanks to the kind stranger here: https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2.
+        For `gamma != 1`, this function may not be numerically stable.
+
+        ---
+        Args:
+            rewards: The rewards of the games.
+                Shape of [batch_size, max_steps].
+            masks: The mask indicating which steps are actual plays.
+                Shape of [batch_size, max_steps].
+            gamma: The discount factor.
+
+        ---
+        Returns:
+            The cumulative decayed return of the games.
+                Shape of [batch_size, max_steps].
+        """
+        if gamma == 1:
+            rewards = torch.flip(rewards, dims=(1,))
+            masks = torch.flip(masks, dims=(1,))
+            returns = torch.cummax(masks * rewards, dim=1).values
+            returns = torch.flip(returns, dims=(1,))
+            return returns
+
+        # Compute the gamma powers.
+        powers = (rewards.shape[1] - 1) - torch.arange(
+            rewards.shape[1], device=rewards.device
+        )
+        powers = gamma**powers
+        powers = einops.repeat(powers, "t -> b t", b=rewards.shape[0])
+
+        # Compute the cumulative decayed return.
+        rewards = torch.flip(rewards, dims=(1,))
+        masks = torch.flip(masks, dims=(1,))
+        returns = torch.cumsum(masks * rewards * powers, dim=1) / powers
+        returns = torch.flip(returns, dims=(1,))
+
+        return returns
+
     @property
     def flatten_observations(self) -> torch.Tensor:
         """Flatten the observations buffer.
@@ -211,50 +256,3 @@ class RolloutBuffer:
                 Shape of [buffer_size * max_steps].
         """
         return einops.rearrange(self.timestep_buffer, "b t -> (b t)")
-
-    @staticmethod
-    def cumulative_decay_return(
-        rewards: torch.Tensor, masks: torch.Tensor, gamma: float
-    ) -> torch.Tensor:
-        """Compute the cumulative decayed return of a batch of games.
-        It is efficiently implemented using tensor operations.
-
-        Thanks to the kind stranger here: https://discuss.pytorch.org/t/cumulative-sum-with-decay-factor/69788/2.
-        For `gamma != 1`, this function may not be numerically stable.
-
-        ---
-        Args:
-            rewards: The rewards of the games.
-                Shape of [batch_size, max_steps].
-            masks: The mask indicating which steps are actual plays.
-                Shape of [batch_size, max_steps].
-            gamma: The discount factor.
-
-        ---
-        Returns:
-            The cumulative decayed return of the games.
-                Shape of [batch_size, max_steps].
-        """
-        if gamma == 1:
-            rewards = torch.flip(rewards, dims=(1,))
-            masks = torch.flip(masks, dims=(1,))
-            returns = torch.cummax(masks * rewards, dim=1).values
-            returns = torch.flip(returns, dims=(1,))
-            return returns
-        else:
-            raise NotImplementedError()
-
-        # Compute the gamma powers.
-        powers = (rewards.shape[1] - 1) - torch.arange(
-            rewards.shape[1], device=rewards.device
-        )
-        powers = gamma**powers
-        powers = einops.repeat(powers, "t -> b t", b=rewards.shape[0])
-
-        # Compute the cumulative decayed return.
-        rewards = torch.flip(rewards, dims=(1,))
-        masks = torch.flip(masks, dims=(1,))
-        returns = torch.cumsum(masks * rewards * powers, dim=1) / powers
-        returns = torch.flip(returns, dims=(1,))
-
-        return returns

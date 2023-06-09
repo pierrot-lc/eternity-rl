@@ -188,7 +188,7 @@ class Reinforce:
                     metrics = self.evaluate()
                     run.log(metrics)
 
-                if i % 500 == 0 and mode != "disabled":
+                if i % 100 == 0 and mode != "disabled":
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(
@@ -212,10 +212,10 @@ class Reinforce:
         metrics["return/max"] = returns.max()
         metrics["return/std"] = returns.std()
 
-        matches = self.env.matches / self.env.best_matches
-        metrics["matches/mean"] = matches.mean()
-        metrics["matches/max"] = matches.max()
-        metrics["matches/std"] = matches.std()
+        # matches = self.env.matches / self.env.best_matches
+        # metrics["matches/mean"] = matches.mean()
+        # metrics["matches/max"] = matches.max()
+        # metrics["matches/std"] = matches.std()
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
