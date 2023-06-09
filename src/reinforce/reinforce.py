@@ -4,11 +4,10 @@ from typing import Any
 
 import torch
 import torch.optim as optim
+import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import EternityEnv
 from ..model import CNNPolicy
@@ -204,18 +203,18 @@ class Reinforce:
 
         rollout_buffer = self.do_rollouts()
 
-        returns = RolloutBuffer.cumulative_decay_return(
-            rollout_buffer.reward_buffer, rollout_buffer.mask_buffer, gamma=1.0
-        )
-        returns = returns[:, 0]
-        metrics["return/mean"] = returns.mean()
-        metrics["return/max"] = returns.max()
-        metrics["return/std"] = returns.std()
+        # returns = RolloutBuffer.cumulative_decay_return(
+        #     rollout_buffer.reward_buffer, rollout_buffer.mask_buffer, gamma=1.0
+        # )
+        # returns = returns[:, 0]
+        # metrics["return/mean"] = returns.mean()
+        # metrics["return/max"] = returns.max()
+        # metrics["return/std"] = returns.std()
 
-        # matches = self.env.matches / self.env.best_matches
-        # metrics["matches/mean"] = matches.mean()
-        # metrics["matches/max"] = matches.max()
-        # metrics["matches/std"] = matches.std()
+        matches = self.env.matches / self.env.best_matches
+        metrics["matches/mean"] = matches.mean()
+        metrics["matches/max"] = matches.max()
+        metrics["matches/std"] = matches.std()
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()

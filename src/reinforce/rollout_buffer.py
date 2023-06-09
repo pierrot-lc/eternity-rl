@@ -104,9 +104,12 @@ class RolloutBuffer:
 
     def finalize(self, advantage_type: str, gamma: float):
         """Compute the returns and advantages of the trajectories."""
-        self.return_buffer = RolloutBuffer.cumulative_decay_return(
-            self.reward_buffer, self.mask_buffer, gamma
+        self.return_bufer, self.mask_buffer = RolloutBuffer.cumulative_max_cut(
+            self.reward_buffer, self.mask_buffer
         )
+        # self.return_buffer = RolloutBuffer.cumulative_decay_return(
+        #     self.reward_buffer, self.mask_buffer, gamma
+        # )
 
         match advantage_type:
             case "estimated":
@@ -158,7 +161,9 @@ class RolloutBuffer:
         }
 
     @staticmethod
-    def cumulative_max_cut(rewards: torch.Tensor, masks: torch.Tensor):
+    def cumulative_max_cut(
+        rewards: torch.Tensor, masks: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Use a cumulative max over the rewards and cut the episodes that end with
         a lower reward than their cumulative max.
 
@@ -168,6 +173,10 @@ class RolloutBuffer:
                 Shape of [batch_size, max_steps].
             masks: The mask indicating which steps are actual plays.
                 Shape of [batch_size, max_steps].
+
+        ---
+        Returns:
+            The returns and masks of the games.
         """
         # Compute the reversed cumulative max.
         rewards = torch.flip(rewards, dims=(1,))
