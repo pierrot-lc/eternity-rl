@@ -158,6 +158,33 @@ class RolloutBuffer:
         }
 
     @staticmethod
+    def cumulative_max_cut(rewards: torch.Tensor, masks: torch.Tensor):
+        """Use a cumulative max over the rewards and cut the episodes that end with
+        a lower reward than their cumulative max.
+
+        ---
+        Args:
+            rewards: The rewards of the games.
+                Shape of [batch_size, max_steps].
+            masks: The mask indicating which steps are actual plays.
+                Shape of [batch_size, max_steps].
+        """
+        # Compute the reversed cumulative max.
+        rewards = torch.flip(rewards, dims=(1,))
+        masks = torch.flip(masks, dims=(1,))
+        cummax = torch.cummax(masks * rewards, dim=1)
+        returns, indices = cummax.values, cummax.indices
+
+        # Cut the episodes that end with a lower reward than their cumulative max.
+        best_indices = indices.max(dim=1).values
+        cutted_masks = indices == best_indices.unsqueeze(1)
+
+        # Flip back the tensors.
+        returns = torch.flip(returns, dims=(1,))
+        cutted_masks = torch.flip(cutted_masks, dims=(1,))
+        return returns, cutted_masks
+
+    @staticmethod
     def cumulative_decay_return(
         rewards: torch.Tensor, masks: torch.Tensor, gamma: float
     ) -> torch.Tensor:
@@ -183,7 +210,7 @@ class RolloutBuffer:
         if gamma == 1:
             rewards = torch.flip(rewards, dims=(1,))
             masks = torch.flip(masks, dims=(1,))
-            returns = torch.cummax(masks * rewards, dim=1).values
+            returns = torch.cumsum(masks * rewards, dim=1)
             returns = torch.flip(returns, dims=(1,))
             return returns
 
