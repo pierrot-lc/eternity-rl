@@ -211,7 +211,7 @@ class Reinforce:
         # metrics["return/max"] = returns.max()
         # metrics["return/std"] = returns.std()
 
-        matches = self.env.matches / self.env.best_matches
+        matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/std"] = matches.std()
