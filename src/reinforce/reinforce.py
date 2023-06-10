@@ -23,7 +23,6 @@ class Reinforce:
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
         entropy_weight: float,
-        gamma: float,
         clip_value: float,
         batch_size: int,
         batches_per_rollouts: int,
@@ -38,7 +37,6 @@ class Reinforce:
         self.scheduler = scheduler
         self.device = device
         self.entropy_weight = entropy_weight
-        self.gamma = gamma
         self.clip_value = clip_value
         self.batch_size = batch_size
         self.total_rollouts = total_rollouts
@@ -79,7 +77,7 @@ class Reinforce:
             states = new_states
             timesteps += 1
 
-        self.rollout_buffer.finalize(self.advantage, self.gamma)
+        self.rollout_buffer.finalize(self.advantage)
 
         return self.rollout_buffer
 

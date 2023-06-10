@@ -102,14 +102,11 @@ class RolloutBuffer:
         self.pointer += 1
         self.pointer %= self.max_steps
 
-    def finalize(self, advantage_type: str, gamma: float):
+    def finalize(self, advantage_type: str):
         """Compute the returns and advantages of the trajectories."""
         self.return_buffer, self.mask_buffer = RolloutBuffer.cumulative_max_cut(
             self.reward_buffer, self.mask_buffer
         )
-        # self.return_buffer = RolloutBuffer.cumulative_decay_return(
-        #     self.reward_buffer, self.mask_buffer, gamma
-        # )
 
         match advantage_type:
             case "estimated":

@@ -70,7 +70,6 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instances: torch.Tensor,
-        reward_type: str,
         max_steps: int,
         device: str,
         seed: int = 0,
@@ -94,7 +93,6 @@ class EternityEnv(gym.Env):
 
         super().__init__()
         self.instances = instances.to(device)
-        self.reward_type = reward_type
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -175,7 +173,6 @@ class EternityEnv(gym.Env):
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
         shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
 
-        previous_matches = self.matches
         previous_terminated = self.terminated.clone()
 
         self.roll_tiles(tiles_id_1, shifts_1)
@@ -184,13 +181,10 @@ class EternityEnv(gym.Env):
 
         # New matches counts.
         matches = self.matches
-
-        # Maintain the previous terminated states.
         self.terminated |= matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
         infos["just_won"] = self.terminated & ~previous_terminated
         self.max_matches = torch.max(self.max_matches, matches)
-
         rewards = matches / self.best_matches
         return self.render(), rewards, self.terminated, self.truncated, infos
 
@@ -381,14 +375,13 @@ class EternityEnv(gym.Env):
         cls,
         instance_path: Path,
         batch_size: int,
-        reward_type: str,
         max_steps: int,
         device: str,
         seed: int = 0,
     ):
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, reward_type, max_steps, device, seed)
+        return cls(instances, max_steps, device, seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:
