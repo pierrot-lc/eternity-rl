@@ -97,7 +97,7 @@ def init_scheduler(
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
-    model: nn.Module,
+    model: CNNPolicy | DDP,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
