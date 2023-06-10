@@ -18,7 +18,7 @@ class Reinforce:
     def __init__(
         self,
         env: EternityEnv,
-        model: CNNPolicy,
+        model: CNNPolicy | DDP,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
@@ -92,13 +92,11 @@ class Reinforce:
 
         logprobs, entropies = [], []
         for i in range(len(probs)):
-            if type(self.model) is DDP:
-                l, e = self.model.module.logprobs(probs[i], sample["actions"][:, i])
-            else:
-                l, e = self.model.logprobs(probs[i], sample["actions"][:, i])
-
-            logprobs.append(l)
-            entropies.append(e)
+            logprobs_i, entropies_i = CNNPolicy.logprobs(
+                probs[i], sample["actions"][:, i]
+            )
+            logprobs.append(logprobs_i)
+            entropies.append(entropies_i)
 
         entropies = [
             1.0 * entropies[0],
@@ -202,14 +200,6 @@ class Reinforce:
         self.model.eval()
 
         rollout_buffer = self.do_rollouts()
-
-        # returns = RolloutBuffer.cumulative_decay_return(
-        #     rollout_buffer.reward_buffer, rollout_buffer.mask_buffer, gamma=1.0
-        # )
-        # returns = returns[:, 0]
-        # metrics["return/mean"] = returns.mean()
-        # metrics["return/max"] = returns.max()
-        # metrics["return/std"] = returns.std()
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
