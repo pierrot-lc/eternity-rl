@@ -36,7 +36,6 @@ def init_env(config: DictConfig) -> EternityEnv:
     env = EternityEnv.from_file(
         config.exp.env.path,
         config.exp.rollout_buffer.buffer_size,
-        config.exp.env.reward,
         config.exp.env.max_steps,
         config.device,
         config.seed,
@@ -97,7 +96,7 @@ def init_scheduler(
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
-    model: nn.Module,
+    model: CNNPolicy | DDP,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
@@ -109,7 +108,6 @@ def init_trainer(
         scheduler,
         config.device,
         config.exp.reinforce.entropy_weight,
-        config.exp.reinforce.gamma,
         config.exp.reinforce.clip_value,
         config.exp.rollout_buffer.batch_size,
         config.exp.rollout_buffer.batches_per_rollouts,
