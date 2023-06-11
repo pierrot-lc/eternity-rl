@@ -12,7 +12,6 @@ model:
   head_layers: 3
   maxpool_kernel: 1
   zero_init_residuals: false
-  use_time_embedding: true
 
 optimizer:
   learning_rate: 1.0e-3

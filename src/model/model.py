@@ -22,7 +22,6 @@ class CNNPolicy(nn.Module):
         board_width: int,
         board_height: int,
         zero_init_residuals: bool,
-        use_time_embedding: bool,
     ):
         super().__init__()
         self.board_width = board_width
@@ -40,7 +39,6 @@ class CNNPolicy(nn.Module):
             res_layers,
             mlp_layers,
             maxpool_kernel,
-            use_time_embedding,
             zero_init_residuals,
         )
 
@@ -109,7 +107,7 @@ class CNNPolicy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        timesteps: Optional[torch.Tensor] = None,
+        timesteps: torch.Tensor,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Predict the actions and value for the given game states.
 
@@ -118,7 +116,6 @@ class CNNPolicy(nn.Module):
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
             timestep: The timestep of the game states.
-                Optional, used when timesteps encodings are used.
                 Tensor of shape [batch_size,].
 
         ---

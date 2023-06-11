@@ -55,7 +55,6 @@ def init_model(config: DictConfig, env: EternityEnv) -> CNNPolicy:
         board_width=env.board_size,
         board_height=env.board_size,
         zero_init_residuals=config.exp.model.zero_init_residuals,
-        use_time_embedding=config.exp.model.use_time_embedding,
     )
     return model
 

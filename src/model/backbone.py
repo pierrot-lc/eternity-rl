@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -17,11 +15,9 @@ class Backbone(nn.Module):
         res_layers: int,
         mlp_layers: int,
         maxpool_kernel: int,
-        use_time_encoding: bool,
         zero_init_residuals: bool,
     ):
         super().__init__()
-        self.use_time_encoding = use_time_encoding
 
         self.embed_classes = nn.Sequential(
             nn.Embedding(n_classes, embedding_dim),
@@ -60,8 +56,7 @@ class Backbone(nn.Module):
             ]
         )
 
-        if use_time_encoding:
-            self.embed_timesteps = TimeEncoding(embedding_dim)
+        self.embed_timesteps = TimeEncoding(embedding_dim)
 
         if zero_init_residuals:
             self.init_residuals()
@@ -76,7 +71,7 @@ class Backbone(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        timesteps: Optional[torch.Tensor] = None,
+        timesteps: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -85,7 +80,6 @@ class Backbone(nn.Module):
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
             timestep: The timestep of the game states.
-                Optional, used when timesteps encodings are used.
                 Tensor of shape [batch_size,].
 
         ---
@@ -93,10 +87,6 @@ class Backbone(nn.Module):
             The embedding of the game state.
                 Shape of [batch_size, embedding_dim].
         """
-        assert (
-            timesteps is not None or not self.use_time_encoding
-        ), "Timesteps are required when use_timesteps is True."
-
         tiles = rearrange(tiles, "b t w h -> b h w t")
         embed = self.embed_classes(tiles)
 
@@ -110,12 +100,11 @@ class Backbone(nn.Module):
         embed = self.project(embed)
         # Shape is of [batch_size, embedding_dim].
 
-        if self.use_time_encoding:
-            # Compute the positional encodings for the given timesteps.
-            encodings = self.embed_timesteps(timesteps)
+        # Compute the positional encodings for the given timesteps.
+        encodings = self.embed_timesteps(timesteps)
 
-            # Add the positional encodings to the game embeddings.
-            embed = embed + encodings
+        # Add the positional encodings to the game embeddings.
+        embed = embed + encodings
 
         for layer in self.mlp:
             embed = layer(embed)
