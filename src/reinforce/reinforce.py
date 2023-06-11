@@ -202,6 +202,7 @@ class Reinforce:
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
+        metrics["matches/min"] = matches.min()
         metrics["matches/std"] = matches.std()
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)

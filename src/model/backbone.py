@@ -23,7 +23,7 @@ class Backbone(nn.Module):
             nn.LayerNorm(embedding_dim),
         )
         self.embed_board = nn.Sequential(
-            nn.Conv2d(4 * embedding_dim, embedding_dim, 3, padding="same"),
+            nn.Conv2d(4 * embedding_dim, embedding_dim, 1, padding="same"),
             nn.GELU(),
             nn.LayerNorm([embedding_dim, board_height, board_width]),
         )
