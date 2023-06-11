@@ -19,5 +19,5 @@ updated: 2023-06-11
   - (x) Reward function not sensible to potential bad ending moves.
   -- (_) Curriculum learning?
   - (x) Better best state saving.
-  - ( ) Remove MLP.
+  - (x) Remove MLP.
   - ( ) Use argmax sampling when evaluating the model.

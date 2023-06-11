@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,7 +14,6 @@ class CNNPolicy(nn.Module):
         n_classes: int,
         embedding_dim: int,
         res_layers: int,
-        mlp_layers: int,
         head_layers: int,
         maxpool_kernel: int,
         board_width: int,
@@ -37,7 +34,6 @@ class CNNPolicy(nn.Module):
             board_height,
             embedding_dim,
             res_layers,
-            mlp_layers,
             maxpool_kernel,
             zero_init_residuals,
         )

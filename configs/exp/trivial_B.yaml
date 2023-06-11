@@ -8,7 +8,6 @@ env:
 model:
   embedding_dim: 24
   res_layers: 3
-  mlp_layers: 1
   head_layers: 3
   maxpool_kernel: 1
   zero_init_residuals: false

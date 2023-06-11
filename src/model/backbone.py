@@ -13,7 +13,6 @@ class Backbone(nn.Module):
         board_height: int,
         embedding_dim: int,
         res_layers: int,
-        mlp_layers: int,
         maxpool_kernel: int,
         zero_init_residuals: bool,
     ):
@@ -38,25 +37,20 @@ class Backbone(nn.Module):
                 for _ in range(res_layers)
             ]
         )
-        self.project = nn.Sequential(
+        self.project_board = nn.Sequential(
             nn.MaxPool2d(kernel_size=maxpool_kernel),
             nn.Flatten(),
             nn.LazyLinear(embedding_dim),
             nn.GELU(),
             nn.LayerNorm(embedding_dim),
         )
-        self.mlp = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(embedding_dim, embedding_dim),
-                    nn.GELU(),
-                    nn.LayerNorm(embedding_dim),
-                )
-                for _ in range(mlp_layers)
-            ]
-        )
 
         self.embed_timesteps = TimeEncoding(embedding_dim)
+        self.project_timesteps = nn.Sequential(
+            nn.Linear(2 * embedding_dim, embedding_dim),
+            nn.GELU(),
+            nn.LayerNorm(embedding_dim),
+        )
 
         if zero_init_residuals:
             self.init_residuals()
@@ -97,16 +91,12 @@ class Backbone(nn.Module):
         for layer in self.residuals:
             embed = layer(embed) + embed
 
-        embed = self.project(embed)
+        embed = self.project_board(embed)
         # Shape is of [batch_size, embedding_dim].
 
-        # Compute the positional encodings for the given timesteps.
+        # Add the positional encodings for the given timesteps.
         encodings = self.embed_timesteps(timesteps)
-
-        # Add the positional encodings to the game embeddings.
-        embed = embed + encodings
-
-        for layer in self.mlp:
-            embed = layer(embed)
+        embed = torch.concat((embed, encodings), dim=1)
+        embed = self.project_timesteps(embed)
 
         return embed
