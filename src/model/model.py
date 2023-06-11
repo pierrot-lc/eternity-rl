@@ -104,6 +104,7 @@ class CNNPolicy(nn.Module):
         self,
         tiles: torch.Tensor,
         timesteps: torch.Tensor,
+        sampling_mode: str = "sample",
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Predict the actions and value for the given game states.
 
@@ -113,6 +114,7 @@ class CNNPolicy(nn.Module):
                 Tensor of shape [batch_size, 4, board_height, board_width].
             timestep: The timestep of the game states.
                 Tensor of shape [batch_size,].
+            sampling_mode: The sampling mode of the actions.
 
         ---
         Returns:
@@ -127,24 +129,24 @@ class CNNPolicy(nn.Module):
 
         # Compute action logits.
         tile_1 = self.predict_actions["tile-1"](embed)
-        tile_1_id = self.sample_actions(tile_1)
+        tile_1_id = self.sample_actions(tile_1, sampling_mode)
         tile_1_emb = self.embed_tile_ids(tile_1_id)
 
         # Shape of [batch_size, 2 * embedding_dim].
         embed = torch.concat([embed, tile_1_emb], dim=-1)
 
         tile_2 = self.predict_actions["tile-2"](embed)
-        tile_2_id = self.sample_actions(tile_2)
+        tile_2_id = self.sample_actions(tile_2, sampling_mode)
         tile_2_emb = self.embed_tile_ids(tile_2_id)
 
         # Shape of [batch_size, 3 * embedding_dim].
         embed = torch.concat([embed, tile_2_emb], dim=-1)
 
         roll_1 = self.predict_actions["roll-1"](embed)
-        roll_1_id = self.sample_actions(roll_1)
+        roll_1_id = self.sample_actions(roll_1, sampling_mode)
 
         roll_2 = self.predict_actions["roll-2"](embed)
-        roll_2_id = self.sample_actions(roll_2)
+        roll_2_id = self.sample_actions(roll_2, sampling_mode)
 
         actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
         logits = [tile_1, roll_1, tile_2, roll_2]
@@ -153,10 +155,16 @@ class CNNPolicy(nn.Module):
         return actions, probs
 
     @staticmethod
-    def sample_actions(logits: torch.Tensor) -> torch.Tensor:
-        distributions = torch.softmax(logits, dim=-1)
-        categorical = Categorical(probs=distributions)
-        action_ids = categorical.sample()
+    def sample_actions(logits: torch.Tensor, mode: str) -> torch.Tensor:
+        match mode:
+            case "sample":
+                distributions = torch.softmax(logits, dim=-1)
+                categorical = Categorical(probs=distributions)
+                action_ids = categorical.sample()
+            case "argmax":
+                action_ids = torch.argmax(logits, dim=-1)
+            case _:
+                raise ValueError(f"Invalid mode: {mode}")
         return action_ids
 
     @staticmethod

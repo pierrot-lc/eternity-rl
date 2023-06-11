@@ -20,4 +20,4 @@ updated: 2023-06-11
   -- (_) Curriculum learning?
   - (x) Better best state saving.
   - (x) Remove MLP.
-  - ( ) Use argmax sampling when evaluating the model.
+  - (x) Use argmax sampling when evaluating the model.

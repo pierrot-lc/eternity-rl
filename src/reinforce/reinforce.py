@@ -53,7 +53,7 @@ class Reinforce:
         )
 
     @torch.no_grad()
-    def do_rollouts(self) -> RolloutBuffer:
+    def do_rollouts(self, sampling_mode: str) -> RolloutBuffer:
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         self.rollout_buffer.reset()
         states, _ = self.env.reset()
@@ -64,7 +64,7 @@ class Reinforce:
         )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, _ = self.model(states, timesteps)
+            actions, _ = self.model(states, timesteps, sampling_mode)
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
                 states,
@@ -167,7 +167,7 @@ class Reinforce:
                 disable=mode == "disabled",
             ):
                 self.model.train()
-                rollout_buffer = self.do_rollouts()
+                rollout_buffer = self.do_rollouts(sampling_mode="sample")
 
                 for _ in tqdm(
                     range(self.batches_per_rollouts),
@@ -197,7 +197,7 @@ class Reinforce:
         metrics = dict()
         self.model.eval()
 
-        rollout_buffer = self.do_rollouts()
+        rollout_buffer = self.do_rollouts(sampling_mode="argmax")
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
