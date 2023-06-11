@@ -109,8 +109,12 @@ class EternityEnv(gym.Env):
         self.truncated = False
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
         self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
+        self.best_board = torch.zeros(
+            (4, self.board_size, self.board_size), dtype=torch.long
+        )
+        self.best_score = 0
 
-        # Spaces
+        # - Spaces -
         # Those spaces do not take into account that
         # this env is a batch of multiple instances.
         self.action_space = spaces.MultiDiscrete(
@@ -137,6 +141,10 @@ class EternityEnv(gym.Env):
             self.batch_size, dtype=torch.bool, device=self.device
         )
         self.max_matches = self.matches
+
+        # Do not reset the best env found, only updates it.
+        # This best env is used for perpetual search purpose.
+        self.update_best_env()
 
         return self.render(), dict()
 
@@ -179,13 +187,15 @@ class EternityEnv(gym.Env):
         self.roll_tiles(tiles_id_2, shifts_2)
         self.swap_tiles(tiles_id_1, tiles_id_2)
 
-        # New matches counts.
         matches = self.matches
+
+        # Update envs infos.
+        self.update_best_env()
+        rewards = matches / self.best_matches
+        self.max_matches = torch.max(self.max_matches, matches)
         self.terminated |= matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
         infos["just_won"] = self.terminated & ~previous_terminated
-        self.max_matches = torch.max(self.max_matches, matches)
-        rewards = matches / self.best_matches
         return self.render(), rewards, self.terminated, self.truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
@@ -330,12 +340,20 @@ class EternityEnv(gym.Env):
             case _:
                 raise RuntimeError(f"Unknown rendering type: {mode}.")
 
+    def update_best_env(self):
+        """Finds the best env of the current batch
+        and updates the best env if the new one is better.
+        """
+        best_env_id = self.matches.argmax()
+        best_score = self.matches[best_env_id].cpu().item()
+
+        if self.best_score < best_score:
+            self.best_score = best_score
+            self.best_board = self.instances[best_env_id].cpu()
+
     def save_best_env(self, filepath: Path | str):
         """Render the best environment and save it on disk."""
-        best_env = self.matches.argmax()
-        best_score = self.matches[best_env].cpu().item()
-        board = self.instances[best_env].cpu().numpy()
-        draw_instance(board, best_score, filepath)
+        draw_instance(self.best_board.numpy(), self.best_score, filepath)
 
     @staticmethod
     def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:
