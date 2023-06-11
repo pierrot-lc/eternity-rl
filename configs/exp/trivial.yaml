@@ -15,9 +15,9 @@ model:
   use_time_embedding: true
 
 optimizer:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-2
   optimizer: adamw
-  weight_decay: 1.0e-3
+  weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 1

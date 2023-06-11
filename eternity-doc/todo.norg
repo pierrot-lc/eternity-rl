@@ -16,7 +16,8 @@ updated: 2023-06-11
   - (x) Add critic loss to the actor loss.
   -- It is not working so well, maybe because i'm doing MC sampling,
      or maybe because i'm doing it wrong.
-  - ( ) Reward function not sensible to potential bad ending moves.
-  -- Curriculum learning?
+  - (x) Reward function not sensible to potential bad ending moves.
+  -- (_) Curriculum learning?
   - (x) Better best state saving.
   - ( ) Remove MLP.
+  - ( ) Use argmax sampling when evaluating the model.

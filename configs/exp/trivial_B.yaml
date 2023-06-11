@@ -15,7 +15,7 @@ model:
   use_time_embedding: true
 
 optimizer:
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-3
   optimizer: adamw
   weight_decay: 1.0e-3
 
@@ -25,8 +25,8 @@ scheduler:
 reinforce:
   advantage: no-advantage
   entropy_weight: 1.0e-5
-  total_rollouts: 5000
-  clip_value: 0.05
+  total_rollouts: 50
+  clip_value: 5.00
 
 rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.

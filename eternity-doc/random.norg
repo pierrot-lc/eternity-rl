@@ -4,7 +4,7 @@ description: Some weird facts
 authors: pierrotlc
 categories: 
 created: 2023-06-04
-updated: 2023-06-04
+updated: 2023-06-11
 version: 1.1.1
 @end
 
@@ -44,3 +44,6 @@ version: 1.1.1
    steps to win, nor for intermediate easy rewards. But it has a problem:
    long rollouts tend to all collapse to the mean state. The mode is not
    rewarded for the maximum intermediate state.
+
+   The new reward called `max-cut` provides a more stable training, and is
+   way more sample efficient.
