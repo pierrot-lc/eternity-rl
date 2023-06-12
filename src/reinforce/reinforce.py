@@ -4,10 +4,11 @@ from typing import Any
 
 import torch
 import torch.optim as optim
-import wandb
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from tqdm import tqdm
+
+import wandb
 
 from ..environment import EternityEnv
 from ..model import CNNPolicy
@@ -124,7 +125,14 @@ class Reinforce:
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
 
-    def launch_training(self, group: str, config: dict[str, Any], mode: str = "online"):
+    def launch_training(
+        self,
+        group: str,
+        config: dict[str, Any],
+        mode: str = "online",
+        eval_every: int = 1,
+        save_every: int = 50,
+    ):
         """Launches the training loop.
 
         ---
@@ -138,6 +146,8 @@ class Reinforce:
                 - "offline": The run is logged offline to W&B.
                 - "disabled": The run does not produce any output.
                     Useful for multi-GPU training.
+            eval_every: The number of rollouts between each evaluation.
+            save_every: The number of rollouts between each checkpoint.
         """
         with wandb.init(
             project="eternity-rl",
@@ -179,11 +189,11 @@ class Reinforce:
 
                 self.scheduler.step()
 
-                if i % 10 == 0 and mode != "disabled":
+                if i % eval_every == 0 and mode != "disabled":
                     metrics = self.evaluate()
                     run.log(metrics)
 
-                if i % 100 == 0 and mode != "disabled":
+                if i % save_every == 0 and mode != "disabled":
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(
@@ -197,7 +207,7 @@ class Reinforce:
         metrics = dict()
         self.model.eval()
 
-        rollout_buffer = self.do_rollouts(sampling_mode="argmax")
+        rollout_buffer = self.do_rollouts(sampling_mode="sample")
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()

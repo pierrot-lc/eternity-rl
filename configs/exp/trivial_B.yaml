@@ -15,7 +15,7 @@ model:
 optimizer:
   learning_rate: 1.0e-3
   optimizer: adamw
-  weight_decay: 1.0e-3
+  weight_decay: 0.0e-3
 
 scheduler:
   warmup_steps: 1
@@ -23,7 +23,7 @@ scheduler:
 reinforce:
   advantage: no-advantage
   entropy_weight: 1.0e-5
-  total_rollouts: 50
+  total_rollouts: 500
   clip_value: 5.00
 
 rollout_buffer:

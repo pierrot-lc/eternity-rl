@@ -1,5 +1,5 @@
 ---
-group: Reproduce Normal
+group: Normal
 
 env:
   path: ./instances/eternity_A.txt
