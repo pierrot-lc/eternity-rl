@@ -130,7 +130,7 @@ class Reinforce:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 1,
+        eval_every: int = 5,
         save_every: int = 50,
     ):
         """Launches the training loop.
