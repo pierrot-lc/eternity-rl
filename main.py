@@ -153,7 +153,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
             config.exp.group, OmegaConf.to_container(config), config.mode
         )
     except KeyboardInterrupt:
-        # Capture a potential ctrl+c to make sure we clean up distributed processes.
+        # Capture a potential CTRL+C to make sure we clean up distributed processes.
         print("Caught KeyboardInterrupt. Cleaning up distributed processes...")
     finally:
         cleanup_distributed()
