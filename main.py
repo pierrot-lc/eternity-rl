@@ -181,7 +181,8 @@ def run_trainer_single_gpu(config: DictConfig):
 @hydra.main(version_base="1.3", config_path="configs", config_name="default")
 def main(config: DictConfig):
     config.exp.env.path = Path(to_absolute_path(config.exp.env.path))
-    config.exp.checkpoint = Path(to_absolute_path(config.exp.checkpoint))
+    if config.exp.checkpoint is not None:
+        config.exp.checkpoint = Path(to_absolute_path(config.exp.checkpoint))
     world_size = len(config.distributed)
     if world_size > 1:
         mp.spawn(run_trainer_ddp, nprocs=world_size, args=(world_size, config))
