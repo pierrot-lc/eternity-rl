@@ -28,5 +28,9 @@ updated: 2023-06-14
   ~~ Aggregate the final results and apply the actions that led to the best final (maximum) state.
   ~~ Go back to point B
   -- This should enhance the overall search for a solution. It may be possible to apply this search
-     with many differents games in parallel, and to make the search over and over.
+     with many different games in parallel, and to make the search over and over.
   -- It may be possible to implement this on multiple GPUs?
+  - ( ) Implement a transformer policy.
+  -- Maybe use a dedicated token to sumup the state of the game.
+  -- If not, maybe a pointer network?
+  -- Add a token for time encoding.
