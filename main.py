@@ -120,10 +120,11 @@ def reload_checkpoint(config: DictConfig, trainer: Reinforce):
     if config.exp.checkpoint is None:
         return
 
-    checkpoint_path = Path(to_absolute_path(config.exp.checkpoint))
+    checkpoint_path = config.exp.checkpoint
     state_dict = torch.load(checkpoint_path, map_location=config.device)
     trainer.model.load_state_dict(state_dict["model"])
-    trainer.optimizer.load_state_dict(state_dict["optimizer"])
+    # HACK: The training seems to not be stable when loading the optimizer state.
+    # trainer.optimizer.load_state_dict(state_dict["optimizer"])
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
 
@@ -180,6 +181,7 @@ def run_trainer_single_gpu(config: DictConfig):
 @hydra.main(version_base="1.3", config_path="configs", config_name="default")
 def main(config: DictConfig):
     config.exp.env.path = Path(to_absolute_path(config.exp.env.path))
+    config.exp.checkpoint = Path(to_absolute_path(config.exp.checkpoint))
     world_size = len(config.distributed)
     if world_size > 1:
         mp.spawn(run_trainer_ddp, nprocs=world_size, args=(world_size, config))
