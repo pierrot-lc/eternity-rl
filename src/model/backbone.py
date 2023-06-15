@@ -11,28 +11,31 @@ class Backbone(nn.Module):
         n_classes: int,
         board_width: int,
         board_height: int,
+        tile_embedding_dim: int,
         embedding_dim: int,
-        res_layers: int,
         maxpool_kernel: int,
+        res_layers: int,
         zero_init_residuals: bool,
     ):
         super().__init__()
 
         self.embed_classes = nn.Sequential(
-            nn.Embedding(n_classes, embedding_dim),
-            nn.LayerNorm(embedding_dim),
+            nn.Embedding(n_classes, tile_embedding_dim),
+            nn.LayerNorm(tile_embedding_dim),
         )
         self.embed_board = nn.Sequential(
-            nn.Conv2d(4 * embedding_dim, embedding_dim, 1, padding="same"),
+            nn.Conv2d(4 * tile_embedding_dim, tile_embedding_dim, 1, padding="same"),
             nn.GELU(),
-            nn.LayerNorm([embedding_dim, board_height, board_width]),
+            nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
         )
         self.residuals = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Conv2d(embedding_dim, embedding_dim, 3, padding="same"),
+                    nn.Conv2d(
+                        tile_embedding_dim, tile_embedding_dim, 3, padding="same"
+                    ),
                     nn.GELU(),
-                    nn.LayerNorm([embedding_dim, board_height, board_width]),
+                    nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
                 )
                 for _ in range(res_layers)
             ]

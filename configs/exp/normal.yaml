@@ -7,6 +7,7 @@ env:
 
 model:
   embedding_dim: 32
+  tile_embedding_dim: 32
   res_layers: 5
   head_layers: 3
   maxpool_kernel: 1

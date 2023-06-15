@@ -131,7 +131,6 @@ class Reinforce:
         config: dict[str, Any],
         mode: str = "online",
         eval_every: int = 5,
-        save_every: int = 50,
     ):
         """Launches the training loop.
 
@@ -193,7 +192,6 @@ class Reinforce:
                     metrics = self.evaluate()
                     run.log(metrics)
 
-                if i % save_every == 0 and mode != "disabled":
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
                     run.log(

@@ -12,12 +12,13 @@ class CNNPolicy(nn.Module):
     def __init__(
         self,
         n_classes: int,
-        embedding_dim: int,
-        res_layers: int,
-        head_layers: int,
-        maxpool_kernel: int,
         board_width: int,
         board_height: int,
+        tile_embedding_dim: int,
+        embedding_dim: int,
+        maxpool_kernel: int,
+        res_layers: int,
+        head_layers: int,
         zero_init_residuals: bool,
     ):
         super().__init__()
@@ -32,9 +33,10 @@ class CNNPolicy(nn.Module):
             n_classes,
             board_width,
             board_height,
+            tile_embedding_dim,
             embedding_dim,
-            res_layers,
             maxpool_kernel,
+            res_layers,
             zero_init_residuals,
         )
 
