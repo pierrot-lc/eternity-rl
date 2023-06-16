@@ -214,12 +214,14 @@ class Reinforce:
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
         metrics["matches/std"] = matches.std()
+        metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
         metrics["ep-len/max"] = episodes_len.max()
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/std"] = episodes_len.std()
+        metrics["ep-len/hist"] = wandb.Histogram(episodes_len.cpu().numpy())
 
         # Compute losses.
         sample = rollout_buffer.sample(self.batch_size)
