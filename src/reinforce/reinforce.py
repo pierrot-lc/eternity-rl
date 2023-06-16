@@ -211,14 +211,12 @@ class Reinforce:
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
-        metrics["matches/std"] = matches.std()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
 
         episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
         metrics["ep-len/max"] = episodes_len.max()
         metrics["ep-len/min"] = episodes_len.min()
-        metrics["ep-len/std"] = episodes_len.std()
         metrics["ep-len/hist"] = wandb.Histogram(episodes_len.cpu().numpy())
 
         # Compute losses.
@@ -226,20 +224,18 @@ class Reinforce:
         losses = self.compute_loss(sample)
         for k, v in losses.items():
             metrics[f"loss/{k}"] = v
-
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
 
         # Compute the gradient mean and maximum values.
         losses["total"].backward()
-        mean_value, max_value, tot_params = 0, 0, 0
-        for tot_params, p in enumerate(self.model.parameters()):
+        grads = []
+        for p in self.model.parameters():
             if p.grad is not None:
-                grad = p.grad.data.abs()
-                mean_value += grad.mean().item()
-                max_value = max(max_value, grad.max().item())
+                grads.append(p.grad.data.abs().mean().item())
 
-        metrics["gradients/mean"] = mean_value / (tot_params + 1)
-        metrics["gradients/max"] = max_value
+        metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
+        metrics["global-gradients/max"] = max(grads)
+        metrics["global-gradients/hist"] = wandb.Histogram(grads)
 
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):
