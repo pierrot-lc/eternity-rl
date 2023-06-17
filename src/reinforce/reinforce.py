@@ -11,7 +11,7 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import EternityEnv
-from ..model import CNNPolicy
+from ..model import Policy
 from .rollout_buffer import RolloutBuffer
 
 
@@ -19,7 +19,7 @@ class Reinforce:
     def __init__(
         self,
         env: EternityEnv,
-        model: CNNPolicy | DDP,
+        model: Policy | DDP,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
@@ -91,9 +91,7 @@ class Reinforce:
 
         logprobs, entropies = [], []
         for i in range(len(probs)):
-            logprobs_i, entropies_i = CNNPolicy.logprobs(
-                probs[i], sample["actions"][:, i]
-            )
+            logprobs_i, entropies_i = Policy.logprobs(probs[i], sample["actions"][:, i])
             logprobs.append(logprobs_i)
             entropies.append(entropies_i)
 

@@ -115,6 +115,8 @@ class RolloutBuffer:
                 self.advantage_buffer = self.advantage_buffer / (returns.std() + 1e-5)
             case "no-advantage":
                 self.advantage_buffer = self.return_buffer
+            case "max":
+                self.advantage_buffer = self.return_buffer / self.return_buffer.max()
             case _:
                 raise ValueError(f"Unknown advantage type: {advantage_type}")
 

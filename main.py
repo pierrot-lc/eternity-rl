@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_optimizer import Lamb
 
 from src.environment import EternityEnv
-from src.model import CNNPolicy
+from src.model import Policy
 from src.reinforce import Reinforce
 
 
@@ -43,18 +43,17 @@ def init_env(config: DictConfig) -> EternityEnv:
     return env
 
 
-def init_model(config: DictConfig, env: EternityEnv) -> CNNPolicy:
+def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
-    model = CNNPolicy(
+    model = Policy(
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
         tile_embedding_dim=config.exp.model.tile_embedding_dim,
         embedding_dim=config.exp.model.embedding_dim,
-        maxpool_kernel=config.exp.model.maxpool_kernel,
-        res_layers=config.exp.model.res_layers,
+        n_layers=config.exp.model.n_layers,
         head_layers=config.exp.model.head_layers,
-        zero_init_residuals=config.exp.model.zero_init_residuals,
+        dropout=config.exp.model.dropout,
     )
     return model
 
@@ -95,7 +94,7 @@ def init_scheduler(
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
-    model: CNNPolicy | DDP,
+    model: Policy | DDP,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:

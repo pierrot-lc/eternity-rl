@@ -1,1 +1,1 @@
-from .model import CNNPolicy
+from .model import Policy

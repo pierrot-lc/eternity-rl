@@ -1,69 +1,101 @@
 import torch
 import torch.nn as nn
-from einops import rearrange
+from einops import repeat
+from einops.layers.torch import Rearrange
+from positional_encodings.torch_encodings import PositionalEncoding2D
 
 from .time_encoding import TimeEncoding
 
 
+class Summer(nn.Module):
+    """This module replaces the `Summer` module from the `positional_encodings`
+    package. The original `Summer` does not pass the output of the layer
+    to the same device as the input.
+    """
+
+    def __init__(self, layer: nn.Module):
+        super().__init__()
+        self.layer = layer
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Sum the input with the output of the layer.
+        Makes sure the output is on the same device.
+        """
+        return x + self.layer(x).to(x.device)
+
+
 class Backbone(nn.Module):
+    """Encode the board and produce a final embedding of the
+    wanted size.
+
+    The board is encoded as follows:
+        - Embed the classes of each size of the tiles.
+        - Merge the classes of each tile into a single embedding.
+        - Add 2D positional encodings.
+        - Flatten into 1D sequence of tokens.
+        - Add a token that encode the timestep.
+        - Use a transformer to encode the sequence.
+        - Finally, use a dedicated query token to extract the final embedding.
+
+    Note that the last query produce the embedding of the wanted size.
+    The tokens in the transformers are of size `tile_embedding_dim`.
+    """
+
     def __init__(
         self,
         n_classes: int,
-        board_width: int,
-        board_height: int,
         tile_embedding_dim: int,
         embedding_dim: int,
-        maxpool_kernel: int,
-        res_layers: int,
-        zero_init_residuals: bool,
+        n_layers: int,
+        dropout: float,
     ):
         super().__init__()
 
-        self.embed_classes = nn.Sequential(
+        # Input embeddings.
+        self.embed_board = nn.Sequential(
+            # Embed the classes of each size of the tiles.
+            Rearrange("b t w h -> b h w t"),
             nn.Embedding(n_classes, tile_embedding_dim),
             nn.LayerNorm(tile_embedding_dim),
-        )
-        self.embed_board = nn.Sequential(
+            # Merge the classes of each tile into a single embedding.
+            Rearrange("b h w t e -> b (t e) h w"),
             nn.Conv2d(4 * tile_embedding_dim, tile_embedding_dim, 1, padding="same"),
             nn.GELU(),
-            nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
+            # Add 2D positional encodings.
+            Rearrange("b c h w -> b h w c"),
+            Summer(PositionalEncoding2D(tile_embedding_dim)),
+            # Finally flatten into tokens for the transformer.
+            Rearrange("b h w c -> b (h w) c"),
+            nn.LayerNorm(tile_embedding_dim),
         )
-        self.residuals = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Conv2d(
-                        tile_embedding_dim, tile_embedding_dim, 3, padding="same"
-                    ),
-                    nn.GELU(),
-                    nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
-                )
-                for _ in range(res_layers)
-            ]
-        )
-        self.project_board = nn.Sequential(
-            nn.MaxPool2d(kernel_size=maxpool_kernel),
-            nn.Flatten(),
-            nn.LazyLinear(embedding_dim),
-            nn.GELU(),
-            nn.LayerNorm(embedding_dim),
+        self.embed_timesteps = nn.Sequential(
+            TimeEncoding(tile_embedding_dim),
+            nn.LayerNorm(tile_embedding_dim),
         )
 
-        self.embed_timesteps = TimeEncoding(embedding_dim)
-        self.project_timesteps = nn.Sequential(
-            nn.Linear(2 * embedding_dim, embedding_dim),
-            nn.GELU(),
-            nn.LayerNorm(embedding_dim),
+        # Main backbone.
+        self.encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=tile_embedding_dim,
+                nhead=4,  # One for each side of the tiles.
+                dim_feedforward=2 * tile_embedding_dim,
+                dropout=dropout,
+                batch_first=True,
+            ),
+            num_layers=n_layers,
         )
 
-        if zero_init_residuals:
-            self.init_residuals()
-
-    def init_residuals(self):
-        """Zero out the weights of the residual convolutional layers."""
-        for module in self.residuals.modules():
-            if isinstance(module, nn.Conv2d):
-                for param in module.parameters():
-                    param.data.zero_()
+        # Extract the final embedding.
+        self.output_query = nn.Parameter(torch.randn(1, embedding_dim))
+        self.extract_embedding = nn.MultiheadAttention(
+            embed_dim=embedding_dim,
+            kdim=tile_embedding_dim,
+            vdim=tile_embedding_dim,
+            num_heads=4,  # One for each action of the game.
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.layer_norm = nn.LayerNorm(embedding_dim)
 
     def forward(
         self,
@@ -76,7 +108,7 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timestep: The timestep of the game states.
+            timesteps: The timestep of the game states.
                 Tensor of shape [batch_size,].
 
         ---
@@ -84,22 +116,14 @@ class Backbone(nn.Module):
             The embedding of the game state.
                 Shape of [batch_size, embedding_dim].
         """
-        tiles = rearrange(tiles, "b t w h -> b h w t")
-        embed = self.embed_classes(tiles)
+        # Project to shape of [batch_size, board_height x board_width, tile_embedding_dim].
+        tiles = self.embed_board(tiles)
+        timesteps = self.embed_timesteps(timesteps)
+        tokens = torch.concat((timesteps.unsqueeze(1), tiles), dim=1)
+        tokens = self.encoder(tokens)
 
-        embed = rearrange(embed, "b h w t e -> b (t e) h w")
-        embed = self.embed_board(embed)
-
-        # Shape is of [batch_size, embedding_dim, height, width].
-        for layer in self.residuals:
-            embed = layer(embed) + embed
-
-        embed = self.project_board(embed)
-        # Shape is of [batch_size, embedding_dim].
-
-        # Add the positional encodings for the given timesteps.
-        encodings = self.embed_timesteps(timesteps)
-        embed = torch.concat((embed, encodings), dim=1)
-        embed = self.project_timesteps(embed)
-
-        return embed
+        # Extract the final embeddings.
+        query = self.output_query.to(tokens.device)
+        query = repeat(self.output_query, "t e -> b t e", b=tokens.shape[0])
+        embeddings, _ = self.extract_embedding(query, tokens, tokens)
+        return embeddings.squeeze(1)

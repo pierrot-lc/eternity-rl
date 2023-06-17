@@ -8,7 +8,6 @@ class Head(nn.Module):
         embedding_dim: int,
         head_layers: int,
         n_actions: int,
-        zero_init_residuals: bool,
     ):
         super().__init__()
 
@@ -23,16 +22,6 @@ class Head(nn.Module):
             ]
         )
         self.predict_actions = nn.Linear(embedding_dim, n_actions)
-
-        if zero_init_residuals:
-            self.init_residuals()
-
-    def init_residuals(self):
-        """Zero out the weights of the residual linear layers."""
-        for module in self.residuals.modules():
-            if isinstance(module, nn.Linear):
-                for param in module.parameters():
-                    param.data.zero_()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Predict the actions for the given game states.

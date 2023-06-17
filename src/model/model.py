@@ -8,7 +8,7 @@ from .backbone import Backbone
 from .head import Head
 
 
-class CNNPolicy(nn.Module):
+class Policy(nn.Module):
     def __init__(
         self,
         n_classes: int,
@@ -16,10 +16,9 @@ class CNNPolicy(nn.Module):
         board_height: int,
         tile_embedding_dim: int,
         embedding_dim: int,
-        maxpool_kernel: int,
-        res_layers: int,
+        n_layers: int,
         head_layers: int,
-        zero_init_residuals: bool,
+        dropout: float,
     ):
         super().__init__()
         self.board_width = board_width
@@ -31,42 +30,29 @@ class CNNPolicy(nn.Module):
         )
         self.backbone = Backbone(
             n_classes,
-            board_width,
-            board_height,
             tile_embedding_dim,
             embedding_dim,
-            maxpool_kernel,
-            res_layers,
-            zero_init_residuals,
+            n_layers,
+            dropout,
         )
 
         self.predict_actions = nn.ModuleDict(
             {
-                "tile-1": Head(
-                    embedding_dim,
-                    head_layers,
-                    board_width * board_height,
-                    zero_init_residuals,
-                ),
+                "tile-1": Head(embedding_dim, head_layers, board_width * board_height),
                 "tile-2": nn.Sequential(
                     nn.Linear(2 * embedding_dim, embedding_dim),
                     nn.LayerNorm(embedding_dim),
-                    Head(
-                        embedding_dim,
-                        head_layers,
-                        board_width * board_height,
-                        zero_init_residuals,
-                    ),
+                    Head(embedding_dim, head_layers, board_width * board_height),
                 ),
                 "roll-1": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
                     nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, head_layers, 4, zero_init_residuals),
+                    Head(embedding_dim, head_layers, 4),
                 ),
                 "roll-2": nn.Sequential(
                     nn.Linear(3 * embedding_dim, embedding_dim),
                     nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, head_layers, 4, zero_init_residuals),
+                    Head(embedding_dim, head_layers, 4),
                 ),
             }
         )

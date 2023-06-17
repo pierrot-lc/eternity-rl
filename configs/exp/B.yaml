@@ -8,10 +8,9 @@ env:
 model:
   embedding_dim: 128
   tile_embedding_dim: 48
-  res_layers: 4
+  n_layers: 4
   head_layers: 2
-  maxpool_kernel: 1
-  zero_init_residuals: false
+  dropout: 0.1
 
 optimizer:
   optimizer: adamw
