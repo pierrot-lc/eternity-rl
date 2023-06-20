@@ -126,4 +126,5 @@ class Backbone(nn.Module):
         query = self.output_query.to(tokens.device)
         query = repeat(self.output_query, "t e -> b t e", b=tokens.shape[0])
         embeddings, _ = self.extract_embedding(query, tokens, tokens)
+        embeddings = self.layer_norm(embeddings)
         return embeddings.squeeze(1)
