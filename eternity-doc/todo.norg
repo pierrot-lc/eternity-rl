@@ -16,7 +16,6 @@ updated: 2023-06-22
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
   - Do a deeper head for each separate action.
-  -- Maybe use a GPT model for this?
   - Use MC sampling to sample the actions based on the result of the multiple simulations.
   - Once a model is trained, it is possible to do a soft MCTS:
   ~~ Start from a random state.
