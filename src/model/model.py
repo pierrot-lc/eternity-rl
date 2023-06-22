@@ -36,24 +36,17 @@ class Policy(nn.Module):
             dropout,
         )
 
+        self.rnn_head = nn.GRU(
+            embedding_dim,
+            embedding_dim,
+            num_layers=head_layers,
+            dropout=dropout,
+            batch_first=True,
+        )
         self.predict_actions = nn.ModuleDict(
             {
-                "tile-1": Head(embedding_dim, head_layers, board_width * board_height),
-                "tile-2": nn.Sequential(
-                    nn.Linear(2 * embedding_dim, embedding_dim),
-                    nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, head_layers, board_width * board_height),
-                ),
-                "roll-1": nn.Sequential(
-                    nn.Linear(3 * embedding_dim, embedding_dim),
-                    nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, head_layers, 4),
-                ),
-                "roll-2": nn.Sequential(
-                    nn.Linear(3 * embedding_dim, embedding_dim),
-                    nn.LayerNorm(embedding_dim),
-                    Head(embedding_dim, head_layers, 4),
-                ),
+                "tile": nn.Linear(embedding_dim, board_width * board_height),
+                "roll": nn.Linear(embedding_dim, 4),
             }
         )
 
@@ -115,29 +108,38 @@ class Policy(nn.Module):
         """
         embed = self.backbone(tiles, timesteps)
 
-        # Compute action logits.
-        tile_1 = self.predict_actions["tile-1"](embed)
-        tile_1_id = self.sample_actions(tile_1, sampling_mode)
-        tile_1_emb = self.embed_tile_ids(tile_1_id)
+        choosen_tiles, choosen_rolls = [], []
+        head_hidden = None
 
-        # Shape of [batch_size, 2 * embedding_dim].
-        embed = torch.concat([embed, tile_1_emb], dim=-1)
+        # First, choose the selected tiles.
+        for _ in range(2):
+            embed, head_hidden = self.rnn_head(embed, head_hidden)
+            distrib_tile = self.predict_actions["tile"](embed)
+            tile_id = self.sample_actions(distrib_tile, sampling_mode)
+            choosen_tiles.append((distrib_tile, tile_id))
 
-        tile_2 = self.predict_actions["tile-2"](embed)
-        tile_2_id = self.sample_actions(tile_2, sampling_mode)
-        tile_2_emb = self.embed_tile_ids(tile_2_id)
+        # Then, choose the rolls.
+        for _ in range(2):
+            embed, head_hidden = self.rnn_head(embed, head_hidden)
+            distrib_roll = self.predict_actions["roll"](embed)
+            roll_id = self.sample_actions(distrib_roll, sampling_mode)
+            choosen_rolls.append((distrib_roll, roll_id))
 
-        # Shape of [batch_size, 3 * embedding_dim].
-        embed = torch.concat([embed, tile_2_emb], dim=-1)
-
-        roll_1 = self.predict_actions["roll-1"](embed)
-        roll_1_id = self.sample_actions(roll_1, sampling_mode)
-
-        roll_2 = self.predict_actions["roll-2"](embed)
-        roll_2_id = self.sample_actions(roll_2, sampling_mode)
-
-        actions = torch.stack([tile_1_id, roll_1_id, tile_2_id, roll_2_id], dim=1)
-        logits = [tile_1, roll_1, tile_2, roll_2]
+        actions = torch.stack(
+            [
+                choosen_tiles[0][1],
+                choosen_rolls[0][1],
+                choosen_tiles[1][1],
+                choosen_rolls[1][1],
+            ],
+            dim=1,
+        )
+        logits = [
+            choosen_tiles[0][0],
+            choosen_rolls[0][0],
+            choosen_tiles[1][0],
+            choosen_rolls[1][0],
+        ]
         probs = [torch.softmax(logit, dim=-1) for logit in logits]
 
         return actions, probs
