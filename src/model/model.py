@@ -5,7 +5,6 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from .backbone import Backbone
-from .head import Head
 
 
 class Policy(nn.Module):
@@ -110,18 +109,19 @@ class Policy(nn.Module):
 
         choosen_tiles, choosen_rolls = [], []
         head_hidden = None
+        embed = embed.unsqueeze(1)
 
         # First, choose the selected tiles.
         for _ in range(2):
             embed, head_hidden = self.rnn_head(embed, head_hidden)
-            distrib_tile = self.predict_actions["tile"](embed)
+            distrib_tile = self.predict_actions["tile"](embed.squeeze(1))
             tile_id = self.sample_actions(distrib_tile, sampling_mode)
             choosen_tiles.append((distrib_tile, tile_id))
 
         # Then, choose the rolls.
         for _ in range(2):
             embed, head_hidden = self.rnn_head(embed, head_hidden)
-            distrib_roll = self.predict_actions["roll"](embed)
+            distrib_roll = self.predict_actions["roll"](embed.squeeze(1))
             roll_id = self.sample_actions(distrib_roll, sampling_mode)
             choosen_rolls.append((distrib_roll, roll_id))
 
