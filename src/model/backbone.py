@@ -77,7 +77,7 @@ class Backbone(nn.Module):
         self.encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=tile_embedding_dim,
-                nhead=1,  # One for each side of the tiles.
+                nhead=1,
                 dim_feedforward=2 * tile_embedding_dim,
                 dropout=dropout,
                 batch_first=True,
@@ -91,7 +91,7 @@ class Backbone(nn.Module):
             embed_dim=embedding_dim,
             kdim=tile_embedding_dim,
             vdim=tile_embedding_dim,
-            num_heads=1,  # One for each action of the game.
+            num_heads=1,
             dropout=dropout,
             batch_first=True,
         )

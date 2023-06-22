@@ -16,7 +16,7 @@ class Policy(nn.Module):
         board_height: int,
         tile_embedding_dim: int,
         embedding_dim: int,
-        n_layers: int,
+        backbone_layers: int,
         head_layers: int,
         dropout: float,
     ):
@@ -32,7 +32,7 @@ class Policy(nn.Module):
             n_classes,
             tile_embedding_dim,
             embedding_dim,
-            n_layers,
+            backbone_layers,
             dropout,
         )
 
