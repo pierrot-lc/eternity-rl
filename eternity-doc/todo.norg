@@ -3,25 +3,22 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-06-14
+updated: 2023-06-22
 @end
 
 * TODO
-  - ( ) Explore the importance of the multiple HPs.
-  -- ( ) Timesteps
-  -- ( ) Model init.
-  -- ( ) MLP for timesteps processing.
-  - (=) Mixing MCTS with neural networks -> AlphaZero.
-  -- (=) Is it possible to implement it in parallel on GPU?
-  - (x) Add critic loss to the actor loss.
-  -- It is not working so well, maybe because i'm doing MC sampling,
-     or maybe because i'm doing it wrong.
-  - (x) Reward function not sensible to potential bad ending moves.
-  -- (_) Curriculum learning?
-  - (x) Better best state saving.
-  - (x) Remove MLP.
-  - (x) Use argmax sampling when evaluating the model.
-  - ( ) Once a model is trained, it is possible to do a soft MCTS:
+  - (x) Implement a transformer policy.
+  -- (_) Maybe use a dedicated token to sumup the state of the game.
+  -- (_) If not, maybe a pointer network?
+  -- (x) Add a token for time encoding.
+  - ( ) Add a next state prediction loss.
+
+* Ideas
+  - Do MCTS once the model is trained and see if it is better than the model alone.
+  - Do a deeper head for each separate action.
+  -- Maybe use a GPT model for this?
+  - Use MC sampling to sample the actions based on the result of the multiple simulations.
+  - Once a model is trained, it is possible to do a soft MCTS:
   ~~ Start from a random state.
   ~~ Duplicate the state into many (many) batch games.
   ~~ Do a rollout with random sampling for each games in the batch.
@@ -30,7 +27,3 @@ updated: 2023-06-14
   -- This should enhance the overall search for a solution. It may be possible to apply this search
      with many different games in parallel, and to make the search over and over.
   -- It may be possible to implement this on multiple GPUs?
-  - ( ) Implement a transformer policy.
-  -- Maybe use a dedicated token to sumup the state of the game.
-  -- If not, maybe a pointer network?
-  -- Add a token for time encoding.
