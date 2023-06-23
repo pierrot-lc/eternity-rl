@@ -27,6 +27,10 @@ class Policy(nn.Module):
             nn.Embedding(board_width * board_height, embedding_dim),
             nn.LayerNorm(embedding_dim),
         )
+        self.embed_roll_ids = nn.Sequential(
+            nn.Embedding(4, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+        )
         self.backbone = Backbone(
             n_classes,
             tile_embedding_dim,
@@ -34,7 +38,6 @@ class Policy(nn.Module):
             backbone_layers,
             dropout,
         )
-
         self.rnn_head = nn.GRU(
             embedding_dim,
             embedding_dim,
@@ -114,15 +117,27 @@ class Policy(nn.Module):
         # First, choose the selected tiles.
         for _ in range(2):
             embed, head_hidden = self.rnn_head(embed, head_hidden)
+
+            # Sample the tile.
             distrib_tile = self.predict_actions["tile"](embed.squeeze(1))
             tile_id = self.sample_actions(distrib_tile, sampling_mode)
+
+            # Update the embedding so that the model knows which tile is selected.
+            embed = self.embed_tile_ids(tile_id).unsqueeze(1)
+
             choosen_tiles.append((distrib_tile, tile_id))
 
         # Then, choose the rolls.
         for _ in range(2):
             embed, head_hidden = self.rnn_head(embed, head_hidden)
+
+            # Sample the roll.
             distrib_roll = self.predict_actions["roll"](embed.squeeze(1))
             roll_id = self.sample_actions(distrib_roll, sampling_mode)
+
+            # Update the embedding so that the model knows which roll is selected.
+            embed = self.embed_roll_ids(roll_id).unsqueeze(1)
+
             choosen_rolls.append((distrib_roll, roll_id))
 
         actions = torch.stack(

@@ -218,6 +218,7 @@ class Reinforce:
         metrics["ep-len/hist"] = wandb.Histogram(episodes_len.cpu().numpy())
 
         # Compute losses.
+        self.model.train()
         sample = rollout_buffer.sample(self.batch_size)
         losses = self.compute_loss(sample)
         for k, v in losses.items():
