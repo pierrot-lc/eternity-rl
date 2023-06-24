@@ -9,7 +9,7 @@ model:
   embedding_dim: 24
   tile_embedding_dim: 24
   backbone_layers: 5
-  head_layers: 2
+  decoder_layers: 2
   dropout: 0.05
 
 optimizer:

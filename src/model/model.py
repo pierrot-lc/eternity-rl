@@ -5,6 +5,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from .backbone import Backbone
+from .decoder import Decoder
 
 
 class Policy(nn.Module):
@@ -16,7 +17,7 @@ class Policy(nn.Module):
         tile_embedding_dim: int,
         embedding_dim: int,
         backbone_layers: int,
-        head_layers: int,
+        decoder_layers: int,
         dropout: float,
     ):
         super().__init__()
@@ -34,16 +35,14 @@ class Policy(nn.Module):
         self.backbone = Backbone(
             n_classes,
             tile_embedding_dim,
-            embedding_dim,
             backbone_layers,
             dropout,
         )
-        self.rnn_head = nn.GRU(
+        self.decoder = Decoder(
+            tile_embedding_dim,
             embedding_dim,
-            embedding_dim,
-            num_layers=head_layers,
-            dropout=dropout,
-            batch_first=True,
+            decoder_layers,
+            dropout,
         )
         self.predict_actions = nn.ModuleDict(
             {
@@ -51,11 +50,6 @@ class Policy(nn.Module):
                 "roll": nn.Linear(embedding_dim, 4),
             }
         )
-
-        # Init lazy layers.
-        with torch.no_grad():
-            dummy_input = self.dummy_input("cpu")
-            self.forward(*dummy_input)
 
     def dummy_input(self, device: str) -> tuple[torch.Tensor, torch.Tensor]:
         tiles = torch.zeros(
@@ -108,35 +102,34 @@ class Policy(nn.Module):
             values: The predicted values.
                 Shape of [batch_size, 1].
         """
-        embed = self.backbone(tiles, timesteps)
+        tiles = self.backbone(tiles, timesteps)
 
         choosen_tiles, choosen_rolls = [], []
-        head_hidden = None
-        embed = embed.unsqueeze(1)
+        query, hidden_state = None, None
 
         # First, choose the selected tiles.
         for _ in range(2):
-            embed, head_hidden = self.rnn_head(embed, head_hidden)
+            hidden_state = self.decoder(tiles, query, hidden_state)
 
             # Sample the tile.
-            distrib_tile = self.predict_actions["tile"](embed.squeeze(1))
+            distrib_tile = self.predict_actions["tile"](hidden_state)
             tile_id = self.sample_actions(distrib_tile, sampling_mode)
 
-            # Update the embedding so that the model knows which tile is selected.
-            embed = self.embed_tile_ids(tile_id).unsqueeze(1)
+            # Update the query so that the model knows which tile has been selected.
+            query = self.embed_tile_ids(tile_id)
 
             choosen_tiles.append((distrib_tile, tile_id))
 
         # Then, choose the rolls.
         for _ in range(2):
-            embed, head_hidden = self.rnn_head(embed, head_hidden)
+            hidden_state = self.decoder(tiles, query, hidden_state)
 
             # Sample the roll.
-            distrib_roll = self.predict_actions["roll"](embed.squeeze(1))
+            distrib_roll = self.predict_actions["roll"](hidden_state)
             roll_id = self.sample_actions(distrib_roll, sampling_mode)
 
-            # Update the embedding so that the model knows which roll is selected.
-            embed = self.embed_roll_ids(roll_id).unsqueeze(1)
+            # Update the embedding so that the model knows which roll has been selected.
+            query = self.embed_roll_ids(roll_id)
 
             choosen_rolls.append((distrib_roll, roll_id))
 

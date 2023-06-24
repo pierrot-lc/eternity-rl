@@ -44,7 +44,6 @@ class Backbone(nn.Module):
     def __init__(
         self,
         n_classes: int,
-        tile_embedding_dim: int,
         embedding_dim: int,
         n_layers: int,
         dropout: float,
@@ -55,47 +54,35 @@ class Backbone(nn.Module):
         self.embed_board = nn.Sequential(
             # Embed the classes of each size of the tiles.
             Rearrange("b t w h -> b h w t"),
-            nn.Embedding(n_classes, tile_embedding_dim),
-            nn.LayerNorm(tile_embedding_dim),
+            nn.Embedding(n_classes, embedding_dim),
+            nn.LayerNorm(embedding_dim),
             # Merge the classes of each tile into a single embedding.
             Rearrange("b h w t e -> b (t e) h w"),
-            nn.Conv2d(4 * tile_embedding_dim, tile_embedding_dim, 1, padding="same"),
+            nn.Conv2d(4 * embedding_dim, embedding_dim, 1, padding="same"),
             nn.GELU(),
             # Add 2D positional encodings.
             Rearrange("b c h w -> b h w c"),
-            Summer(PositionalEncoding2D(tile_embedding_dim)),
+            Summer(PositionalEncoding2D(embedding_dim)),
             # Finally flatten into tokens for the transformer.
             Rearrange("b h w c -> b (h w) c"),
-            nn.LayerNorm(tile_embedding_dim),
+            nn.LayerNorm(embedding_dim),
         )
         self.embed_timesteps = nn.Sequential(
-            TimeEncoding(tile_embedding_dim),
-            nn.LayerNorm(tile_embedding_dim),
+            TimeEncoding(embedding_dim),
+            nn.LayerNorm(embedding_dim),
         )
 
         # Main backbone.
         self.encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
-                d_model=tile_embedding_dim,
+                d_model=embedding_dim,
                 nhead=1,
-                dim_feedforward=2 * tile_embedding_dim,
+                dim_feedforward=2 * embedding_dim,
                 dropout=dropout,
                 batch_first=True,
             ),
             num_layers=n_layers,
         )
-
-        # Extract the final embedding.
-        self.output_query = nn.Parameter(torch.randn(1, embedding_dim))
-        self.extract_embedding = nn.MultiheadAttention(
-            embed_dim=embedding_dim,
-            kdim=tile_embedding_dim,
-            vdim=tile_embedding_dim,
-            num_heads=1,
-            dropout=dropout,
-            batch_first=True,
-        )
-        self.layer_norm = nn.LayerNorm(embedding_dim)
 
     def forward(
         self,
@@ -113,18 +100,16 @@ class Backbone(nn.Module):
 
         ---
         Returns:
-            The embedding of the game state.
-                Shape of [batch_size, embedding_dim].
+            The embedded game state.
+                Shape of [batch_size, board_height x board_width, embedding_dim].
         """
-        # Project to shape of [batch_size, board_height x board_width, tile_embedding_dim].
+        # Embed to [batch_size, board_height x board_width, embedding_dim]
         tiles = self.embed_board(tiles)
+
+        # Embed to [batch_size, embedding_dim]
         timesteps = self.embed_timesteps(timesteps)
+
         tokens = torch.concat((timesteps.unsqueeze(1), tiles), dim=1)
         tokens = self.encoder(tokens)
 
-        # Extract the final embeddings.
-        query = self.output_query.to(tokens.device)
-        query = repeat(self.output_query, "t e -> b t e", b=tokens.shape[0])
-        embeddings, _ = self.extract_embedding(query, tokens, tokens)
-        embeddings = self.layer_norm(embeddings)
-        return embeddings.squeeze(1)
+        return tokens[:, 1:]

@@ -52,7 +52,7 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
         tile_embedding_dim=config.exp.model.tile_embedding_dim,
         embedding_dim=config.exp.model.embedding_dim,
         backbone_layers=config.exp.model.backbone_layers,
-        head_layers=config.exp.model.head_layers,
+        decoder_layers=config.exp.model.decoder_layers,
         dropout=config.exp.model.dropout,
     )
     return model
