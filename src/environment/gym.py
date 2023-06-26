@@ -158,7 +158,7 @@ class EternityEnv(gym.Env):
         Args:
             actions: Batch of actions to apply.
                 Long tensor of shape of [batch_size, actions]
-                where actions are a tuple (tile_id_1, shift_1, tile_id_2, shift_2).
+                where actions are a tuple (tile_id_1, tile_id_2, shift_1, shift_2).
 
         ---
         Returns:
@@ -178,8 +178,8 @@ class EternityEnv(gym.Env):
         actions[self.terminated] = 0
 
         self.step_id += 1
-        tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 2]
-        shifts_1, shifts_2 = actions[:, 1], actions[:, 3]
+        tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
+        shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
 
         previous_terminated = self.terminated.clone()
 

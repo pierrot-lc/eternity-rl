@@ -49,7 +49,6 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        tile_embedding_dim=config.exp.model.tile_embedding_dim,
         embedding_dim=config.exp.model.embedding_dim,
         backbone_layers=config.exp.model.backbone_layers,
         decoder_layers=config.exp.model.decoder_layers,

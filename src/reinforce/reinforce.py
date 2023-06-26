@@ -97,8 +97,8 @@ class Reinforce:
 
         entropies = [
             1.0 * entropies[0],
-            0.1 * entropies[1],
-            0.5 * entropies[2],
+            0.5 * entropies[1],
+            0.1 * entropies[2],
             0.1 * entropies[3],
         ]
         logprobs = torch.stack(logprobs, dim=1)

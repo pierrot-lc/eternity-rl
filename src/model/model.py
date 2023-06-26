@@ -1,11 +1,14 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import rearrange
 from torch.distributions import Categorical
 from torchinfo import summary
 
 from .backbone import Backbone
 from .decoder import Decoder
+
+N_SIDES, N_ACTIONS = 4, 4
 
 
 class Policy(nn.Module):
@@ -14,7 +17,6 @@ class Policy(nn.Module):
         n_classes: int,
         board_width: int,
         board_height: int,
-        tile_embedding_dim: int,
         embedding_dim: int,
         backbone_layers: int,
         decoder_layers: int,
@@ -34,27 +36,30 @@ class Policy(nn.Module):
         )
         self.backbone = Backbone(
             n_classes,
-            tile_embedding_dim,
+            embedding_dim,
             backbone_layers,
             dropout,
         )
         self.decoder = Decoder(
-            tile_embedding_dim,
             embedding_dim,
             decoder_layers,
             dropout,
+            n_queries=N_ACTIONS,
         )
-        self.predict_actions = nn.ModuleDict(
-            {
-                "tile": nn.Linear(embedding_dim, board_width * board_height),
-                "roll": nn.Linear(embedding_dim, 4),
-            }
+        self.rnn = nn.GRUCell(embedding_dim, embedding_dim)
+        self.predict_actions = nn.ModuleList(
+            [
+                nn.Linear(embedding_dim, board_width * board_height),
+                nn.Linear(embedding_dim, board_width * board_height),
+                nn.Linear(embedding_dim, N_SIDES),
+                nn.Linear(embedding_dim, N_SIDES),
+            ]
         )
 
     def dummy_input(self, device: str) -> tuple[torch.Tensor, torch.Tensor]:
         tiles = torch.zeros(
             1,
-            4,
+            N_SIDES,
             self.board_height,
             self.board_width,
             dtype=torch.long,
@@ -99,57 +104,21 @@ class Policy(nn.Module):
                 Shape of [batch_size, 4].
             probs: Distribution output of all heads.
                 List of tensor of shape [batch_size, n_actions].
-            values: The predicted values.
-                Shape of [batch_size, 1].
         """
         tiles = self.backbone(tiles, timesteps)
+        queries = self.decoder(tiles)
 
-        choosen_tiles, choosen_rolls = [], []
-        query, hidden_state = None, None
+        actions, probs = [], []
+        hidden_state = None
+        for query, predict_action in zip(queries, self.predict_actions):
+            hidden_state = self.rnn(query, hidden_state)
+            action_scores = predict_action(hidden_state)
+            action_ids = self.sample_actions(action_scores, sampling_mode)
 
-        # First, choose the selected tiles.
-        for _ in range(2):
-            hidden_state = self.decoder(tiles, query, hidden_state)
+            actions.append(action_ids)
+            probs.append(torch.softmax(action_scores, dim=-1))
 
-            # Sample the tile.
-            distrib_tile = self.predict_actions["tile"](hidden_state)
-            tile_id = self.sample_actions(distrib_tile, sampling_mode)
-
-            # Update the query so that the model knows which tile has been selected.
-            query = self.embed_tile_ids(tile_id)
-
-            choosen_tiles.append((distrib_tile, tile_id))
-
-        # Then, choose the rolls.
-        for _ in range(2):
-            hidden_state = self.decoder(tiles, query, hidden_state)
-
-            # Sample the roll.
-            distrib_roll = self.predict_actions["roll"](hidden_state)
-            roll_id = self.sample_actions(distrib_roll, sampling_mode)
-
-            # Update the embedding so that the model knows which roll has been selected.
-            query = self.embed_roll_ids(roll_id)
-
-            choosen_rolls.append((distrib_roll, roll_id))
-
-        actions = torch.stack(
-            [
-                choosen_tiles[0][1],
-                choosen_rolls[0][1],
-                choosen_tiles[1][1],
-                choosen_rolls[1][1],
-            ],
-            dim=1,
-        )
-        logits = [
-            choosen_tiles[0][0],
-            choosen_rolls[0][0],
-            choosen_tiles[1][0],
-            choosen_rolls[1][0],
-        ]
-        probs = [torch.softmax(logit, dim=-1) for logit in logits]
-
+        actions = torch.stack(actions, dim=1)
         return actions, probs
 
     @staticmethod

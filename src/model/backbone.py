@@ -64,7 +64,7 @@ class Backbone(nn.Module):
             Rearrange("b c h w -> b h w c"),
             Summer(PositionalEncoding2D(embedding_dim)),
             # Finally flatten into tokens for the transformer.
-            Rearrange("b h w c -> b (h w) c"),
+            Rearrange("b h w c -> (h w) b c"),
             nn.LayerNorm(embedding_dim),
         )
         self.embed_timesteps = nn.Sequential(
@@ -79,7 +79,7 @@ class Backbone(nn.Module):
                 nhead=1,
                 dim_feedforward=2 * embedding_dim,
                 dropout=dropout,
-                batch_first=True,
+                batch_first=False,
             ),
             num_layers=n_layers,
         )
@@ -101,7 +101,7 @@ class Backbone(nn.Module):
         ---
         Returns:
             The embedded game state.
-                Shape of [batch_size, board_height x board_width, embedding_dim].
+                Shape of [board_height x board_width, batch_size, embedding_dim].
         """
         # Embed to [batch_size, board_height x board_width, embedding_dim]
         tiles = self.embed_board(tiles)
@@ -109,7 +109,7 @@ class Backbone(nn.Module):
         # Embed to [batch_size, embedding_dim]
         timesteps = self.embed_timesteps(timesteps)
 
-        tokens = torch.concat((timesteps.unsqueeze(1), tiles), dim=1)
+        tokens = torch.concat((timesteps.unsqueeze(0), tiles), dim=0)
         tokens = self.encoder(tokens)
 
-        return tokens[:, 1:]
+        return tokens[1:]
