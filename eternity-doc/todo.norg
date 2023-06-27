@@ -14,6 +14,8 @@ updated: 2023-06-27
   -- ( ) Make the cross attention happen between each action.
   - ( ) Make sure that the RNN is able to know what was the last selected action.
   - ( ) Add a next state prediction loss.
+  -- Or simply add a RNN to the model.
+     Do take care to implement a proper experience replay. Replay the last $n$ steps of the game.
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
@@ -30,3 +32,8 @@ updated: 2023-06-27
   -- It may be possible to implement this on multiple GPUs?
   - Do a continuously learning model.
   -- It could just play forever and constantly learn from its previous actions.
+  - Instead of using an experience replay buffer, why don't I just play multiple subgames
+    for each sample of the batch?
+  -- Since playing a game is computionally light, it may be possible to play a lot of games
+     in parallel.
+  -- This is like a replay buffer, but with fresh samples (from the current policy) each time.
