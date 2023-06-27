@@ -69,6 +69,8 @@ class Policy(nn.Module):
             ]
         )
 
+        assert len(self.predict_actions) == len(self.embed_actions) == N_ACTIONS
+
     def dummy_input(self, device: str) -> tuple[torch.Tensor, torch.Tensor]:
         tiles = torch.zeros(
             1,
