@@ -3,7 +3,6 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import rearrange
 from torch.distributions import Categorical
 from torchinfo import summary
 
@@ -41,6 +40,7 @@ class Policy(nn.Module):
             n_queries=N_ACTIONS,
         )
         self.rnn = nn.GRUCell(embedding_dim, embedding_dim)
+        self.norm = nn.LayerNorm(embedding_dim)
 
         predict_tile_ids = nn.Linear(embedding_dim, board_width * board_height)
         predict_roll_ids = nn.Linear(embedding_dim, N_SIDES)
@@ -101,6 +101,7 @@ class Policy(nn.Module):
         self,
         tiles: torch.Tensor,
         timesteps: torch.Tensor,
+        # game_hidden_state: Optional[torch.Tensor] = None,
         sampling_mode: str = "sample",
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """Predict the actions and value for the given game states.
@@ -124,16 +125,21 @@ class Policy(nn.Module):
         queries = self.decoder(tiles)
 
         actions, probs = [], []
-        hidden_state = None
+        hidden_state = torch.zeros_like(queries[0], device=tiles.device)
         for query, predict_action, embed_action in zip(
             queries, self.predict_actions, self.embed_actions
         ):
+            residual = hidden_state
+
             hidden_state = self.rnn(query, hidden_state)
             action_scores = predict_action(hidden_state)
             action_ids = self.sample_actions(action_scores, sampling_mode)
 
             action_embeddings = embed_action(action_ids)
             hidden_state = self.rnn(action_embeddings, hidden_state)
+
+            hidden_state = hidden_state + residual
+            hidden_state = self.norm(hidden_state)
 
             actions.append(action_ids)
             probs.append(torch.softmax(action_scores, dim=-1))
