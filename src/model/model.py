@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -26,14 +28,6 @@ class Policy(nn.Module):
         self.board_width = board_width
         self.board_height = board_height
 
-        self.embed_tile_ids = nn.Sequential(
-            nn.Embedding(board_width * board_height, embedding_dim),
-            nn.LayerNorm(embedding_dim),
-        )
-        self.embed_roll_ids = nn.Sequential(
-            nn.Embedding(4, embedding_dim),
-            nn.LayerNorm(embedding_dim),
-        )
         self.backbone = Backbone(
             n_classes,
             embedding_dim,
@@ -47,12 +41,31 @@ class Policy(nn.Module):
             n_queries=N_ACTIONS,
         )
         self.rnn = nn.GRUCell(embedding_dim, embedding_dim)
+
+        predict_tile_ids = nn.Linear(embedding_dim, board_width * board_height)
+        predict_roll_ids = nn.Linear(embedding_dim, N_SIDES)
+        embed_tile_ids = nn.Sequential(
+            nn.Embedding(board_width * board_height, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+        )
+        embed_roll_ids = nn.Sequential(
+            nn.Embedding(4, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+        )
         self.predict_actions = nn.ModuleList(
             [
-                nn.Linear(embedding_dim, board_width * board_height),
-                nn.Linear(embedding_dim, board_width * board_height),
-                nn.Linear(embedding_dim, N_SIDES),
-                nn.Linear(embedding_dim, N_SIDES),
+                predict_tile_ids,
+                predict_tile_ids,
+                predict_roll_ids,
+                predict_roll_ids,
+            ]
+        )
+        self.embed_actions = nn.ModuleList(
+            [
+                embed_tile_ids,
+                embed_tile_ids,
+                embed_roll_ids,
+                embed_roll_ids,
             ]
         )
 
@@ -110,10 +123,15 @@ class Policy(nn.Module):
 
         actions, probs = [], []
         hidden_state = None
-        for query, predict_action in zip(queries, self.predict_actions):
+        for query, predict_action, embed_action in zip(
+            queries, self.predict_actions, self.embed_actions
+        ):
             hidden_state = self.rnn(query, hidden_state)
             action_scores = predict_action(hidden_state)
             action_ids = self.sample_actions(action_scores, sampling_mode)
+
+            action_embeddings = embed_action(action_ids)
+            hidden_state = self.rnn(action_embeddings, hidden_state)
 
             actions.append(action_ids)
             probs.append(torch.softmax(action_scores, dim=-1))
