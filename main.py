@@ -107,7 +107,6 @@ def init_trainer(
         config.exp.reinforce.entropy_weight,
         config.exp.reinforce.clip_value,
         config.exp.rollout_buffer.batch_size,
-        config.exp.rollout_buffer.batches_per_rollouts,
         config.exp.reinforce.total_rollouts,
         config.exp.reinforce.advantage,
     )
@@ -153,7 +152,6 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
             config.exp.group, OmegaConf.to_container(config), config.mode
         )
     except KeyboardInterrupt:
-        # Capture a potential CTRL+C to make sure we clean up distributed processes.
         print("Caught KeyboardInterrupt. Cleaning up distributed processes...")
     finally:
         cleanup_distributed()

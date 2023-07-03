@@ -6,15 +6,15 @@ env:
   max_steps: 64
 
 model:
-  embedding_dim: 32
-  backbone_layers: 4
+  embedding_dim: 24
+  backbone_layers: 5
   decoder_layers: 2
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
-  weight_decay: 1.0e-3
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 10
@@ -26,8 +26,7 @@ reinforce:
   clip_value: 5.0
 
 rollout_buffer:
-  buffer_size: 20480  # Number of played games in a single buffer.
-  batches_per_rollouts: 16  # Number of times we sample from the buffer.
+  buffer_size: 8192  # Number of played games in a single buffer.
   batch_size: 20480  # Number of samples in a single batch.
 
 checkpoint:

@@ -1,1 +1,1 @@
-from .model import Policy
+from .model import Policy, N_SIDES, N_ACTIONS

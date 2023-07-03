@@ -103,7 +103,7 @@ class Policy(nn.Module):
         timesteps: torch.Tensor,
         # game_hidden_state: Optional[torch.Tensor] = None,
         sampling_mode: str = "sample",
-    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -117,14 +117,16 @@ class Policy(nn.Module):
         ---
         Returns:
             actions: The predicted actions.
-                Shape of [batch_size, 4].
-            probs: Distribution output of all heads.
-                List of tensor of shape [batch_size, n_actions].
+                Shape of [batch_size, n_actions].
+            logprobs: The log probabilities of the predicted actions.
+                Shape of [batch_size, n_actions].
+            entropies: The entropies of the predicted actions.
+                Shape of [batch_size, n_actions].
         """
         tiles = self.backbone(tiles, timesteps)
         queries = self.decoder(tiles)
 
-        actions, probs = [], []
+        actions, logprobs, entropies = [], [], []
         hidden_state = torch.zeros_like(queries[0], device=tiles.device)
         for query, predict_action, embed_action in zip(
             queries, self.predict_actions, self.embed_actions
@@ -142,10 +144,16 @@ class Policy(nn.Module):
             hidden_state = self.norm(hidden_state)
 
             actions.append(action_ids)
-            probs.append(torch.softmax(action_scores, dim=-1))
+            probs = torch.softmax(action_scores, dim=-1)
+            actions_logprob, actions_entropy = Policy.logprobs(probs, action_ids)
+            logprobs.append(actions_logprob)
+            entropies.append(actions_entropy)
 
         actions = torch.stack(actions, dim=1)
-        return actions, probs
+        logprobs = torch.stack(logprobs, dim=1)
+        entropies = torch.stack(entropies, dim=1)
+
+        return actions, logprobs, entropies
 
     @staticmethod
     def sample_actions(logits: torch.Tensor, mode: str) -> torch.Tensor:
