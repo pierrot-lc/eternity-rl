@@ -6,15 +6,15 @@ env:
   max_steps: 64
 
 model:
-  embedding_dim: 24
-  backbone_layers: 5
-  decoder_layers: 2
+  embedding_dim: 16
+  backbone_layers: 8
+  decoder_layers: 4
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-3
-  weight_decay: 1.0e-4
+  weight_decay: 0.0e-4
 
 scheduler:
   warmup_steps: 10
