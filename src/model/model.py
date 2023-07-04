@@ -8,7 +8,6 @@ from torchinfo import summary
 from einops import repeat, rearrange
 
 from .backbone import Backbone
-from .decoder import Decoder
 
 N_SIDES, N_ACTIONS = 4, 4
 
