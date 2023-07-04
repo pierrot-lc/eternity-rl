@@ -85,6 +85,7 @@ class Reinforce:
         sample["entropies"][:, 1] *= 0.5
         sample["entropies"][:, 2] *= 0.1
         sample["entropies"][:, 3] *= 0.1
+        sample["entropies"] = sample["entropies"].sum(dim=1)
 
         losses["policy"] = -(
             sample["logprobs"] * sample["advantages"].unsqueeze(1).detach()
@@ -110,7 +111,7 @@ class Reinforce:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 1,
+        eval_every: int = 5,
     ):
         """Launches the training loop.
 
