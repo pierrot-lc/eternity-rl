@@ -12,6 +12,46 @@ from .decoder import Decoder
 N_SIDES, N_ACTIONS = 4, 4
 
 
+class SelectTile(nn.Module):
+    def __init__(self, embedding_dim: int):
+        super().__init__()
+
+        self.attention_layer = nn.MultiheadAttention(
+            embedding_dim,
+            num_heads=1,
+            dropout=0.,
+            bias=False,
+            batch_first=False,
+        )
+
+    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
+        """Select a tile by using a cross-attention operation between
+        the tiles and some query.
+
+        ---
+        Args:
+            tiles: The tiles, already embedded.
+                Tensor of shape [n_tiles, batch_size, embedding_dim].
+            query: The query.
+                Tensor of shape [batch_size, embedding_dim].
+
+        ---
+        Returns:
+            A probability distribution over the tiles.
+                Tensor of shape [batch_size, n_tiles].
+        """
+        query = query.unsqueeze(0)
+        _, attn_weights = self.attention_layer(
+            query,
+            tiles,
+            tiles,
+            need_weights=True,
+            average_attn_weights=True,
+        )
+        attn_weights = attn_weights.squeeze(1)
+        return attn_weights
+
+
 class Policy(nn.Module):
     def __init__(
         self,
