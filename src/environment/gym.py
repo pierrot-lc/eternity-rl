@@ -114,7 +114,7 @@ class EternityEnv(gym.Env):
         )
         self.best_score = 0
 
-        # - Spaces -
+        # Spaces.
         # Those spaces do not take into account that
         # this env is a batch of multiple instances.
         self.action_space = spaces.MultiDiscrete(

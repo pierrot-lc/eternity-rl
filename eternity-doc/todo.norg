@@ -16,11 +16,16 @@ updated: 2023-07-04
   - ( ) Add a next state prediction loss.
   -- Or simply add a RNN to the model.
      Do take care to implement a proper experience replay. Replay the last $n$ steps of the game.
-  - ( ) Try out a simple GNN, which is rotation invariant.
-  -- TokenGT maybe?
-  -- To enable the node selection, we can use attention mechanism to have a probability
+  - (-) Try out a simple GNN, which is rotation invariant.
+  -- ( ) TokenGT maybe?
+  -- (x) To enable the node selection, we can use attention mechanism to have a probability
      over the nodes.
-  - ( ) Add a rotation invariant regularizer loss (when not using a GNN).
+  -- (x) To incorporate the information of the last selected node, we can add a specicial
+     embedding to that node. Same thing for the selected shift.
+  -- (x) We can use the decoder with a single query, and use it each time we have to predict
+     an action. It means that each time we have to predict an action, it will observe
+     the embedded tiles and base its prediction on that.
+  - ( ) Add a rotation invariant regularizer loss (if not using a GNN).
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
