@@ -6,30 +6,27 @@ env:
   max_steps: 64
 
 model:
-  embedding_dim: 32
-  tile_embedding_dim: 32
-  res_layers: 5
-  head_layers: 3
-  maxpool_kernel: 1
-  zero_init_residuals: false
+  embedding_dim: 16
+  backbone_layers: 8
+  decoder_layers: 4
+  dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
-  weight_decay: 0.0e-3
+  learning_rate: 1.0e-3
+  weight_decay: 0.0e-4
 
 scheduler:
   warmup_steps: 10
 
 reinforce:
-  advantage: no-advantage
-  entropy_weight: 1.0e-5
+  advantage: max
+  entropy_weight: 1.0e-4
   total_rollouts: 10_000
   clip_value: 5.0
 
 rollout_buffer:
-  buffer_size: 163_840  # Number of played games in a single buffer.
-  batches_per_rollouts: 200  # Number of times we sample from the buffer.
-  batch_size: 40_960  # Number of samples in a single batch.
+  buffer_size: 8192  # Number of played games in a single buffer.
+  batch_size: 20480  # Number of samples in a single batch.
 
 checkpoint:

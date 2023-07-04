@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_optimizer import Lamb
 
 from src.environment import EternityEnv
-from src.model import CNNPolicy
+from src.model import Policy
 from src.reinforce import Reinforce
 
 
@@ -43,18 +43,16 @@ def init_env(config: DictConfig) -> EternityEnv:
     return env
 
 
-def init_model(config: DictConfig, env: EternityEnv) -> CNNPolicy:
+def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
-    model = CNNPolicy(
+    model = Policy(
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        tile_embedding_dim=config.exp.model.tile_embedding_dim,
         embedding_dim=config.exp.model.embedding_dim,
-        maxpool_kernel=config.exp.model.maxpool_kernel,
-        res_layers=config.exp.model.res_layers,
-        head_layers=config.exp.model.head_layers,
-        zero_init_residuals=config.exp.model.zero_init_residuals,
+        backbone_layers=config.exp.model.backbone_layers,
+        decoder_layers=config.exp.model.decoder_layers,
+        dropout=config.exp.model.dropout,
     )
     return model
 
@@ -95,7 +93,7 @@ def init_scheduler(
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
-    model: CNNPolicy | DDP,
+    model: Policy | DDP,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
@@ -109,7 +107,6 @@ def init_trainer(
         config.exp.reinforce.entropy_weight,
         config.exp.reinforce.clip_value,
         config.exp.rollout_buffer.batch_size,
-        config.exp.rollout_buffer.batches_per_rollouts,
         config.exp.reinforce.total_rollouts,
         config.exp.reinforce.advantage,
     )
@@ -155,7 +152,6 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
             config.exp.group, OmegaConf.to_container(config), config.mode
         )
     except KeyboardInterrupt:
-        # Capture a potential CTRL+C to make sure we clean up distributed processes.
         print("Caught KeyboardInterrupt. Cleaning up distributed processes...")
     finally:
         cleanup_distributed()

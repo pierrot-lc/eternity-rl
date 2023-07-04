@@ -11,7 +11,7 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import EternityEnv
-from ..model import CNNPolicy
+from ..model import Policy
 from .rollout_buffer import RolloutBuffer
 
 
@@ -19,19 +19,16 @@ class Reinforce:
     def __init__(
         self,
         env: EternityEnv,
-        model: CNNPolicy | DDP,
+        model: Policy | DDP,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
         entropy_weight: float,
         clip_value: float,
         batch_size: int,
-        batches_per_rollouts: int,
         total_rollouts: int,
         advantage: str,
     ):
-        assert batches_per_rollouts > 0
-
         self.env = env
         self.model = model
         self.optimizer = optimizer
@@ -41,7 +38,6 @@ class Reinforce:
         self.clip_value = clip_value
         self.batch_size = batch_size
         self.total_rollouts = total_rollouts
-        self.batches_per_rollouts = batches_per_rollouts
         self.advantage = advantage
 
         # Instantiate the rollout buffer once.
@@ -53,7 +49,6 @@ class Reinforce:
             device=self.device,
         )
 
-    @torch.no_grad()
     def do_rollouts(self, sampling_mode: str) -> RolloutBuffer:
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         self.rollout_buffer.reset()
@@ -65,13 +60,12 @@ class Reinforce:
         )
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, _ = self.model(states, timesteps, sampling_mode)
+            actions, logprobs, entropies = self.model(states, timesteps, sampling_mode)
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
-                states,
-                timesteps,
-                actions,
                 rewards,
+                logprobs,
+                entropies,
                 ~self.env.terminated | infos["just_won"],
             )
 
@@ -87,29 +81,16 @@ class Reinforce:
         for key, value in sample.items():
             sample[key] = value.to(self.device)
 
-        _, probs = self.model(sample["observations"], sample["timesteps"])
-
-        logprobs, entropies = [], []
-        for i in range(len(probs)):
-            logprobs_i, entropies_i = CNNPolicy.logprobs(
-                probs[i], sample["actions"][:, i]
-            )
-            logprobs.append(logprobs_i)
-            entropies.append(entropies_i)
-
-        entropies = [
-            1.0 * entropies[0],
-            0.1 * entropies[1],
-            0.5 * entropies[2],
-            0.1 * entropies[3],
-        ]
-        logprobs = torch.stack(logprobs, dim=1)
-        entropies = torch.stack(entropies, dim=1)
+        sample["entropies"][:, 0] *= 1.0
+        sample["entropies"][:, 1] *= 0.5
+        sample["entropies"][:, 2] *= 0.1
+        sample["entropies"][:, 3] *= 0.1
+        sample["entropies"] = sample["entropies"].sum(dim=1)
 
         losses["policy"] = -(
-            logprobs * sample["advantages"].unsqueeze(1).detach()
+            sample["logprobs"] * sample["advantages"].unsqueeze(1).detach()
         ).mean()
-        losses["entropy"] = -self.entropy_weight * entropies.mean()
+        losses["entropy"] = -self.entropy_weight * sample["entropies"].mean()
         losses["total"] = sum(losses.values())
         return losses
 
@@ -177,15 +158,7 @@ class Reinforce:
             ):
                 self.model.train()
                 rollout_buffer = self.do_rollouts(sampling_mode="sample")
-
-                for _ in tqdm(
-                    range(self.batches_per_rollouts),
-                    desc="Batch",
-                    disable=mode == "disabled",
-                    leave=False,
-                ):
-                    self.do_batch_update(rollout_buffer)
-
+                self.do_batch_update(rollout_buffer)
                 self.scheduler.step()
 
                 if i % eval_every == 0 and mode != "disabled":

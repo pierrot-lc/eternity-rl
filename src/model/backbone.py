@@ -1,69 +1,72 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
+from einops.layers.torch import Rearrange
 
 from .time_encoding import TimeEncoding
 
 
 class Backbone(nn.Module):
+    """Encode the board and produce a final embedding of the
+    wanted size.
+
+    The board is encoded as follows:
+        - Embed the classes of each size of the tiles.
+        - Merge the classes of each tile into a single embedding.
+        - Flatten into 1D sequence of tokens.
+        - Add a token that encode the timestep.
+        - Interleave layers of CNN and transformer.
+
+    The CNN layers are there to provide the tiles information about their localisation.
+    The transformer layers are there to provide global overview of the states.
+    """
+
     def __init__(
         self,
         n_classes: int,
-        board_width: int,
-        board_height: int,
-        tile_embedding_dim: int,
         embedding_dim: int,
-        maxpool_kernel: int,
-        res_layers: int,
-        zero_init_residuals: bool,
+        n_layers: int,
+        dropout: float,
     ):
         super().__init__()
 
-        self.embed_classes = nn.Sequential(
-            nn.Embedding(n_classes, tile_embedding_dim),
-            nn.LayerNorm(tile_embedding_dim),
-        )
-        self.embed_board = nn.Sequential(
-            nn.Conv2d(4 * tile_embedding_dim, tile_embedding_dim, 1, padding="same"),
-            nn.GELU(),
-            nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
-        )
-        self.residuals = nn.ModuleList(
+        self.transformer_layers = nn.ModuleList(
             [
-                nn.Sequential(
-                    nn.Conv2d(
-                        tile_embedding_dim, tile_embedding_dim, 3, padding="same"
-                    ),
-                    nn.GELU(),
-                    nn.LayerNorm([tile_embedding_dim, board_height, board_width]),
+                nn.TransformerEncoderLayer(
+                    d_model=embedding_dim,
+                    nhead=1,
+                    dim_feedforward=2 * embedding_dim,
+                    dropout=dropout,
+                    batch_first=False,
                 )
-                for _ in range(res_layers)
+                for _ in range(n_layers)
             ]
         )
-        self.project_board = nn.Sequential(
-            nn.MaxPool2d(kernel_size=maxpool_kernel),
-            nn.Flatten(),
-            nn.LazyLinear(embedding_dim),
+        self.cnn_layers = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.BatchNorm2d(embedding_dim),
+                    nn.Conv2d(embedding_dim, embedding_dim, 3, padding="same"),
+                    nn.GELU(),
+                )
+                for _ in range(n_layers)
+            ]
+        )
+        self.embed_board = nn.Sequential(
+            # Embed the classes of each size of the tiles.
+            Rearrange("b t w h -> b h w t"),
+            nn.Embedding(n_classes, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+            # Merge the classes of each tile into a single embedding.
+            Rearrange("b h w t e -> b (t e) h w"),
+            nn.Conv2d(4 * embedding_dim, embedding_dim, 1, padding="same"),
             nn.GELU(),
+            Rearrange("b c h w -> (h w) b c"),
+        )
+        self.embed_timesteps = nn.Sequential(
+            TimeEncoding(embedding_dim),
             nn.LayerNorm(embedding_dim),
         )
-
-        self.embed_timesteps = TimeEncoding(embedding_dim)
-        self.project_timesteps = nn.Sequential(
-            nn.Linear(2 * embedding_dim, embedding_dim),
-            nn.GELU(),
-            nn.LayerNorm(embedding_dim),
-        )
-
-        if zero_init_residuals:
-            self.init_residuals()
-
-    def init_residuals(self):
-        """Zero out the weights of the residual convolutional layers."""
-        for module in self.residuals.modules():
-            if isinstance(module, nn.Conv2d):
-                for param in module.parameters():
-                    param.data.zero_()
 
     def forward(
         self,
@@ -76,30 +79,28 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timestep: The timestep of the game states.
+            timesteps: The timestep of the game states.
                 Tensor of shape [batch_size,].
 
         ---
         Returns:
-            The embedding of the game state.
-                Shape of [batch_size, embedding_dim].
+            The embedded game state.
+                Shape of [board_height x board_width, batch_size, embedding_dim].
         """
-        tiles = rearrange(tiles, "b t w h -> b h w t")
-        embed = self.embed_classes(tiles)
+        batch_size, _, board_height, board_width = tiles.shape
 
-        embed = rearrange(embed, "b h w t e -> b (t e) h w")
-        embed = self.embed_board(embed)
+        tiles = self.embed_board(tiles)
+        timesteps = self.embed_timesteps(timesteps)
+        tokens = torch.concat((timesteps.unsqueeze(0), tiles), dim=0)
 
-        # Shape is of [batch_size, embedding_dim, height, width].
-        for layer in self.residuals:
-            embed = layer(embed) + embed
+        for cnn_layer, transformer_layer in zip(
+            self.cnn_layers, self.transformer_layers
+        ):
+            timesteps, tiles = tokens[:1], tokens[1:]
+            tiles = rearrange(tiles, "(h w) b e -> b e h w", h=board_height)
+            tiles = cnn_layer(tiles) + tiles
+            tiles = rearrange(tiles, "b e h w -> (h w) b e")
+            tokens = torch.concat((timesteps, tiles), dim=0)
+            tokens = transformer_layer(tokens) + tokens
 
-        embed = self.project_board(embed)
-        # Shape is of [batch_size, embedding_dim].
-
-        # Add the positional encodings for the given timesteps.
-        encodings = self.embed_timesteps(timesteps)
-        embed = torch.concat((embed, encodings), dim=1)
-        embed = self.project_timesteps(embed)
-
-        return embed
+        return tokens[1:]

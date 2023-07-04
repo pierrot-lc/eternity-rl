@@ -1,1 +1,1 @@
-from .model import CNNPolicy
+from .model import Policy, N_SIDES, N_ACTIONS
