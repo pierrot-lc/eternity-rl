@@ -3,11 +3,12 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 from torch.distributions import Categorical
 from torchinfo import summary
-from einops import repeat, rearrange
 
 from .backbone import Backbone
+from .heads import SelectSide, SelectTile
 
 N_SIDES, N_ACTIONS = 4, 4
 
@@ -19,6 +20,7 @@ class Policy(nn.Module):
         board_width: int,
         board_height: int,
         embedding_dim: int,
+        n_heads: int,
         backbone_layers: int,
         decoder_layers: int,
         dropout: float,
@@ -31,12 +33,15 @@ class Policy(nn.Module):
         self.backbone = Backbone(
             n_classes,
             embedding_dim,
+            n_heads,
             backbone_layers,
             dropout,
         )
 
-        self.select_tile = SelectTile(embedding_dim, decoder_layers, dropout)
-        self.select_side = SelectSide(embedding_dim, decoder_layers, dropout)
+        self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
+        self.select_side = SelectSide(
+            embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
+        )
         self.node_query = nn.Parameter(torch.randn(embedding_dim))
         self.side_query = nn.Parameter(torch.randn(embedding_dim))
         self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
@@ -214,109 +219,3 @@ class Policy(nn.Module):
         tiles = rearrange(tiles, "(b t) e -> t b e", b=batch_size)
 
         return tiles
-
-
-class SelectTile(nn.Module):
-    def __init__(self, embedding_dim: int, n_layers: int, dropout: float):
-        super().__init__()
-
-        self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                embedding_dim,
-                nhead=1,
-                dim_feedforward=2 * embedding_dim,
-                dropout=dropout,
-                batch_first=False,
-            ),
-            num_layers=n_layers,
-        )
-        self.attention_layer = nn.MultiheadAttention(
-            embedding_dim,
-            num_heads=1,
-            dropout=0.0,
-            bias=False,
-            batch_first=False,
-        )
-
-    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
-        """Select a tile by using a cross-attention operation between
-        the tiles and some query.
-
-        ---
-        Args:
-            tiles: The tiles, already embedded.
-                Tensor of shape [n_tiles, batch_size, embedding_dim].
-            query: The query.
-                Tensor of shape [batch_size, embedding_dim].
-
-        ---
-        Returns:
-            A probability distribution over the tiles.
-                Tensor of shape [batch_size, n_tiles].
-        """
-        query = query.unsqueeze(0)
-        query = self.decoder(query, tiles)
-        _, node_distributions = self.attention_layer(
-            query,
-            tiles,
-            tiles,
-            need_weights=True,
-            average_attn_weights=True,
-        )
-        node_distributions = node_distributions.squeeze(1)
-        return node_distributions
-
-
-class SelectSide(nn.Module):
-    def __init__(self, embedding_dim: int, n_layers: int, dropout: float):
-        super().__init__()
-
-        self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                embedding_dim,
-                nhead=1,
-                dim_feedforward=2 * embedding_dim,
-                dropout=dropout,
-                batch_first=False,
-            ),
-            num_layers=n_layers,
-        )
-        self.attention_layer = nn.MultiheadAttention(
-            embedding_dim,
-            num_heads=1,
-            dropout=0.0,
-            bias=False,
-            batch_first=False,
-        )
-        self.predict_side = nn.Sequential(
-            nn.Linear(embedding_dim, N_SIDES),
-            nn.Softmax(dim=-1),
-        )
-
-    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
-        """Select a side by using a cross-attention operation between
-        the tiles and some query.
-
-        ---
-        Args:
-            tiles: The tiles, already embedded.
-                Tensor of shape [n_tiles, batch_size, embedding_dim].
-            query: The query.
-                Tensor of shape [batch_size, embedding_dim].
-
-        ---
-        Returns:
-            A probability distribution over the sides.
-                Tensor of shape [batch_size, n_sides].
-        """
-        query = query.unsqueeze(0)
-        query = self.decoder(query, tiles)
-        side_embeddings, _ = self.attention_layer(
-            query,
-            tiles,
-            tiles,
-            need_weights=True,
-        )
-        side_embeddings = side_embeddings.squeeze(0)
-        side_distributions = self.predict_side(side_embeddings)
-        return side_distributions

@@ -7,12 +7,13 @@ env:
 
 model:
   embedding_dim: 12
+  n_heads: 2
   backbone_layers: 4
   decoder_layers: 1
   dropout: 0.0
 
 optimizer:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-2
   optimizer: adamw
   weight_decay: 1.0e-4
 
@@ -23,6 +24,7 @@ reinforce:
   advantage: no-advantage
   entropy_weight: 1.0e-5
   total_rollouts: 200
+  bptt_steps: 2
   clip_value: 0.05
 
 rollout_buffer:

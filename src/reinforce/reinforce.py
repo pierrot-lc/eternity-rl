@@ -24,6 +24,7 @@ class Reinforce:
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
         entropy_weight: float,
+        bptt_steps: int,
         clip_value: float,
         batch_size: int,
         total_rollouts: int,
@@ -35,6 +36,7 @@ class Reinforce:
         self.scheduler = scheduler
         self.device = device
         self.entropy_weight = entropy_weight
+        self.bptt_steps = bptt_steps
         self.clip_value = clip_value
         self.batch_size = batch_size
         self.total_rollouts = total_rollouts
@@ -54,6 +56,7 @@ class Reinforce:
         self.rollout_buffer.reset()
         states, _ = self.env.reset()
         hidden_state = None
+        step = 0
 
         while not self.env.truncated and not torch.all(self.env.terminated):
             actions, logprobs, entropies, hidden_state = self.model(
@@ -68,6 +71,10 @@ class Reinforce:
             )
 
             states = new_states
+            step += 1
+
+            if step % self.bptt_steps == 0:
+                hidden_state = hidden_state.detach()
 
         self.rollout_buffer.finalize(self.advantage)
 

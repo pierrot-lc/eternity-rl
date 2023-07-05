@@ -26,6 +26,7 @@ class Backbone(nn.Module):
         self,
         n_classes: int,
         embedding_dim: int,
+        n_heads: int,
         n_layers: int,
         dropout: float,
     ):
@@ -35,7 +36,7 @@ class Backbone(nn.Module):
             [
                 nn.TransformerEncoderLayer(
                     d_model=embedding_dim,
-                    nhead=1,
+                    nhead=n_heads,
                     dim_feedforward=2 * embedding_dim,
                     dropout=dropout,
                     batch_first=False,
