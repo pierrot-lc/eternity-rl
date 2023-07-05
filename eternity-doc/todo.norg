@@ -13,8 +13,8 @@ updated: 2023-07-05
   -- (x) Add a token for time encoding.
   -- ( ) Make the cross attention happen between each action.
   - (x) Make sure that the RNN is able to know what was the last selected action.
-  - ( ) Add a next state prediction loss.
-  -- Or simply add a RNN to the model.
+  - (x) Add a next state prediction loss.
+  -- (x) Or simply add a RNN to the model.
      Do take care to implement a proper experience replay. Replay the last $n$ steps of the game.
   - (-) Try out a simple GNN, which is rotation invariant.
   -- ( ) TokenGT maybe?
