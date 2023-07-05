@@ -3,6 +3,7 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
+from .g_cnn import GCNN
 from .time_encoding import TimeEncoding
 
 
@@ -46,7 +47,13 @@ class Backbone(nn.Module):
             [
                 nn.Sequential(
                     nn.BatchNorm2d(embedding_dim),
-                    nn.Conv2d(embedding_dim, embedding_dim, 3, padding="same"),
+                    GCNN(
+                        embedding_dim,
+                        embedding_dim,
+                        reduce_factor=6,
+                        kernel_size=3,
+                        padding="same",
+                    ),
                     nn.GELU(),
                 )
                 for _ in range(n_layers)
@@ -59,7 +66,7 @@ class Backbone(nn.Module):
             nn.LayerNorm(embedding_dim),
             # Merge the classes of each tile into a single embedding.
             Rearrange("b h w t e -> b (t e) h w"),
-            nn.Conv2d(4 * embedding_dim, embedding_dim, 1, padding="same"),
+            nn.Conv2d(4 * embedding_dim, embedding_dim, kernel_size=1, padding="same"),
             nn.GELU(),
             Rearrange("b c h w -> (h w) b c"),
         )
