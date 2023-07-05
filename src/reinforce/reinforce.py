@@ -53,14 +53,12 @@ class Reinforce:
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         self.rollout_buffer.reset()
         states, _ = self.env.reset()
-        timesteps = torch.zeros(
-            self.env.batch_size,
-            dtype=torch.long,
-            device=self.device,
-        )
+        hidden_state = None
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, logprobs, entropies = self.model(states, timesteps, sampling_mode)
+            actions, logprobs, entropies, hidden_state = self.model(
+                states, hidden_state, sampling_mode
+            )
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
                 rewards,
@@ -70,7 +68,6 @@ class Reinforce:
             )
 
             states = new_states
-            timesteps += 1
 
         self.rollout_buffer.finalize(self.advantage)
 

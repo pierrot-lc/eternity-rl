@@ -26,6 +26,7 @@ class Policy(nn.Module):
         super().__init__()
         self.board_width = board_width
         self.board_height = board_height
+        self.embedding_dim = embedding_dim
 
         self.backbone = Backbone(
             n_classes,
@@ -50,12 +51,13 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        timesteps = torch.zeros(
+        hidden_state = torch.zeros(
             1,
-            dtype=torch.long,
+            self.embedding_dim,
+            dtype=torch.float,
             device=device,
         )
-        return tiles, timesteps
+        return tiles, hidden_state
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -63,15 +65,14 @@ class Policy(nn.Module):
         summary(
             self,
             input_data=[*dummy_input],
-            depth=2,
+            depth=1,
             device=device,
         )
 
     def forward(
         self,
         tiles: torch.Tensor,
-        timesteps: torch.Tensor,
-        # game_hidden_state: Optional[torch.Tensor] = None,
+        hidden_state: Optional[torch.Tensor] = None,
         sampling_mode: str = "sample",
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -80,8 +81,9 @@ class Policy(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timestep: The timestep of the game states.
-                Tensor of shape [batch_size,].
+            hidden_state: The previous hidden state of the model.
+                Initialized to 0 if not provided.
+                Tensor of shape [batch_size, embedding_dim].
             sampling_mode: The sampling mode of the actions.
 
         ---
@@ -94,7 +96,14 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
         """
         batch_size = tiles.shape[0]
-        tiles = self.backbone(tiles, timesteps)
+        if hidden_state is None:
+            hidden_state = torch.zeros(
+                (batch_size, self.embedding_dim),
+                dtype=torch.float,
+                device=tiles.device,
+            )
+
+        tiles, hidden_state = self.backbone(tiles, hidden_state)
 
         actions, logprobs, entropies = [], [], []
 
@@ -133,7 +142,7 @@ class Policy(nn.Module):
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies
+        return actions, logprobs, entropies, hidden_state
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
