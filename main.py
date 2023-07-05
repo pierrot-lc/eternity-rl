@@ -82,7 +82,7 @@ def init_scheduler(
 ) -> optim.lr_scheduler.LinearLR:
     """Initialize the scheduler."""
     scheduler = optim.lr_scheduler.LinearLR(
-        # optimizer=optimizer,
+        optimizer=optimizer,
         start_factor=0.001,
         end_factor=1.0,
         total_iters=config.exp.scheduler.warmup_steps,
