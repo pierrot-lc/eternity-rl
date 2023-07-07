@@ -115,7 +115,7 @@ class Reinforce:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 5,
+        eval_every: int = 10,
     ):
         """Launches the training loop.
 
