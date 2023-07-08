@@ -3,9 +3,6 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
-from .g_cnn import GCNN
-from .time_encoding import TimeEncoding
-
 
 class Backbone(nn.Module):
     """Encode the board and produce a final embedding of the
@@ -25,13 +22,41 @@ class Backbone(nn.Module):
     def __init__(
         self,
         n_classes: int,
+        n_channels: int,
         embedding_dim: int,
         n_heads: int,
-        n_layers: int,
+        cnn_layers: int,
+        transformer_layers: int,
         dropout: float,
     ):
         super().__init__()
 
+        self.embed_board = nn.Sequential(
+            # Embed the classes of each size of the tiles.
+            Rearrange("b t w h -> b h w t"),
+            nn.Embedding(n_classes, n_channels),
+            nn.LayerNorm(n_channels),
+            # Merge the classes of each tile into a single embedding.
+            Rearrange("b h w t e -> b (t e) h w"),
+            nn.Conv2d(4 * n_channels, n_channels, kernel_size=1, padding="same"),
+            nn.GELU(),
+        )
+        self.linear = nn.Linear(n_channels, embedding_dim)
+        self.cnn_layers = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.BatchNorm2d(n_channels),
+                    nn.Conv2d(
+                        n_channels,
+                        n_channels,
+                        kernel_size=3,
+                        padding="same",
+                    ),
+                    nn.GELU(),
+                )
+                for _ in range(cnn_layers)
+            ]
+        )
         self.transformer_layers = nn.ModuleList(
             [
                 nn.TransformerEncoderLayer(
@@ -41,34 +66,8 @@ class Backbone(nn.Module):
                     dropout=dropout,
                     batch_first=False,
                 )
-                for _ in range(n_layers)
+                for _ in range(transformer_layers)
             ]
-        )
-        self.cnn_layers = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.BatchNorm2d(embedding_dim),
-                    nn.Conv2d(
-                        embedding_dim,
-                        embedding_dim,
-                        kernel_size=3,
-                        padding="same",
-                    ),
-                    nn.GELU(),
-                )
-                for _ in range(n_layers)
-            ]
-        )
-        self.embed_board = nn.Sequential(
-            # Embed the classes of each size of the tiles.
-            Rearrange("b t w h -> b h w t"),
-            nn.Embedding(n_classes, embedding_dim),
-            nn.LayerNorm(embedding_dim),
-            # Merge the classes of each tile into a single embedding.
-            Rearrange("b h w t e -> b (t e) h w"),
-            nn.Conv2d(4 * embedding_dim, embedding_dim, kernel_size=1, padding="same"),
-            nn.GELU(),
-            Rearrange("b c h w -> (h w) b c"),
         )
 
     def forward(
@@ -93,16 +92,13 @@ class Backbone(nn.Module):
         batch_size, _, board_height, board_width = tiles.shape
 
         tiles = self.embed_board(tiles)
-        tokens = torch.concat((hidden_state.unsqueeze(0), tiles), dim=0)
+        for layer in self.cnn_layers:
+            tiles = layer(tiles) + tiles
 
-        for cnn_layer, transformer_layer in zip(
-            self.cnn_layers, self.transformer_layers
-        ):
-            hidden_state, tiles = tokens[:1], tokens[1:]
-            tiles = rearrange(tiles, "(h w) b e -> b e h w", h=board_height)
-            tiles = cnn_layer(tiles) + tiles
-            tiles = rearrange(tiles, "b e h w -> (h w) b e")
-            tokens = torch.concat((hidden_state, tiles), dim=0)
+        tokens = rearrange(tiles, "b e h w -> (h w) b e")
+        tokens = self.linear(tokens)
+        tokens = torch.concat((hidden_state.unsqueeze(0), tokens), dim=0)
+        for transformer_layer in self.transformer_layers:
             tokens = transformer_layer(tokens) + tokens
 
         return tokens[1:], tokens[0]
