@@ -3,11 +3,12 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 from torch.distributions import Categorical
 from torchinfo import summary
-from einops import repeat, rearrange
 
 from .backbone import Backbone
+from .heads import SelectSide, SelectTile
 
 N_SIDES, N_ACTIONS = 4, 4
 
@@ -19,6 +20,7 @@ class Policy(nn.Module):
         board_width: int,
         board_height: int,
         embedding_dim: int,
+        n_heads: int,
         backbone_layers: int,
         decoder_layers: int,
         dropout: float,
@@ -26,16 +28,20 @@ class Policy(nn.Module):
         super().__init__()
         self.board_width = board_width
         self.board_height = board_height
+        self.embedding_dim = embedding_dim
 
         self.backbone = Backbone(
             n_classes,
             embedding_dim,
+            n_heads,
             backbone_layers,
             dropout,
         )
 
-        self.select_tile = SelectTile(embedding_dim, decoder_layers, dropout)
-        self.select_side = SelectSide(embedding_dim, decoder_layers, dropout)
+        self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
+        self.select_side = SelectSide(
+            embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
+        )
         self.node_query = nn.Parameter(torch.randn(embedding_dim))
         self.side_query = nn.Parameter(torch.randn(embedding_dim))
         self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
@@ -50,12 +56,13 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        timesteps = torch.zeros(
+        hidden_state = torch.zeros(
             1,
-            dtype=torch.long,
+            self.embedding_dim,
+            dtype=torch.float,
             device=device,
         )
-        return tiles, timesteps
+        return tiles, hidden_state
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -63,15 +70,14 @@ class Policy(nn.Module):
         summary(
             self,
             input_data=[*dummy_input],
-            depth=2,
+            depth=1,
             device=device,
         )
 
     def forward(
         self,
         tiles: torch.Tensor,
-        timesteps: torch.Tensor,
-        # game_hidden_state: Optional[torch.Tensor] = None,
+        hidden_state: Optional[torch.Tensor] = None,
         sampling_mode: str = "sample",
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -80,8 +86,9 @@ class Policy(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timestep: The timestep of the game states.
-                Tensor of shape [batch_size,].
+            hidden_state: The previous hidden state of the model.
+                Initialized to 0 if not provided.
+                Tensor of shape [batch_size, embedding_dim].
             sampling_mode: The sampling mode of the actions.
 
         ---
@@ -94,7 +101,14 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
         """
         batch_size = tiles.shape[0]
-        tiles = self.backbone(tiles, timesteps)
+        if hidden_state is None:
+            hidden_state = torch.zeros(
+                (batch_size, self.embedding_dim),
+                dtype=torch.float,
+                device=tiles.device,
+            )
+
+        tiles, hidden_state = self.backbone(tiles, hidden_state)
 
         actions, logprobs, entropies = [], [], []
 
@@ -133,7 +147,7 @@ class Policy(nn.Module):
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies
+        return actions, logprobs, entropies, hidden_state
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
@@ -205,109 +219,3 @@ class Policy(nn.Module):
         tiles = rearrange(tiles, "(b t) e -> t b e", b=batch_size)
 
         return tiles
-
-
-class SelectTile(nn.Module):
-    def __init__(self, embedding_dim: int, n_layers: int, dropout: float):
-        super().__init__()
-
-        self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                embedding_dim,
-                nhead=1,
-                dim_feedforward=2 * embedding_dim,
-                dropout=dropout,
-                batch_first=False,
-            ),
-            num_layers=n_layers,
-        )
-        self.attention_layer = nn.MultiheadAttention(
-            embedding_dim,
-            num_heads=1,
-            dropout=0.0,
-            bias=False,
-            batch_first=False,
-        )
-
-    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
-        """Select a tile by using a cross-attention operation between
-        the tiles and some query.
-
-        ---
-        Args:
-            tiles: The tiles, already embedded.
-                Tensor of shape [n_tiles, batch_size, embedding_dim].
-            query: The query.
-                Tensor of shape [batch_size, embedding_dim].
-
-        ---
-        Returns:
-            A probability distribution over the tiles.
-                Tensor of shape [batch_size, n_tiles].
-        """
-        query = query.unsqueeze(0)
-        query = self.decoder(query, tiles)
-        _, node_distributions = self.attention_layer(
-            query,
-            tiles,
-            tiles,
-            need_weights=True,
-            average_attn_weights=True,
-        )
-        node_distributions = node_distributions.squeeze(1)
-        return node_distributions
-
-
-class SelectSide(nn.Module):
-    def __init__(self, embedding_dim: int, n_layers: int, dropout: float):
-        super().__init__()
-
-        self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
-                embedding_dim,
-                nhead=1,
-                dim_feedforward=2 * embedding_dim,
-                dropout=dropout,
-                batch_first=False,
-            ),
-            num_layers=n_layers,
-        )
-        self.attention_layer = nn.MultiheadAttention(
-            embedding_dim,
-            num_heads=1,
-            dropout=0.0,
-            bias=False,
-            batch_first=False,
-        )
-        self.predict_side = nn.Sequential(
-            nn.Linear(embedding_dim, N_SIDES),
-            nn.Softmax(dim=-1),
-        )
-
-    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
-        """Select a side by using a cross-attention operation between
-        the tiles and some query.
-
-        ---
-        Args:
-            tiles: The tiles, already embedded.
-                Tensor of shape [n_tiles, batch_size, embedding_dim].
-            query: The query.
-                Tensor of shape [batch_size, embedding_dim].
-
-        ---
-        Returns:
-            A probability distribution over the sides.
-                Tensor of shape [batch_size, n_sides].
-        """
-        query = query.unsqueeze(0)
-        query = self.decoder(query, tiles)
-        side_embeddings, _ = self.attention_layer(
-            query,
-            tiles,
-            tiles,
-            need_weights=True,
-        )
-        side_embeddings = side_embeddings.squeeze(0)
-        side_distributions = self.predict_side(side_embeddings)
-        return side_distributions

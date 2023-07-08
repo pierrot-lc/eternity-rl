@@ -6,9 +6,10 @@ env:
   max_steps: 64
 
 model:
-  embedding_dim: 16
-  backbone_layers: 8
-  decoder_layers: 4
+  embedding_dim: 24
+  n_heads: 2
+  backbone_layers: 2
+  decoder_layers: 1
   dropout: 0.05
 
 optimizer:
@@ -21,12 +22,13 @@ scheduler:
 
 reinforce:
   advantage: max
-  entropy_weight: 1.0e-4
+  entropy_weight: 0.0e-4
   total_rollouts: 10_000
-  clip_value: 5.0
+  bptt_steps: 12
+  clip_value: 0.01
 
 rollout_buffer:
-  buffer_size: 8192  # Number of played games in a single buffer.
-  batch_size: 20480  # Number of samples in a single batch.
+  buffer_size: 384  # Number of played games in a single buffer.
+  batch_size: 24576  # Number of samples in a single batch.
 
 checkpoint:

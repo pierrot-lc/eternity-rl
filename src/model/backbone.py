@@ -26,6 +26,7 @@ class Backbone(nn.Module):
         self,
         n_classes: int,
         embedding_dim: int,
+        n_heads: int,
         n_layers: int,
         dropout: float,
     ):
@@ -35,8 +36,8 @@ class Backbone(nn.Module):
             [
                 nn.TransformerEncoderLayer(
                     d_model=embedding_dim,
-                    nhead=1,
-                    dim_feedforward=2 * embedding_dim,
+                    nhead=n_heads,
+                    dim_feedforward=4 * embedding_dim,
                     dropout=dropout,
                     batch_first=False,
                 )
@@ -47,10 +48,9 @@ class Backbone(nn.Module):
             [
                 nn.Sequential(
                     nn.BatchNorm2d(embedding_dim),
-                    GCNN(
+                    nn.Conv2d(
                         embedding_dim,
                         embedding_dim,
-                        reduce_factor=6,
                         kernel_size=3,
                         padding="same",
                     ),
@@ -70,15 +70,11 @@ class Backbone(nn.Module):
             nn.GELU(),
             Rearrange("b c h w -> (h w) b c"),
         )
-        self.embed_timesteps = nn.Sequential(
-            TimeEncoding(embedding_dim),
-            nn.LayerNorm(embedding_dim),
-        )
 
     def forward(
         self,
         tiles: torch.Tensor,
-        timesteps: torch.Tensor,
+        hidden_state: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -86,8 +82,8 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            timesteps: The timestep of the game states.
-                Tensor of shape [batch_size,].
+            hidden_state: The previous hidden state of the model.
+                Tensor of shape [batch_size, embedding_dim].
 
         ---
         Returns:
@@ -97,17 +93,16 @@ class Backbone(nn.Module):
         batch_size, _, board_height, board_width = tiles.shape
 
         tiles = self.embed_board(tiles)
-        timesteps = self.embed_timesteps(timesteps)
-        tokens = torch.concat((timesteps.unsqueeze(0), tiles), dim=0)
+        tokens = torch.concat((hidden_state.unsqueeze(0), tiles), dim=0)
 
         for cnn_layer, transformer_layer in zip(
             self.cnn_layers, self.transformer_layers
         ):
-            timesteps, tiles = tokens[:1], tokens[1:]
+            hidden_state, tiles = tokens[:1], tokens[1:]
             tiles = rearrange(tiles, "(h w) b e -> b e h w", h=board_height)
             tiles = cnn_layer(tiles) + tiles
             tiles = rearrange(tiles, "b e h w -> (h w) b e")
-            tokens = torch.concat((timesteps, tiles), dim=0)
+            tokens = torch.concat((hidden_state, tiles), dim=0)
             tokens = transformer_layer(tokens) + tokens
 
-        return tokens[1:]
+        return tokens[1:], tokens[0]
