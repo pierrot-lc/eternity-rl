@@ -192,7 +192,8 @@ class EternityEnv(gym.Env):
         # Update envs infos.
         self.update_best_env()
         rewards = matches / self.best_matches
-        self.max_matches = torch.max(self.max_matches, matches)
+        max_matches = torch.stack((self.max_matches, matches), dim=1)
+        self.max_matches = torch.max(max_matches, dim=1)[0]
         self.terminated |= matches == self.best_matches
         self.truncated = self.step_id >= self.max_steps
         infos["just_won"] = self.terminated & ~previous_terminated
