@@ -45,7 +45,7 @@ class Backbone(nn.Module):
         self.cnn_layers = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.BatchNorm2d(n_channels),
+                    nn.GroupNorm(1, n_channels),
                     nn.Conv2d(
                         n_channels,
                         n_channels,

@@ -24,6 +24,9 @@ class SelectTile(nn.Module):
             batch_first=False,
         )
 
+        # Deactivate these parameters, as they're not used.
+        self.attention_layer.out_proj.requires_grad_(False)
+
     def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
         """Select a tile by using a cross-attention operation between
         the tiles and some query.
