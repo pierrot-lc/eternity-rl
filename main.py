@@ -82,14 +82,21 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
 
 def init_scheduler(
     config: DictConfig, optimizer: optim.Optimizer
-) -> optim.lr_scheduler.LinearLR:
+) -> optim.lr_scheduler.LRScheduler:
     """Initialize the scheduler."""
-    scheduler = optim.lr_scheduler.LinearLR(
+    warmup_scheduler = optim.lr_scheduler.LinearLR(
         optimizer=optimizer,
         start_factor=0.001,
         end_factor=1.0,
         total_iters=config.exp.scheduler.warmup_steps,
     )
+    lr_scheduler = optim.lr_scheduler.LinearLR(
+        optimizer=optimizer,
+        start_factor=1.0,
+        end_factor=1.0,
+        total_iters=1,
+    )
+    scheduler = optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
     return scheduler
 
 
