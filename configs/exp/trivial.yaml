@@ -26,8 +26,8 @@ reinforce:
   advantage: no-advantage
   entropy_weight: 1.0e-5
   total_rollouts: 200
-  bptt_steps: 2
-  clip_value: 0.05
+  bptt_steps: 4
+  clip_value: 0.5
 
 rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.

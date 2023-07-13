@@ -3,18 +3,20 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  max_steps: 64
+  max_steps: 92
 
 model:
-  embedding_dim: 24
-  n_heads: 2
-  backbone_layers: 2
-  decoder_layers: 1
+  n_channels: 38
+  embedding_dim: 48
+  n_heads: 4
+  backbone_cnn_layers: 6
+  backbone_transformer_layers: 1
+  decoder_layers: 3
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-4
   weight_decay: 0.0e-4
 
 scheduler:
@@ -22,13 +24,13 @@ scheduler:
 
 reinforce:
   advantage: max
-  entropy_weight: 0.0e-4
-  total_rollouts: 10_000
+  entropy_weight: 1.0e-4
+  total_rollouts: -1
   bptt_steps: 12
-  clip_value: 0.01
+  clip_value: 0.5
 
 rollout_buffer:
-  buffer_size: 384  # Number of played games in a single buffer.
-  batch_size: 24576  # Number of samples in a single batch.
+  buffer_size: 600  # Number of played games in a single buffer.
+  batch_size: 141312  # Number of samples in a single batch.
 
 checkpoint:

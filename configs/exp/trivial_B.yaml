@@ -6,9 +6,11 @@ env:
   max_steps: 24
 
 model:
-  embedding_dim: 24
+  n_channels: 9
+  embedding_dim: 16
   n_heads: 4
-  backbone_layers: 4
+  backbone_cnn_layers: 6
+  backbone_transformer_layers: 1
   decoder_layers: 2
   dropout: 0.05
 
