@@ -2,9 +2,9 @@
 title: random
 description: Some weird facts
 authors: pierrotlc
-categories: 
+categories: Notes
 created: 2023-06-04
-updated: 2023-06-22
+updated: 2023-07-11
 version: 1.1.1
 @end
 
@@ -31,6 +31,9 @@ version: 1.1.1
    The reward normalization can lead to instabilities in the training.
    It is important to take this into account and to use a rather large epsilon.
 
+   A recurrent policy is also hard to train since it can lead to huge BPTT
+   gradient updates. To counter this, I regularly stop the gradient during the rollout.
+
 ** Actor/critic
    My implementation seems to not be working so well, or at most to do
    equally as the base implementation. It may be because the current reward
@@ -50,3 +53,29 @@ version: 1.1.1
 
    The new reward called `max-cut` provides a more stable training, and is
    way more sample efficient.
+
+** Rollout buffer
+   The rollout buffer is primarily used to be more sample efficient by reusing past
+   samples during the training. But in my case, collecting the rollout samples is
+   pretty fast so that I can do without such a buffer.
+
+   Being able to train without a rollout buffer is nice because it makes it easier
+   to implement tricky policies such as RNNs (useful for planning).
+
+** Rotation equivariant
+   The game is strictly rotation equivariant, meaning that the model should output
+   the same rotated actions to a rotated board. This can be integrated in the algorithm
+   in multiple ways:
+   ~ Properly randomize the board state, so that the model sees a lot of diverse board
+     states and learns to be equivariant by itself.
+   ~ Add a regularization loss that directly enforce the model to be equivariant to
+     rotations of the board.
+   ~ Design the model so that it is naturally equivariant to rotations.
+
+   Note that the game is also strictly equivariant to horizontal and vertical flips.
+
+   The best thing to do is to design the model to be equivariant to rotations and flips.
+   To do so, the encoder can use a {https://arxiv.org/abs/1602.07576}[group equivariant CNN]
+   and/or a simple transformer encoder (with a symmetrical equivariant positional encoding, if used).
+   The decoder can use a pointer network to select the tile to swap, and since the rolls
+   are relative to the current tile placement, it can be done with a simple linear layer.
