@@ -3,23 +3,20 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-07-11
+updated: 2023-07-13
 @end
 
 * TODO
-  - (-) Try out a simple GNN, which is rotation invariant.
-  -- ( ) TokenGT maybe?
-  -- (x) To enable the node selection, we can use attention mechanism to have a probability
-     over the nodes.
-  -- (x) To incorporate the information of the last selected node, we can add a specicial
-     embedding to that node. Same thing for the selected shift.
-  -- (x) We can use the decoder with a single query, and use it each time we have to predict
-     an action. It means that each time we have to predict an action, it will observe
-     the embedded tiles and base its prediction on that.
-  - ( ) Add a rotation invariant regularizer loss (if not using a GNN).
+  - ( ) Add a rotation invariant regularizer loss (if not using a GNN or G-CNN).
   - ( ) Cut the rollout based on the last minimum score (remove the first useless moves).
   - (x) Start with a CNN encoder for local embeddings and finish by a transformer encoder
         for global embeddings.
+  - ( ) Go back to a rollout buffer, remove the recurrent model and add the optional
+        timestep encoding.
+  - ( ) Do a special rollout by using a batched soft MCTS (see {*Ideas}) to collect better actions.
+  -- It will be much longer to collect rollouts, hence the use of a rollout buffer.
+  -- Possibility to add exploration by using exploration sampling methods.
+  - ( ) Start some rollouts from previous best boards.
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
