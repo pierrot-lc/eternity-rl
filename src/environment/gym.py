@@ -2,7 +2,7 @@
 All actions are made on the batch.
 """
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import gymnasium as gym
 import gymnasium.spaces as spaces
@@ -129,12 +129,18 @@ class EternityEnv(gym.Env):
             low=0, high=1, shape=self.instances.shape[1:], dtype=np.uint8
         )
 
-    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
+    def reset(
+        self, instances: Optional[torch.Tensor] = None
+    ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         Scrambles the instances and reset their infos.
         """
-        self.scramble_instances()
+        if instances is not None:
+            self.instances = instances.detach()
+        else:
+            self.scramble_instances()
+
         self.step_id = 0
         self.truncated = False
         self.terminated = torch.zeros(

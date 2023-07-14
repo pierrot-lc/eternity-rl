@@ -59,7 +59,7 @@ class Reinforce:
         states, _ = self.env.reset()
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, logprobs, entropies = self.model(states, sampling_mode)
+            actions, _, _ = self.model(states, sampling_mode)
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
                 states,
