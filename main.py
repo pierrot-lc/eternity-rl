@@ -117,6 +117,7 @@ def init_trainer(
         config.exp.reinforce.entropy_weight,
         config.exp.reinforce.clip_value,
         config.exp.rollout_buffer.batch_size,
+        config.exp.rollout_buffer.batches_per_rollout,
         config.exp.reinforce.total_rollouts,
         config.exp.reinforce.advantage,
     )

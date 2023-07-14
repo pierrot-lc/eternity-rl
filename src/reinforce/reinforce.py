@@ -26,6 +26,7 @@ class Reinforce:
         entropy_weight: float,
         clip_value: float,
         batch_size: int,
+        batches_per_rollout: int,
         total_rollouts: int,
         advantage: str,
     ):
@@ -37,6 +38,7 @@ class Reinforce:
         self.entropy_weight = entropy_weight
         self.clip_value = clip_value
         self.batch_size = batch_size
+        self.batches_per_rollout = batches_per_rollout
         self.total_rollouts = total_rollouts
         self.advantage = advantage
 
@@ -44,38 +46,40 @@ class Reinforce:
         self.rollout_buffer = RolloutBuffer(
             buffer_size=self.env.batch_size,
             max_steps=self.env.max_steps,
-            board_size=self.env.board_size,
+            board_width=self.env.board_size,
+            board_height=self.env.board_size,
             n_classes=self.env.n_classes,
             device=self.device,
         )
 
-    def do_rollouts(self, sampling_mode: str) -> RolloutBuffer:
+    @torch.inference_mode()
+    def do_rollouts(self, sampling_mode: str):
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         self.rollout_buffer.reset()
         states, _ = self.env.reset()
-        step = 0
 
         while not self.env.truncated and not torch.all(self.env.terminated):
             actions, logprobs, entropies = self.model(states, sampling_mode)
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
+                states,
+                actions,
                 rewards,
-                logprobs,
-                entropies,
                 ~self.env.terminated | infos["just_won"],
             )
 
             states = new_states
-            step += 1
 
         self.rollout_buffer.finalize(self.advantage)
-
-        return self.rollout_buffer
 
     def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         losses = dict()
         for key, value in sample.items():
             sample[key] = value.to(self.device)
+
+        _, sample["logprobs"], sample["entropies"] = self.model(
+            sample["states"], "sample", sample["actions"]
+        )
 
         sample["entropies"][:, 0] *= 1.0
         sample["entropies"][:, 1] *= 0.5
@@ -90,12 +94,12 @@ class Reinforce:
         losses["total"] = sum(losses.values())
         return losses
 
-    def do_batch_update(self, rollout_buffer: RolloutBuffer):
+    def do_batch_update(self):
         """Performs a batch update on the model."""
         self.model.train()
         self.optimizer.zero_grad()
 
-        sample = rollout_buffer.sample(self.batch_size)
+        sample = self.rollout_buffer.sample(self.batch_size)
         losses = self.compute_loss(sample)
         losses["total"].backward()
 
@@ -123,7 +127,6 @@ class Reinforce:
                 - "disabled": The run does not produce any output.
                     Useful for multi-GPU training.
             eval_every: The number of rollouts between each evaluation.
-            save_every: The number of rollouts between each checkpoint.
         """
         with wandb.init(
             project="eternity-rl",
@@ -153,8 +156,11 @@ class Reinforce:
                 disable=mode == "disabled",
             ):
                 self.model.train()
-                rollout_buffer = self.do_rollouts(sampling_mode="sample")
-                self.do_batch_update(rollout_buffer)
+                self.do_rollouts(sampling_mode="sample")
+                for _ in tqdm(
+                    range(self.batches_per_rollout), desc="Batch", leave=False
+                ):
+                    self.do_batch_update()
                 self.scheduler.step()
 
                 if i % eval_every == 0 and mode != "disabled":
@@ -174,7 +180,7 @@ class Reinforce:
         metrics = dict()
         self.model.eval()
 
-        rollout_buffer = self.do_rollouts(sampling_mode="sample")
+        self.do_rollouts(sampling_mode="sample")
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
@@ -182,14 +188,14 @@ class Reinforce:
         metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
 
-        episodes_len = rollout_buffer.mask_buffer.float().sum(dim=1)
+        episodes_len = self.rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
         metrics["ep-len/max"] = episodes_len.max()
         metrics["ep-len/min"] = episodes_len.min()
         metrics["ep-len/hist"] = wandb.Histogram(episodes_len.cpu().numpy())
 
         # Compute losses.
-        sample = rollout_buffer.sample(self.batch_size)
+        sample = self.rollout_buffer.sample(self.batch_size)
         losses = self.compute_loss(sample)
         for k, v in losses.items():
             metrics[f"loss/{k}"] = v

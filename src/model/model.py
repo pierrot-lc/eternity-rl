@@ -76,18 +76,19 @@ class Policy(nn.Module):
         self,
         tiles: torch.Tensor,
         sampling_mode: str = "sample",
+        sampled_actions: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
         Args:
             tiles: The game state.
-                Tensor of shape [batch_size, 4, board_height, board_width].
-            hidden_state: The previous hidden state of the model.
-                Initialized to 0 if not provided.
-                Tensor of shape [batch_size, embedding_dim].
+                Long tensor of shape [batch_size, 4, board_height, board_width].
             sampling_mode: The sampling mode of the actions.
-
+                One of ["sample", "greedy"].
+            sampled_actions: The already sampled actions, if any.
+                To compute the logprobs and entropies of those actions.
+                Long tensor of shape [batch_size, n_actions].
         ---
         Returns:
             actions: The predicted actions.
@@ -108,7 +109,10 @@ class Policy(nn.Module):
             queries = repeat(self.node_query, "e -> b e", b=batch_size)
             probs = self.select_tile(tiles, queries)
 
-            sampled_nodes = self.sample_actions(probs, sampling_mode)
+            if sampled_actions is None:
+                sampled_nodes = self.sample_actions(probs, sampling_mode)
+            else:
+                sampled_nodes = sampled_actions[:, node_number]
             actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_nodes)
 
             actions.append(sampled_nodes)
@@ -120,11 +124,14 @@ class Policy(nn.Module):
             tiles = Policy.selective_add(tiles, selected_embedding, sampled_nodes)
 
         # Side selections.
-        for _ in range(2):
+        for side_number in range(2):
             queries = repeat(self.side_query, "e -> b e", b=batch_size)
             probs = self.select_side(tiles, queries)
 
-            sampled_sides = self.sample_actions(probs, sampling_mode)
+            if sampled_actions is None:
+                sampled_sides = self.sample_actions(probs, sampling_mode)
+            else:
+                sampled_sides = sampled_actions[:, side_number + 2]
             actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_sides)
 
             actions.append(sampled_sides)
@@ -165,6 +172,7 @@ class Policy(nn.Module):
             probs: Probabilities of the actions.
                 Shape of [batch_size, n_actions].
             action_ids: The actions take.
+                Shape of [batch_size,].
 
         ---
         Returns:

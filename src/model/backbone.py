@@ -11,9 +11,9 @@ class Backbone(nn.Module):
     The board is encoded as follows:
         - Embed the classes of each size of the tiles.
         - Merge the classes of each tile into a single embedding.
+        - CNN layers to encode local features.
         - Flatten into 1D sequence of tokens.
-        - Add a token that encode the timestep.
-        - Interleave layers of CNN and transformer.
+        - Transformer layers to encode global features.
 
     The CNN layers are there to provide the tiles information about their localisation.
     The transformer layers are there to provide global overview of the states.

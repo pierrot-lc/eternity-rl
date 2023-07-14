@@ -2,7 +2,7 @@
 import einops
 import torch
 
-from ..model import N_ACTIONS
+from ..model import N_SIDES, N_ACTIONS
 
 
 class RolloutBuffer:
@@ -10,13 +10,15 @@ class RolloutBuffer:
         self,
         buffer_size: int,
         max_steps: int,
-        board_size: int,
+        board_width: int,
+        board_height: int,
         n_classes: int,
         device: str,
     ):
         self.buffer_size = buffer_size
         self.max_steps = max_steps
-        self.board_size = board_size
+        self.board_width = board_width
+        self.board_height = board_height
         self.n_classes = n_classes
         self.device = device
         self.pointer = 0
@@ -28,9 +30,30 @@ class RolloutBuffer:
         """Create buffers of shape `[buffer_size, max_steps]`.
         Buffers are stored on the specified device.
         """
+        self.state_buffer = torch.zeros(
+            (
+                self.buffer_size,
+                self.max_steps,
+                N_SIDES,
+                self.board_height,
+                self.board_width,
+            ),
+            dtype=torch.long,
+            device=self.device,
+        )
+        self.action_buffer = torch.zeros(
+            (self.buffer_size, self.max_steps, N_ACTIONS),
+            dtype=torch.long,
+            device=self.device,
+        )
         self.reward_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.float32,
+            device=self.device,
+        )
+        self.mask_buffer = torch.zeros(
+            (self.buffer_size, self.max_steps),
+            dtype=torch.bool,
             device=self.device,
         )
         self.return_buffer = torch.zeros(
@@ -41,21 +64,6 @@ class RolloutBuffer:
         self.advantage_buffer = torch.zeros(
             (self.buffer_size, self.max_steps),
             dtype=torch.float32,
-            device=self.device,
-        )
-        self.entropy_buffer = torch.zeros(
-            (self.buffer_size, self.max_steps, N_ACTIONS),
-            dtype=torch.float32,
-            device=self.device,
-        )
-        self.logprob_buffer = torch.zeros(
-            (self.buffer_size, self.max_steps, N_ACTIONS),
-            dtype=torch.float32,
-            device=self.device,
-        )
-        self.mask_buffer = torch.zeros(
-            (self.buffer_size, self.max_steps),
-            dtype=torch.bool,
             device=self.device,
         )
 
@@ -74,32 +82,30 @@ class RolloutBuffer:
         """Reset the buffer."""
         self.pointer = 0
         self.mask_buffer.fill_(False)
-        self.logprob_buffer = self.logprob_buffer.detach()
-        self.entropy_buffer = self.entropy_buffer.detach()
 
     def store(
         self,
+        states: torch.Tensor,
+        actions: torch.Tensor,
         rewards: torch.Tensor,
-        logprobs: torch.Tensor,
-        entropies: torch.Tensor,
         masks: torch.Tensor,
     ):
         """Add the given sample to the buffer.
 
         ---
         Args:
+            states: Batch of states.
+                Shape of [batch_size, N_SIDES, board_height, board_width].
+            actions: Batch of actions.
+                Shape of [batch_size, N_ACTIONS].
             rewards: Batch of rewards.
                 Shape of [batch_size,].
-            logprobs: Log-probabilities of the actions taken.
-                Shape of [batch_size, n_actions].
-            entropies: Batch of entropies.
-                Shape of [batch_size, n_actions].
             masks: Batch of masks.
                 Shape of [batch_size,].
         """
+        self.state_buffer[:, self.pointer] = states.to(self.device)
+        self.action_buffer[:, self.pointer] = actions.to(self.device)
         self.reward_buffer[:, self.pointer] = rewards.to(self.device)
-        self.logprob_buffer[:, self.pointer] = logprobs.to(self.device)
-        self.entropy_buffer[:, self.pointer] = entropies.to(self.device)
         self.mask_buffer[:, self.pointer] = masks.to(self.device)
 
         self.pointer += 1
@@ -123,7 +129,7 @@ class RolloutBuffer:
             case _:
                 raise ValueError(f"Unknown advantage type: {advantage_type}")
 
-        # Compute the valid steps we can sample from (those that are not masked).
+        # Save the unmasked steps in the rollout.
         self.valid_steps = self.all_steps[self.flatten_masks]
 
     def sample(self, batch_size: int) -> dict[str, torch.Tensor]:
@@ -149,9 +155,9 @@ class RolloutBuffer:
         steps = self.valid_steps[indices]
 
         return {
+            "states": self.flatten_states[steps],
+            "actions": self.flatten_actions[steps],
             "advantages": self.flatten_advantages[steps],
-            "logprobs": self.flatten_logprobs[steps],
-            "entropies": self.flatten_entropies[steps],
         }
 
     @staticmethod
@@ -246,26 +252,26 @@ class RolloutBuffer:
         return einops.rearrange(self.advantage_buffer, "b t -> (b t)")
 
     @property
-    def flatten_logprobs(self) -> torch.Tensor:
-        """Flatten the probabilities buffer.
+    def flatten_states(self) -> torch.Tensor:
+        """Flatten the states buffer.
 
         ---
         Returns:
-            The flattened probabilities buffer.
-                Shape of [buffer_size * max_steps].
+            The flattened states buffer.
+                Shape of [buffer_size * max_steps, N_SIDES, board_height, board_width].
         """
-        return einops.rearrange(self.logprob_buffer, "b t a -> (b t) a")
+        return einops.rearrange(self.state_buffer, "b t s h w -> (b t) s h w")
 
     @property
-    def flatten_entropies(self) -> torch.Tensor:
-        """Flatten the entropies buffer.
+    def flatten_actions(self) -> torch.Tensor:
+        """Flatten the actions buffer.
 
         ---
         Returns:
-            The flattened entropies buffer.
-                Shape of [buffer_size * max_steps].
+            The flattened actions buffer.
+                Shape of [buffer_size * max_steps, N_ACTIONS].
         """
-        return einops.rearrange(self.entropy_buffer, "b t a -> (b t) a")
+        return einops.rearrange(self.action_buffer, "b t a -> (b t) a")
 
     @property
     def flatten_masks(self) -> torch.Tensor:
