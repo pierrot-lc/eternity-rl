@@ -26,7 +26,6 @@ reinforce:
   advantage: max
   entropy_weight: 1.0e-4
   total_rollouts: -1
-  bptt_steps: 12
   clip_value: 0.5
 
 rollout_buffer:

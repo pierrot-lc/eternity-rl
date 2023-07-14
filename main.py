@@ -115,7 +115,6 @@ def init_trainer(
         scheduler,
         config.device,
         config.exp.reinforce.entropy_weight,
-        config.exp.reinforce.bptt_steps,
         config.exp.reinforce.clip_value,
         config.exp.rollout_buffer.batch_size,
         config.exp.reinforce.total_rollouts,

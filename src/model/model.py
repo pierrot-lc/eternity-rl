@@ -51,7 +51,7 @@ class Policy(nn.Module):
         self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
         self.side_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
-    def dummy_input(self, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    def dummy_input(self, device: str) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
             1,
             N_SIDES,
@@ -60,13 +60,7 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        hidden_state = torch.zeros(
-            1,
-            self.embedding_dim,
-            dtype=torch.float,
-            device=device,
-        )
-        return tiles, hidden_state
+        return (tiles,)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -81,7 +75,6 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        hidden_state: Optional[torch.Tensor] = None,
         sampling_mode: str = "sample",
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -105,14 +98,8 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
         """
         batch_size = tiles.shape[0]
-        if hidden_state is None:
-            hidden_state = torch.zeros(
-                (batch_size, self.embedding_dim),
-                dtype=torch.float,
-                device=tiles.device,
-            )
 
-        tiles, hidden_state = self.backbone(tiles, hidden_state)
+        tiles = self.backbone(tiles)
 
         actions, logprobs, entropies = [], [], []
 
@@ -151,7 +138,7 @@ class Policy(nn.Module):
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies, hidden_state
+        return actions, logprobs, entropies
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:

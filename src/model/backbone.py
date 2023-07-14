@@ -73,7 +73,6 @@ class Backbone(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        hidden_state: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -81,8 +80,6 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, 4, board_height, board_width].
-            hidden_state: The previous hidden state of the model.
-                Tensor of shape [batch_size, embedding_dim].
 
         ---
         Returns:
@@ -97,8 +94,7 @@ class Backbone(nn.Module):
 
         tokens = rearrange(tiles, "b e h w -> (h w) b e")
         tokens = self.linear(tokens)
-        tokens = torch.concat((hidden_state.unsqueeze(0), tokens), dim=0)
         for transformer_layer in self.transformer_layers:
             tokens = transformer_layer(tokens) + tokens
 
-        return tokens[1:], tokens[0]
+        return tokens
