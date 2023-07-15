@@ -16,7 +16,7 @@ updated: 2023-07-15
   - (-) Do a special rollout by using a batched soft MCTS (see {*Ideas}) to collect better actions.
   -- (x) It will be much longer to collect rollouts, hence the use of a rollout buffer.
   -- ( ) Possibility to add exploration by using exploration sampling methods.
-  -- ( ) Merge multiple simulations of a single instance by batching copies of instances.
+  -- (x) Merge multiple simulations of a single instance by batching copies of instances.
   - ( ) Start some rollouts from previous best boards.
   -- Or simply sample from previous boards and completely new boards.
   -- It would allow for smaller steps.

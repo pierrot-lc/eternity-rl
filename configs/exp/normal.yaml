@@ -25,11 +25,17 @@ scheduler:
 reinforce:
   advantage: max
   entropy_weight: 1.0e-4
-  total_rollouts: -1
+  total_rollouts: 100
   clip_value: 0.5
 
 rollout_buffer:
   buffer_size: 600  # Number of played games in a single buffer.
-  batch_size: 141312  # Number of samples in a single batch.
+  batches_per_rollout: 100  # Number of batches sampled per rollout.
+  batch_size: 600  # Number of samples in a single batch.
+
+mcts:
+  max_depth: 8  # Number of played steps to estimate the value of an action.
+  n_simulations: 1  # Number of simulation iterations.
+  n_env_copies: 50  # Number of parallel copies of each instance.
 
 checkpoint:

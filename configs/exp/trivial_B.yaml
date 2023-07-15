@@ -15,7 +15,7 @@ model:
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-2
+  learning_rate: 1.0e-3
   optimizer: adamw
   weight_decay: 0.0e-3
 

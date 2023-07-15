@@ -136,7 +136,7 @@ class Reinforce:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 10,
+        eval_every: int = 1,
     ):
         """Launches the training loop.
 
@@ -189,7 +189,7 @@ class Reinforce:
                 self.scheduler.step()
 
                 if i % eval_every == 0 and not disable_logs:
-                    metrics = self.evaluate()
+                    metrics = self.evaluate(do_rollout=False)
                     run.log(metrics)
 
                     self.save_model("model.pt")
@@ -200,12 +200,13 @@ class Reinforce:
                         }
                     )
 
-    def evaluate(self) -> dict[str, Any]:
+    def evaluate(self, do_rollout: bool) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
         self.model.train()
 
-        self.do_rollouts(sampling_mode="sample", disable_logs=False)
+        if do_rollout:
+            self.do_rollouts(sampling_mode="sample", disable_logs=False)
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
