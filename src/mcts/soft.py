@@ -9,6 +9,7 @@ This simplications are there to enable better exploitation of the batch parallel
 import torch
 from math import prod
 from tqdm import tqdm
+from einops import rearrange
 
 from ..model import Policy, N_SIDES
 from ..environment import EternityEnv
@@ -22,18 +23,30 @@ class SoftMCTS:
         sampling_mode: str,
         max_depth: int,
         n_simulations: int,
+        n_env_copies: int,
         device: str | torch.device,
     ):
-        self.env = EternityEnv(env.instances.clone(), max_depth, device, env.rng.seed())
         self.model = model
         self.sampling_mode = sampling_mode
         self.n_simulations = n_simulations
+        self.n_env_copies = n_env_copies
         self.device = device
 
-        self.root_instances = env.render().clone()
+        # Duplicate the instances and initialize the environment.
+        instances = env.instances.clone()
+        instances = torch.repeat_interleave(instances, n_env_copies, dim=0)
+        self.env = EternityEnv(instances, max_depth, device, env.rng.seed())
+
+        self.root_instances = self.env.render().clone()
 
         self.action_returns = torch.zeros(
-            (env.batch_size, env.n_pieces, env.n_pieces, N_SIDES, N_SIDES),
+            (
+                self.env.batch_size,
+                self.env.n_pieces,
+                self.env.n_pieces,
+                N_SIDES,
+                N_SIDES,
+            ),
             dtype=torch.float32,
             device=device,
         )
@@ -73,11 +86,18 @@ class SoftMCTS:
         ):
             self.simulation()
 
-        action_returns = self.action_returns.clone()
-        action_returns[self.action_visits == 0] = -1  # Do not select empty visits.
+        # Merge the simulations from duplicated instances.
+        action_returns = rearrange(
+            self.action_returns, "(b d) ... -> b d ...", d=self.n_env_copies
+        )
+        action_returns = action_returns.sum(dim=1)
+        action_visits = rearrange(
+            self.action_visits, "(b d) ... -> b d ...", d=self.n_env_copies
+        )
+        action_visits = action_visits.sum(dim=1)
 
-        action_visits = self.action_visits.clone()
-        action_visits[self.action_visits == 0] = 1  # Make sure we do not divide by 0.
+        action_returns[action_visits == 0] = -1  # Do not select empty visits.
+        action_visits[action_visits == 0] = 1  # Make sure we do not divide by 0.
 
         scores = action_returns / action_visits
         return SoftMCTS.best_actions(scores)

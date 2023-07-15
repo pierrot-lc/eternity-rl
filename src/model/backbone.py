@@ -57,17 +57,15 @@ class Backbone(nn.Module):
                 for _ in range(cnn_layers)
             ]
         )
-        self.transformer_layers = nn.ModuleList(
-            [
-                nn.TransformerEncoderLayer(
-                    d_model=embedding_dim,
-                    nhead=n_heads,
-                    dim_feedforward=4 * embedding_dim,
-                    dropout=dropout,
-                    batch_first=False,
-                )
-                for _ in range(transformer_layers)
-            ]
+        self.transformer_layers = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=embedding_dim,
+                nhead=n_heads,
+                dim_feedforward=4 * embedding_dim,
+                dropout=dropout,
+                batch_first=False,
+            ),
+            num_layers=transformer_layers,
         )
 
     def forward(
@@ -94,7 +92,6 @@ class Backbone(nn.Module):
 
         tokens = rearrange(tiles, "b e h w -> (h w) b e")
         tokens = self.linear(tokens)
-        for transformer_layer in self.transformer_layers:
-            tokens = transformer_layer(tokens) + tokens
+        tokens = self.transformer_layers(tokens)
 
         return tokens

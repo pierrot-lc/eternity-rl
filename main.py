@@ -122,6 +122,7 @@ def init_trainer(
         config.exp.reinforce.advantage,
         config.exp.mcts.max_depth,
         config.exp.mcts.n_simulations,
+        config.exp.mcts.n_env_copies,
     )
     return trainer
 

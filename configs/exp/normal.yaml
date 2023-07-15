@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  max_steps: 92
+  max_steps: 32
 
 model:
   n_channels: 38

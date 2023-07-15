@@ -32,6 +32,7 @@ class Reinforce:
         advantage: str,
         mcts_max_depth: int,
         mcts_n_simulations: int,
+        mcts_n_env_copies: int,
     ):
         self.env = env
         self.model = model
@@ -46,6 +47,7 @@ class Reinforce:
         self.advantage = advantage
         self.mcts_max_depth = mcts_max_depth
         self.mcts_n_simulations = mcts_n_simulations
+        self.mcts_n_env_copies = mcts_n_env_copies
         self.best_score = 0
 
         # Instantiate the rollout buffer once.
@@ -75,6 +77,7 @@ class Reinforce:
                 sampling_mode,
                 self.mcts_depth,
                 self.mcts_n_simulations,
+                self.mcts_n_env_copies,
                 self.device,
             )
             actions = mcts.run(disable_logs)
@@ -198,7 +201,7 @@ class Reinforce:
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
-        self.model.eval()
+        self.model.train()
 
         self.do_rollouts(sampling_mode="sample", disable_logs=False)
 

@@ -12,7 +12,7 @@ model:
   backbone_cnn_layers: 4
   backbone_transformer_layers: 1
   decoder_layers: 1
-  dropout: 0.0
+  dropout: 0.05
 
 optimizer:
   learning_rate: 1.0e-2
@@ -25,16 +25,17 @@ scheduler:
 reinforce:
   advantage: no-advantage
   entropy_weight: 1.0e-5
-  total_rollouts: 200
+  total_rollouts: 100
   clip_value: 0.5
 
 rollout_buffer:
   buffer_size: 2000  # Number of played games in a single buffer.
-  batches_per_rollout: 1  # Number of batches sampled per rollout.
-  batch_size: 16000  # Number of samples in a single batch.
+  batches_per_rollout: 5  # Number of batches sampled per rollout.
+  batch_size: 2000  # Number of samples in a single batch.
 
 mcts:
-  max_depth: 1
+  max_depth: 2
   n_simulations: 1
+  n_env_copies: 10
 
 checkpoint:
