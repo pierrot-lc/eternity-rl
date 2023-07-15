@@ -13,6 +13,7 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Policy
 from .rollout_buffer import RolloutBuffer
+from ..mcts import SoftMCTS
 
 
 class Reinforce:
@@ -29,6 +30,8 @@ class Reinforce:
         batches_per_rollout: int,
         total_rollouts: int,
         advantage: str,
+        mcts_max_depth: int,
+        mcts_n_simulations: int,
     ):
         self.env = env
         self.model = model
@@ -41,6 +44,8 @@ class Reinforce:
         self.batches_per_rollout = batches_per_rollout
         self.total_rollouts = total_rollouts
         self.advantage = advantage
+        self.mcts_max_depth = mcts_max_depth
+        self.mcts_n_simulations = mcts_n_simulations
 
         # Instantiate the rollout buffer once.
         self.rollout_buffer = RolloutBuffer(
@@ -53,13 +58,25 @@ class Reinforce:
         )
 
     @torch.inference_mode()
-    def do_rollouts(self, sampling_mode: str):
+    def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
         self.rollout_buffer.reset()
         states, _ = self.env.reset()
+        tqdm_iter = tqdm(
+            range(self.env.max_steps), desc="Rollout", leave=False, disable=disable_logs
+        )
+        tqdm_iter = iter(tqdm_iter)
 
         while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, _, _ = self.model(states, sampling_mode)
+            mcts = SoftMCTS(
+                self.env,
+                self.model,
+                sampling_mode,
+                self.mcts_max_depth,
+                self.mcts_n_simulations,
+                self.device,
+            )
+            actions = mcts.run(disable_logs)
             new_states, rewards, _, _, infos = self.env.step(actions)
             self.rollout_buffer.store(
                 states,
@@ -69,8 +86,10 @@ class Reinforce:
             )
 
             states = new_states
+            next(tqdm_iter)
 
         self.rollout_buffer.finalize(self.advantage)
+        tqdm_iter.close()
 
     def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         losses = dict()
@@ -128,6 +147,7 @@ class Reinforce:
                     Useful for multi-GPU training.
             eval_every: The number of rollouts between each evaluation.
         """
+        disable_logs = mode == "disabled"
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
@@ -137,7 +157,7 @@ class Reinforce:
         ) as run:
             self.model.to(self.device)
 
-            if mode != "disabled":
+            if not disable_logs:
                 if isinstance(self.model, DDP):
                     self.model.module.summary(self.device)
                 else:
@@ -150,20 +170,19 @@ class Reinforce:
             # Infinite loop if n_batches is -1.
             iter = count(0) if self.total_rollouts == -1 else range(self.total_rollouts)
 
-            for i in tqdm(
-                iter,
-                desc="Rollout",
-                disable=mode == "disabled",
-            ):
+            for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="sample")
+                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
                 for _ in tqdm(
-                    range(self.batches_per_rollout), desc="Batch", leave=False
+                    range(self.batches_per_rollout),
+                    desc="Batch",
+                    leave=False,
+                    disable=disable_logs,
                 ):
                     self.do_batch_update()
                 self.scheduler.step()
 
-                if i % eval_every == 0 and mode != "disabled":
+                if i % eval_every == 0 and not disable_logs:
                     metrics = self.evaluate()
                     run.log(metrics)
 
@@ -180,7 +199,7 @@ class Reinforce:
         metrics = dict()
         self.model.eval()
 
-        self.do_rollouts(sampling_mode="sample")
+        self.do_rollouts(sampling_mode="sample", disable_logs=False)
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()

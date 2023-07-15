@@ -44,16 +44,47 @@ from .soft import SoftMCTS
             ),
             torch.randn(4),
         ),
+        (
+            torch.zeros((1, 1)),
+            torch.LongTensor(
+                [
+                    [0],
+                ]
+            ),
+            torch.randn(1),
+        ),
+        (
+            torch.zeros((2, 2)),
+            torch.LongTensor(
+                [
+                    [0],
+                    [1],
+                ]
+            ),
+            torch.randn(2),
+        ),
+        (
+            torch.zeros((4, 3, 2, 10)),
+            torch.LongTensor(
+                [
+                    [0, 1, 8],
+                    [1, 0, 5],
+                    [2, 1, 3],
+                    [0, 1, 5],
+                ]
+            ),
+            torch.randn(4),
+        ),
     ],
 )
 def test_batched_add(
     input_tensor: torch.Tensor, actions: torch.Tensor, to_add: torch.Tensor | float
 ):
-    true_output = input_tensor.detach()
+    true_output = input_tensor.clone()
     for sample_id in range(input_tensor.shape[0]):
         action = actions[sample_id]
         el = to_add[sample_id] if type(to_add) is torch.Tensor else to_add
-        true_output[sample_id, action[0], action[1], action[2], action[3]] += el
+        true_output[sample_id, *action] += el
 
     output = SoftMCTS.batched_add(input_tensor, actions, to_add)
     assert torch.all(output == true_output)

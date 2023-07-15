@@ -30,7 +30,11 @@ reinforce:
 
 rollout_buffer:
   buffer_size: 3600  # Number of played games in a single buffer.
-  batches_per_rollout: 5  # Number of batches sampled per rollout.
-  batch_size: 43200  # Number of samples in a single batch.
+  batches_per_rollout: 100  # Number of batches sampled per rollout.
+  batch_size: 3600  # Number of samples in a single batch.
+
+mcts:
+  max_depth: 6
+  n_simulations: 10
 
 checkpoint:

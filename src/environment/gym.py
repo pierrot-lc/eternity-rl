@@ -137,7 +137,7 @@ class EternityEnv(gym.Env):
         Scrambles the instances and reset their infos.
         """
         if instances is not None:
-            self.instances = instances.detach()
+            self.instances = instances.clone()
         else:
             self.scramble_instances()
 

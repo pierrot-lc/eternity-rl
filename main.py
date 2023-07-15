@@ -120,6 +120,8 @@ def init_trainer(
         config.exp.rollout_buffer.batches_per_rollout,
         config.exp.reinforce.total_rollouts,
         config.exp.reinforce.advantage,
+        config.exp.mcts.max_depth,
+        config.exp.mcts.n_simulations,
     )
     return trainer
 
