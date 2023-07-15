@@ -46,6 +46,7 @@ class Reinforce:
         self.advantage = advantage
         self.mcts_max_depth = mcts_max_depth
         self.mcts_n_simulations = mcts_n_simulations
+        self.best_score = 0
 
         # Instantiate the rollout buffer once.
         self.rollout_buffer = RolloutBuffer(
@@ -72,7 +73,7 @@ class Reinforce:
                 self.env,
                 self.model,
                 sampling_mode,
-                self.mcts_max_depth,
+                self.mcts_depth,
                 self.mcts_n_simulations,
                 self.device,
             )
@@ -206,6 +207,7 @@ class Reinforce:
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
+        self.best_score = max(self.best_score, matches.max().cpu().item())
 
         episodes_len = self.rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
@@ -219,6 +221,7 @@ class Reinforce:
         for k, v in losses.items():
             metrics[f"loss/{k}"] = v
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
+        metrics["loss/mcts-depth"] = self.mcts_depth
 
         # Compute the gradient mean and maximum values.
         losses["total"].backward()
@@ -247,3 +250,8 @@ class Reinforce:
             },
             filepath,
         )
+
+    @property
+    def mcts_depth(self) -> int:
+        """Gradually increment depth search when the model is doing well."""
+        return int(self.best_score * self.mcts_max_depth)
