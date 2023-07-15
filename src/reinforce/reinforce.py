@@ -11,9 +11,9 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import EternityEnv
+from ..mcts import SoftMCTS
 from ..model import Policy
 from .rollout_buffer import RolloutBuffer
-from ..mcts import SoftMCTS
 
 
 class Reinforce:
@@ -48,7 +48,7 @@ class Reinforce:
         self.mcts_max_depth = mcts_max_depth
         self.mcts_n_simulations = mcts_n_simulations
         self.mcts_n_env_copies = mcts_n_env_copies
-        self.best_score = 0
+        self.best_score = 0.0
 
         # Instantiate the rollout buffer once.
         self.rollout_buffer = RolloutBuffer(
@@ -93,6 +93,8 @@ class Reinforce:
             next(tqdm_iter)
 
         self.rollout_buffer.finalize(self.advantage)
+        matches = self.env.max_matches / self.env.best_matches
+        self.best_score = max(self.best_score, matches.max().cpu().item())
         tqdm_iter.close()
 
     def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -210,7 +212,6 @@ class Reinforce:
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
-        self.best_score = max(self.best_score, matches.max().cpu().item())
 
         episodes_len = self.rollout_buffer.mask_buffer.float().sum(dim=1)
         metrics["ep-len/mean"] = episodes_len.mean()
