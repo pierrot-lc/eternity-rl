@@ -178,7 +178,7 @@ class Reinforce:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
+                self.do_rollouts(sampling_mode="epsilon", disable_logs=disable_logs)
                 for _ in tqdm(
                     range(self.batches_per_rollout),
                     desc="Batch",
@@ -203,7 +203,7 @@ class Reinforce:
     def evaluate(self, do_rollout: bool) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
-        self.model.train()
+        self.model.eval()
 
         if do_rollout:
             self.do_rollouts(sampling_mode="sample", disable_logs=False)

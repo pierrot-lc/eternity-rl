@@ -3,15 +3,15 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  max_steps: 32
+  max_steps: 24
 
 model:
-  n_channels: 38
-  embedding_dim: 48
-  n_heads: 4
-  backbone_cnn_layers: 6
+  n_channels: 9
+  embedding_dim: 16
+  n_heads: 2
+  backbone_cnn_layers: 5
   backbone_transformer_layers: 1
-  decoder_layers: 3
+  decoder_layers: 1
   dropout: 0.05
 
 optimizer:
@@ -29,13 +29,13 @@ reinforce:
   clip_value: 0.5
 
 rollout_buffer:
-  buffer_size: 600  # Number of played games in a single buffer.
-  batches_per_rollout: 100  # Number of batches sampled per rollout.
-  batch_size: 600  # Number of samples in a single batch.
+  buffer_size: 300  # Number of played games in a single buffer.
+  batches_per_rollout: 200  # Number of batches sampled per rollout.
+  batch_size: 300  # Number of samples in a single batch.
 
 mcts:
-  max_depth: 8  # Number of played steps to estimate the value of an action.
-  n_simulations: 1  # Number of simulation iterations.
-  n_env_copies: 50  # Number of parallel copies of each instance.
+  max_depth: 6  # Number of played steps to estimate the value of an action.
+  n_simulations: 2  # Number of simulation iterations.
+  n_env_copies: 100  # Number of parallel copies of each instance.
 
 checkpoint:

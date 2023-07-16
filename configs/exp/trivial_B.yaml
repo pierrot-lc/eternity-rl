@@ -3,15 +3,15 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  max_steps: 18
+  max_steps: 16
 
 model:
   n_channels: 9
   embedding_dim: 16
-  n_heads: 4
-  backbone_cnn_layers: 6
+  n_heads: 2
+  backbone_cnn_layers: 4
   backbone_transformer_layers: 1
-  decoder_layers: 2
+  decoder_layers: 1
   dropout: 0.05
 
 optimizer:
@@ -25,17 +25,17 @@ scheduler:
 reinforce:
   advantage: max
   entropy_weight: 1.0e-5
-  total_rollouts: 300
+  total_rollouts: 10
   clip_value: 0.5
 
 rollout_buffer:
-  buffer_size: 1800  # Number of played games in a single buffer.
-  batches_per_rollout: 50  # Number of batches sampled per rollout.
-  batch_size: 1800  # Number of samples in a single batch.
+  buffer_size: 180  # Number of played games in a single buffer.
+  batches_per_rollout: 100  # Number of batches sampled per rollout.
+  batch_size: 180  # Number of samples in a single batch.
 
 mcts:
-  max_depth: 4  # Number of played steps to estimate the value of an action.
-  n_simulations: 1  # Number of simulation iterations.
-  n_env_copies: 50  # Number of parallel copies of each instance.
+  max_depth: 3  # Number of played steps to estimate the value of an action.
+  n_simulations: 2  # Number of simulation iterations.
+  n_env_copies: 500  # Number of parallel copies of each instance.
 
 checkpoint:

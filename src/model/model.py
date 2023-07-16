@@ -9,6 +9,7 @@ from torchinfo import summary
 
 from .backbone import Backbone
 from .heads import SelectSide, SelectTile
+from ..sampling import epsilon_sampling
 
 N_SIDES, N_ACTIONS = 4, 4
 
@@ -155,6 +156,8 @@ class Policy(nn.Module):
                 action_ids = categorical.sample()
             case "argmax":
                 action_ids = torch.argmax(probs, dim=-1)
+            case "epsilon":
+                action_ids = epsilon_sampling(probs, epsilon=0.05)
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
         return action_ids
