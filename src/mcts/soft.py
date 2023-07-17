@@ -6,13 +6,14 @@ Differences with pure MCTS:
 
 This simplications are there to enable better exploitation of the batch parallelism.
 """
-import torch
 from math import prod
-from tqdm import tqdm
-from einops import rearrange
 
-from ..model import Policy, N_SIDES
+import torch
+from einops import rearrange
+from tqdm import tqdm
+
 from ..environment import EternityEnv
+from ..model import N_SIDES, Policy
 
 
 class SoftMCTS:

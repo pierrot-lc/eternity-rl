@@ -24,6 +24,8 @@ class Reinforce:
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         device: str,
+        gamma: float,
+        value_weight: float,
         entropy_weight: float,
         clip_value: float,
         batch_size: int,
@@ -39,6 +41,8 @@ class Reinforce:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
+        self.gamma = gamma
+        self.value_weight = value_weight
         self.entropy_weight = entropy_weight
         self.clip_value = clip_value
         self.batch_size = batch_size
@@ -102,9 +106,11 @@ class Reinforce:
         for key, value in sample.items():
             sample[key] = value.to(self.device)
 
-        _, sample["logprobs"], sample["entropies"] = self.model(
+        _, sample["logprobs"], sample["entropies"], sample["values"] = self.model(
             sample["states"], "sample", sample["actions"]
         )
+        *_, sample["next-values"] = self.model(sample["next-states"], "sample")
+        sample["next-values"] = sample["rewards"] + self.gamma * sample["next-values"]
 
         sample["entropies"][:, 0] *= 1.0
         sample["entropies"][:, 1] *= 0.5
@@ -113,8 +119,12 @@ class Reinforce:
         sample["entropies"] = sample["entropies"].sum(dim=1)
 
         losses["policy"] = -(
-            sample["logprobs"] * sample["advantages"].unsqueeze(1).detach()
+            sample["logprobs"] * sample["values"].unsqueeze(1).detach()
         ).mean()
+        losses["value"] = (
+            self.value_weight
+            * ((sample["values"] - sample["next-values"].detach()).pow(2)).mean()
+        )
         losses["entropy"] = -self.entropy_weight * sample["entropies"].mean()
         losses["total"] = sum(losses.values())
         return losses

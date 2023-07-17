@@ -4,12 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
+from einops.layers.torch import Reduce
 from torch.distributions import Categorical
 from torchinfo import summary
 
-from .backbone import Backbone
-from .heads import SelectSide, SelectTile
 from ..sampling import epsilon_sampling
+from .backbone import Backbone
+from .heads import EstimateValue, SelectSide, SelectTile
 
 N_SIDES, N_ACTIONS = 4, 4
 
@@ -47,8 +48,12 @@ class Policy(nn.Module):
         self.select_side = SelectSide(
             embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
         )
+        self.estimate_value = EstimateValue(
+            embedding_dim, n_heads, decoder_layers, dropout
+        )
         self.node_query = nn.Parameter(torch.randn(embedding_dim))
         self.side_query = nn.Parameter(torch.randn(embedding_dim))
+        self.value_query = nn.Parameter(torch.randn(embedding_dim))
         self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
         self.side_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
@@ -78,7 +83,7 @@ class Policy(nn.Module):
         tiles: torch.Tensor,
         sampling_mode: str = "sample",
         sampled_actions: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -98,6 +103,8 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
             entropies: The entropies of the predicted actions.
                 Shape of [batch_size, n_actions].
+            values: The predicted values.
+                Shape of [batch_size,].
         """
         batch_size = tiles.shape[0]
 
@@ -146,7 +153,10 @@ class Policy(nn.Module):
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies
+        queries = repeat(self.value_query, "e -> b e", b=batch_size)
+        values = self.estimate_value(tiles, queries)
+
+        return actions, logprobs, entropies, values
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
