@@ -35,8 +35,7 @@ def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
     env = EternityEnv.from_file(
         config.exp.env.path,
-        config.exp.rollout_buffer.buffer_size,
-        config.exp.env.max_steps,
+        config.exp.env.batch_size,
         config.device,
         config.seed,
     )
@@ -108,21 +107,22 @@ def init_trainer(
     scheduler: optim.lr_scheduler.LinearLR,
 ) -> Reinforce:
     """Initialize the trainer."""
+    exp = config.exp
     trainer = Reinforce(
         env,
         model,
         optimizer,
         scheduler,
-        config.device,
-        config.exp.reinforce.entropy_weight,
-        config.exp.reinforce.clip_value,
-        config.exp.rollout_buffer.batch_size,
-        config.exp.rollout_buffer.batches_per_rollout,
-        config.exp.reinforce.total_rollouts,
-        config.exp.reinforce.advantage,
-        config.exp.mcts.max_depth,
-        config.exp.mcts.n_simulations,
-        config.exp.mcts.n_env_copies,
+        exp.loss.gamma,
+        exp.loss.value_weight,
+        exp.loss.entropy_weight,
+        exp.loss.clip_value,
+        exp.replay_buffer.batch_size,
+        exp.replay_buffer.buffer_size,
+        exp.iterations.rollouts,
+        exp.iterations.batches,
+        exp.iterations.epochs,
+        exp.mcts.n_env_copies,
     )
     return trainer
 

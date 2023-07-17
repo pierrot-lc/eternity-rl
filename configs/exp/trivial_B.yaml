@@ -3,7 +3,7 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  max_steps: 16
+  batch_size: 500
 
 model:
   n_channels: 9
@@ -22,20 +22,22 @@ optimizer:
 scheduler:
   warmup_steps: 1
 
-reinforce:
-  advantage: max
+loss:
+  gamma: 0.95
+  value_weight: 1.0e-2
   entropy_weight: 1.0e-5
-  total_rollouts: 10
   clip_value: 0.5
 
-rollout_buffer:
-  buffer_size: 180  # Number of played games in a single buffer.
-  batches_per_rollout: 100  # Number of batches sampled per rollout.
-  batch_size: 180  # Number of samples in a single batch.
+replay_buffer:
+  buffer_size: 20000
+  batch_size: 200
+
+iterations:
+  rollouts: 10
+  epochs: 10
+  batches: 100
 
 mcts:
-  max_depth: 3  # Number of played steps to estimate the value of an action.
-  n_simulations: 2  # Number of simulation iterations.
-  n_env_copies: 500  # Number of parallel copies of each instance.
+  n_env_copies: 20
 
 checkpoint:

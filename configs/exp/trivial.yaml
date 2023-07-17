@@ -3,7 +3,7 @@ group: Trivial A
 
 env:
   path: ./instances/eternity_trivial_A.txt
-  max_steps: 8
+  batch_size: 500
 
 model:
   n_channels: 6
@@ -22,20 +22,22 @@ optimizer:
 scheduler:
   warmup_steps: 1
 
-reinforce:
-  advantage: no-advantage
+loss:
+  gamma: 0.95
+  value_weight: 1.0e-2
   entropy_weight: 1.0e-5
-  total_rollouts: 100
   clip_value: 0.5
 
-rollout_buffer:
-  buffer_size: 2000  # Number of played games in a single buffer.
-  batches_per_rollout: 5  # Number of batches sampled per rollout.
-  batch_size: 2000  # Number of samples in a single batch.
+replay_buffer:
+  buffer_size: 20000
+  batch_size: 200
+
+iterations:
+  rollouts: 10
+  epochs: 10
+  batches: 100
 
 mcts:
-  max_depth: 2
-  n_simulations: 1
   n_env_copies: 10
 
 checkpoint:

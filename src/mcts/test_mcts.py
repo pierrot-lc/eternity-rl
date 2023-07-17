@@ -84,7 +84,7 @@ def test_batched_add(
     for sample_id in range(input_tensor.shape[0]):
         action = actions[sample_id]
         el = to_add[sample_id] if type(to_add) is torch.Tensor else to_add
-        true_output[sample_id, *action] += el
+        true_output[(sample_id, *action)] += el
 
     output = SoftMCTS.batched_add(input_tensor, actions, to_add)
     assert torch.all(output == true_output)
