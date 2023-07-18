@@ -4,17 +4,18 @@ from typing import Any
 
 import torch
 import torch.optim as optim
+from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
+from torchrl.data import ReplayBuffer
 from tqdm import tqdm
-from torchrl.data import ReplayBuffer, LazyTensorStorage
-from tensordict import TensorDict
 
 import wandb
 
 from ..environment import EternityEnv
-from ..mcts import SoftMCTS
+from ..mcts import TDTreeSearch
 from ..model import Policy
+from .loss import ReinforceLoss
 
 
 class Reinforce:
@@ -22,40 +23,31 @@ class Reinforce:
         self,
         env: EternityEnv,
         model: Policy | DDP,
+        loss: ReinforceLoss,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
-        gamma: float,
-        value_weight: float,
-        entropy_weight: float,
+        td_treesearch: TDTreeSearch,
+        replay_buffer: ReplayBuffer,
         clip_value: float,
-        batch_size: int,
-        buffer_size: int,
         rollouts: int,
         batches: int,
         epochs: int,
-        mcts_n_env_copies: int,
     ):
         self.env = env
         self.model = model
+        self.loss = loss
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = env.device
-        self.gamma = gamma
-        self.value_weight = value_weight
-        self.entropy_weight = entropy_weight
+        self.td_treesearch = td_treesearch
+        self.replay_buffer = replay_buffer
         self.clip_value = clip_value
         self.rollouts = rollouts
         self.batches = batches
         self.epochs = epochs
-        self.mcts_n_env_copies = mcts_n_env_copies
 
+        self.device = env.device
+        self.gamma = loss.gamma
         self.scramble_size = int(0.01 * self.env.batch_size)
-
-        self.replay_buffer = ReplayBuffer(
-            storage=LazyTensorStorage(max_size=buffer_size, device=self.device),
-            batch_size=batch_size,
-            pin_memory=True,
-        )
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
@@ -70,12 +62,9 @@ class Reinforce:
             leave=False,
             disable=disable_logs,
         ):
-            mcts = SoftMCTS(
-                self.env,
-                self.model,
-                self.mcts_n_env_copies,
+            actions = self.td_treesearch.run(
+                self.env, self.model, self.replay_buffer, sampling_mode
             )
-            actions = mcts.run(self.gamma, sampling_mode, self.replay_buffer)
             *_, terminated, _, _ = self.env.step(actions)
 
             if terminated.sum() > 0:
@@ -83,39 +72,13 @@ class Reinforce:
                 scramble_ids = scramble_ids[terminated]
                 self.env.reset(scramble_ids=scramble_ids)
 
-    def compute_loss(self, batch: TensorDict) -> dict[str, torch.Tensor]:
-        losses = dict()
-        batch = batch.to(self.device)
-
-        _, batch["logprobs"], batch["entropies"], batch["values"] = self.model(
-            batch["states"], "sample", batch["actions"]
-        )
-        *_, batch["next-values"] = self.model(batch["next-states"], "sample")
-        batch["next-values"] = batch["rewards"] + self.gamma * batch["next-values"]
-
-        batch["entropies"][:, 0] *= 1.0
-        batch["entropies"][:, 1] *= 0.5
-        batch["entropies"][:, 2] *= 0.1
-        batch["entropies"][:, 3] *= 0.1
-        batch["entropies"] = batch["entropies"].sum(dim=1)
-
-        losses["policy"] = -(
-            batch["logprobs"] * batch["values"].unsqueeze(1).detach()
-        ).mean()
-        losses["value"] = (
-            self.value_weight
-            * ((batch["values"] - batch["next-values"].detach()).pow(2)).mean()
-        )
-        losses["entropy"] = -self.entropy_weight * batch["entropies"].mean()
-        losses["total"] = sum(losses.values())
-        return losses
-
     def do_batch_update(self, batch: TensorDict):
         """Performs a batch update on the model."""
         self.model.train()
         self.optimizer.zero_grad()
 
-        losses = self.compute_loss(batch)
+        batch = batch.to(self.device)
+        losses = self.loss(batch, self.model)
         losses["total"].backward()
 
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
@@ -184,7 +147,7 @@ class Reinforce:
                 self.scheduler.step()
 
                 if i % eval_every == 0 and not disable_logs:
-                    metrics = self.evaluate(do_rollout=False)
+                    metrics = self.evaluate()
                     run.log(metrics)
 
                     self.save_model("model.pt")
@@ -195,13 +158,10 @@ class Reinforce:
                         }
                     )
 
-    def evaluate(self, do_rollout: bool) -> dict[str, Any]:
+    def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
         self.model.eval()
-
-        if do_rollout:
-            self.do_rollouts(sampling_mode="sample", disable_logs=False)
 
         matches = self.env.max_matches / self.env.best_matches
         metrics["matches/mean"] = matches.mean()
@@ -211,7 +171,8 @@ class Reinforce:
 
         # Compute losses.
         batch = self.replay_buffer.sample()
-        losses = self.compute_loss(batch)
+        batch = batch.to(self.device)
+        losses = self.loss(batch, self.model)
         for k, v in losses.items():
             metrics[f"loss/{k}"] = v
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]

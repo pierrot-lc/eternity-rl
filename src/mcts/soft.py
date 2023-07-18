@@ -9,87 +9,44 @@ This simplications are there to enable better exploitation of the batch parallel
 from math import prod
 
 import torch
-from torchrl.data import ReplayBuffer
-from tensordict import TensorDict
 from einops import rearrange
+from tensordict import TensorDict
+from torchrl.data import ReplayBuffer
 
 from ..environment import EternityEnv
 from ..model import N_SIDES, Policy
 
 
-class SoftMCTS:
+class TDTreeSearch:
     def __init__(
         self,
-        env: EternityEnv,
-        model: Policy,
-        n_env_copies: int,
+        n_copies: int,
+        gamma: float,
     ):
-        self.model = model
-        self.n_env_copies = n_env_copies
-        self.device = env.device
-
-        # Duplicate the instances and initialize the environment.
-        instances = env.instances.clone()
-        instances = torch.repeat_interleave(instances, n_env_copies, dim=0)
-        self.env = EternityEnv(instances, self.device, env.rng.seed())
-
-        self.action_returns = torch.zeros(
-            (
-                self.env.batch_size,
-                self.env.n_pieces,
-                self.env.n_pieces,
-                N_SIDES,
-                N_SIDES,
-            ),
-            dtype=torch.float32,
-            device=self.device,
-        )
-        self.action_visits = torch.zeros_like(
-            self.action_returns,
-            dtype=torch.long,
-            device=self.device,
-        )
-
-    @torch.inference_mode()
-    def simulation(self, gamma: float, sampling_mode: str, replay_buffer: ReplayBuffer):
-        """Do a look-ahead simulation and store the results in the replay buffer."""
-        sample = dict()
-        sample["states"] = self.env.render()
-        sample["actions"], *_ = self.model(sample["states"], sampling_mode)
-        sample["next-states"], sample["rewards"], terminated, _, infos = self.env.step(
-            sample["actions"]
-        )
-        *_, next_values = self.model(sample["states"], sampling_mode)
-
-        returns = sample["rewards"] + gamma * next_values
-        self.action_returns = SoftMCTS.batched_add(
-            self.action_returns, sample["actions"], returns
-        )
-        self.action_visits = SoftMCTS.batched_add(
-            self.action_visits, sample["actions"], 1
-        )
-
-        to_keep = ~terminated | infos["just_won"]
-        for name, tensor in sample.items():
-            sample[name] = tensor[to_keep]
-
-        sample = TensorDict(sample, batch_size=self.env.batch_size, device=self.device)
-        replay_buffer.extend(sample)
+        self.n_copies = n_copies
+        self.gamma = gamma
 
     @torch.inference_mode()
     def run(
-        self, gamma: float, sampling_mode: str, replay_buffer: ReplayBuffer
+        self,
+        env: EternityEnv,
+        model: Policy,
+        replay_buffer: ReplayBuffer,
+        sampling_mode: str,
     ) -> torch.Tensor:
         """Do the simulations and return the best action found for each instance."""
-        self.simulation(gamma, sampling_mode, replay_buffer)
+        env, action_returns, action_visits = self.init_run(env)
+        action_returns, action_visits = self.simulation(
+            env, model, replay_buffer, action_returns, action_visits, sampling_mode
+        )
 
         # Merge the simulations from duplicated instances.
         action_returns = rearrange(
-            self.action_returns, "(b d) ... -> b d ...", d=self.n_env_copies
+            action_returns, "(b d) ... -> b d ...", d=self.n_copies
         )
         action_returns = action_returns.sum(dim=1)
         action_visits = rearrange(
-            self.action_visits, "(b d) ... -> b d ...", d=self.n_env_copies
+            action_visits, "(b d) ... -> b d ...", d=self.n_copies
         )
         action_visits = action_visits.sum(dim=1)
 
@@ -97,7 +54,67 @@ class SoftMCTS:
         action_visits[action_visits == 0] = 1  # Make sure we do not divide by 0.
 
         scores = action_returns / action_visits
-        return SoftMCTS.best_actions(scores)
+        return TDTreeSearch.best_actions(scores)
+
+    @torch.inference_mode()
+    def simulation(
+        self,
+        env: EternityEnv,
+        model: Policy,
+        replay_buffer: ReplayBuffer,
+        action_returns: torch.Tensor,
+        action_visits: torch.Tensor,
+        sampling_mode: str,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Do a look-ahead simulation and store the results in the replay buffer."""
+        sample = dict()
+        sample["states"] = env.render()
+        sample["actions"], *_ = model(sample["states"], sampling_mode)
+        sample["next-states"], sample["rewards"], terminated, _, infos = env.step(
+            sample["actions"]
+        )
+        *_, next_values = model(sample["states"], sampling_mode)
+
+        returns = sample["rewards"] + self.gamma * next_values
+        action_returns = TDTreeSearch.batched_add(
+            action_returns, sample["actions"], returns
+        )
+        action_visits = TDTreeSearch.batched_add(action_visits, sample["actions"], 1)
+
+        to_keep = ~terminated | infos["just_won"]
+        for name, tensor in sample.items():
+            sample[name] = tensor[to_keep]
+
+        sample = TensorDict(sample, batch_size=env.batch_size, device=env.device)
+        replay_buffer.extend(sample)
+
+        return action_returns, action_visits
+
+    def init_run(
+        self, env: EternityEnv
+    ) -> tuple[EternityEnv, torch.Tensor, torch.Tensor]:
+        """Duplicate the instances and initialize the environment."""
+        instances = env.instances.clone()
+        instances = torch.repeat_interleave(instances, self.n_copies, dim=0)
+        env = EternityEnv(instances, env.device, env.rng.seed())
+        action_returns = torch.zeros(
+            (
+                env.batch_size,
+                env.n_pieces,
+                env.n_pieces,
+                N_SIDES,
+                N_SIDES,
+            ),
+            dtype=torch.float32,
+            device=env.device,
+        )
+        action_visits = torch.zeros_like(
+            action_returns,
+            dtype=torch.long,
+            device=env.device,
+        )
+
+        return env, action_returns, action_visits
 
     @staticmethod
     def batched_add(

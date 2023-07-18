@@ -1,1 +1,1 @@
-from .soft import SoftMCTS
+from .soft import TDTreeSearch

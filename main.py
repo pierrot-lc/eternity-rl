@@ -11,10 +11,12 @@ from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_optimizer import Lamb
+from torchrl.data import LazyTensorStorage, ReplayBuffer
 
 from src.environment import EternityEnv
+from src.mcts import TDTreeSearch
 from src.model import Policy
-from src.reinforce import Reinforce
+from src.reinforce import Reinforce, ReinforceLoss
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -33,18 +35,17 @@ def cleanup_distributed():
 
 def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
-    env = EternityEnv.from_file(
+    return EternityEnv.from_file(
         config.exp.env.path,
         config.exp.env.batch_size,
         config.device,
         config.seed,
     )
-    return env
 
 
 def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
-    model = Policy(
+    return Policy(
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
@@ -56,7 +57,14 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
         decoder_layers=config.exp.model.decoder_layers,
         dropout=config.exp.model.dropout,
     )
-    return model
+
+
+def init_loss(config: DictConfig) -> ReinforceLoss:
+    return ReinforceLoss(
+        config.exp.loss.value_weight,
+        config.exp.loss.entropy_weight,
+        config.exp.loss.gamma,
+    )
 
 
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
@@ -72,11 +80,9 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
         "lamb": Lamb,
     }
 
-    optimizer = optimizers[optimizer_name](
+    return optimizers[optimizer_name](
         model.parameters(), lr=lr, weight_decay=weight_decay
     )
-
-    return optimizer
 
 
 def init_scheduler(
@@ -95,36 +101,51 @@ def init_scheduler(
         end_factor=1.0,
         total_iters=1,
     )
-    scheduler = optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
-    return scheduler
+    return optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
+
+
+def init_td_treesearch(config: DictConfig) -> TDTreeSearch:
+    return TDTreeSearch(
+        config.exp.mcts.n_copies,
+        config.exp.loss.gamma,
+    )
+
+
+def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
+    return ReplayBuffer(
+        storage=LazyTensorStorage(
+            max_size=config.exp.replay_buffer.buffer_size, device=config.device
+        ),
+        batch_size=config.exp.replay_buffer.batch_size,
+        pin_memory=True,
+    )
 
 
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
     model: Policy | DDP,
+    loss: ReinforceLoss,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
+    td_treesearch: TDTreeSearch,
+    replay_buffer: ReplayBuffer,
 ) -> Reinforce:
     """Initialize the trainer."""
     exp = config.exp
-    trainer = Reinforce(
+    return Reinforce(
         env,
         model,
+        loss,
         optimizer,
         scheduler,
-        exp.loss.gamma,
-        exp.loss.value_weight,
-        exp.loss.entropy_weight,
+        td_treesearch,
+        replay_buffer,
         exp.loss.clip_value,
-        exp.replay_buffer.batch_size,
-        exp.replay_buffer.buffer_size,
         exp.iterations.rollouts,
         exp.iterations.batches,
         exp.iterations.epochs,
-        exp.mcts.n_env_copies,
     )
-    return trainer
 
 
 def reload_checkpoint(config: DictConfig, trainer: Reinforce):
@@ -156,9 +177,14 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     model = init_model(config, env)
     model = model.to(config.device)
     model = DDP(model, device_ids=[config.device], output_device=config.device)
+    loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    trainer = init_trainer(config, env, model, optimizer, scheduler)
+    td_treesearch = init_td_treesearch(config)
+    replay_buffer = init_replay_buffer(config)
+    trainer = init_trainer(
+        config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
+    )
     reload_checkpoint(config, trainer)
 
     try:
@@ -179,9 +205,14 @@ def run_trainer_single_gpu(config: DictConfig):
     env = init_env(config)
     model = init_model(config, env)
     model = model.to(config.device)
+    loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    trainer = init_trainer(config, env, model, optimizer, scheduler)
+    td_treesearch = init_td_treesearch(config)
+    replay_buffer = init_replay_buffer(config)
+    trainer = init_trainer(
+        config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
+    )
     reload_checkpoint(config, trainer)
 
     trainer.launch_training(

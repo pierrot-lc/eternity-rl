@@ -38,6 +38,6 @@ iterations:
   batches: 100
 
 mcts:
-  n_env_copies: 10
+  n_copies: 10
 
 checkpoint:

@@ -16,7 +16,7 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-5
   weight_decay: 0.0e-4
 
 scheduler:
@@ -24,13 +24,13 @@ scheduler:
 
 loss:
   gamma: 0.95
-  value_weight: 1.0e-2
-  entropy_weight: 1.0e-5
+  value_weight: 1.0e-3
+  entropy_weight: 1.0e-0
   clip_value: 0.05
 
 replay_buffer:
-  buffer_size: 200000
-  batch_size: 200
+  buffer_size: 2000000
+  batch_size: 2000
 
 iterations:
   rollouts: 20
@@ -38,6 +38,6 @@ iterations:
   batches: 50
 
 mcts:
-  n_env_copies: 20
+  n_copies: 20
 
 checkpoint:
