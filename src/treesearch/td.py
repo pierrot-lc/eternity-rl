@@ -15,6 +15,7 @@ from torchrl.data import ReplayBuffer
 
 from ..environment import EternityEnv
 from ..model import N_SIDES, Policy
+from ..sampling import epsilon_greedy_sampling
 
 
 class TDTreeSearch:
@@ -54,7 +55,7 @@ class TDTreeSearch:
         action_visits[action_visits == 0] = 1  # Make sure we do not divide by 0.
 
         scores = action_returns / action_visits
-        return TDTreeSearch.best_actions(scores)
+        return TDTreeSearch.best_actions(scores, sampling_mode="epsilon-greedy")
 
     @torch.inference_mode()
     def simulation(
@@ -168,7 +169,7 @@ class TDTreeSearch:
         return input_tensor
 
     @staticmethod
-    def best_actions(scores: torch.Tensor) -> torch.Tensor:
+    def best_actions(scores: torch.Tensor, sampling_mode: str) -> torch.Tensor:
         """Return the coordinates maximizing the score for each instance.
 
         ---
@@ -184,7 +185,15 @@ class TDTreeSearch:
         actions_shape = scores.shape[1:]
         n_elements = prod(actions_shape)
         scores = scores.flatten(start_dim=1)
-        best_scores = scores.argmax(dim=1)
+
+        match sampling_mode:
+            case "greedy":
+                best_scores = scores.argmax(dim=1)
+            case "epsilon-greedy":
+                distributions = torch.softmax(scores, dim=-1)
+                best_scores = epsilon_greedy_sampling(distributions, epsilon=0.05)
+            case _:
+                raise ValueError(f"Unknown sampling mode: {sampling_mode}")
 
         best_actions = []
         for n_actions in actions_shape:

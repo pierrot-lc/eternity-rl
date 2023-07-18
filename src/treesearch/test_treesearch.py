@@ -100,7 +100,7 @@ def test_batched_add(
     ],
 )
 def test_best_actions(scores: torch.Tensor):
-    output = TDTreeSearch.best_actions(scores)
+    output = TDTreeSearch.best_actions(scores, "greedy")
     true_output = []
     for batch_id in range(scores.shape[0]):
         best_actions = None

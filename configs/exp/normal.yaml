@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 500
+  batch_size: 600
 
 model:
   n_channels: 9
@@ -16,8 +16,8 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-5
-  weight_decay: 1.0e-3
+  learning_rate: 1.0e-6
+  weight_decay: 1.0e-2
 
 scheduler:
   warmup_steps: 10
@@ -25,11 +25,11 @@ scheduler:
 loss:
   gamma: 0.95
   value_weight: 1.0e-5
-  entropy_weight: 1.0e-2
+  entropy_weight: 1.0e-1
   clip_value: 0.01
 
 replay_buffer:
-  buffer_size: 2000000
+  buffer_size: 1500000
   batch_size: 10000
 
 iterations:
