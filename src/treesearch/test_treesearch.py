@@ -1,8 +1,9 @@
 from itertools import product
+
 import pytest
 import torch
 
-from .soft import SoftMCTS
+from .td import TDTreeSearch
 
 
 @pytest.mark.parametrize(
@@ -86,7 +87,7 @@ def test_batched_add(
         el = to_add[sample_id] if type(to_add) is torch.Tensor else to_add
         true_output[(sample_id, *action)] += el
 
-    output = SoftMCTS.batched_add(input_tensor, actions, to_add)
+    output = TDTreeSearch.batched_add(input_tensor, actions, to_add)
     assert torch.all(output == true_output)
 
 
@@ -99,7 +100,7 @@ def test_batched_add(
     ],
 )
 def test_best_actions(scores: torch.Tensor):
-    output = SoftMCTS.best_actions(scores)
+    output = TDTreeSearch.best_actions(scores)
     true_output = []
     for batch_id in range(scores.shape[0]):
         best_actions = None

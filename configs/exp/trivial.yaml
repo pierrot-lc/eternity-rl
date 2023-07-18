@@ -37,7 +37,7 @@ iterations:
   epochs: 10
   batches: 100
 
-mcts:
+treesearch:
   n_copies: 10
 
 checkpoint:

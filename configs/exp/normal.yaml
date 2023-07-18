@@ -26,7 +26,7 @@ loss:
   gamma: 0.95
   value_weight: 1.0e-3
   entropy_weight: 1.0e-0
-  clip_value: 0.05
+  clip_value: 0.01
 
 replay_buffer:
   buffer_size: 2000000
@@ -37,7 +37,7 @@ iterations:
   epochs: 500
   batches: 50
 
-mcts:
+treesearch:
   n_copies: 20
 
 checkpoint:

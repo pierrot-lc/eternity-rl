@@ -13,8 +13,8 @@ from tqdm import tqdm
 import wandb
 
 from ..environment import EternityEnv
-from ..mcts import TDTreeSearch
 from ..model import Policy
+from ..treesearch import TDTreeSearch
 from .loss import ReinforceLoss
 
 

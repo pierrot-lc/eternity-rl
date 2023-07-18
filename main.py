@@ -14,9 +14,9 @@ from torch_optimizer import Lamb
 from torchrl.data import LazyTensorStorage, ReplayBuffer
 
 from src.environment import EternityEnv
-from src.mcts import TDTreeSearch
 from src.model import Policy
 from src.reinforce import Reinforce, ReinforceLoss
+from src.treesearch import TDTreeSearch
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -106,7 +106,7 @@ def init_scheduler(
 
 def init_td_treesearch(config: DictConfig) -> TDTreeSearch:
     return TDTreeSearch(
-        config.exp.mcts.n_copies,
+        config.exp.treesearch.n_copies,
         config.exp.loss.gamma,
     )
 
