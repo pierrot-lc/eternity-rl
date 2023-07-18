@@ -26,18 +26,18 @@ loss:
   gamma: 0.95
   value_weight: 1.0e-2
   entropy_weight: 1.0e-5
-  clip_value: 0.1
+  clip_value: 0.05
 
 replay_buffer:
-  buffer_size: 20000
+  buffer_size: 200000
   batch_size: 200
 
 iterations:
-  rollouts: 10
-  epochs: 100
-  batches: 100
+  rollouts: 20
+  epochs: 500
+  batches: 50
 
 mcts:
-  n_env_copies: 10
+  n_env_copies: 20
 
 checkpoint:

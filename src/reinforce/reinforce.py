@@ -49,6 +49,8 @@ class Reinforce:
         self.epochs = epochs
         self.mcts_n_env_copies = mcts_n_env_copies
 
+        self.scramble_size = int(0.01 * self.env.batch_size)
+
         self.replay_buffer = ReplayBuffer(
             storage=LazyTensorStorage(max_size=buffer_size, device=self.device),
             batch_size=batch_size,
@@ -58,6 +60,9 @@ class Reinforce:
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
+        scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
+        scramble_ids = scramble_ids[: self.scramble_size]
+        self.env.reset(scramble_ids=scramble_ids)
 
         for _ in tqdm(
             range(self.rollouts),
