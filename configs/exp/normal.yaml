@@ -17,24 +17,24 @@ model:
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-5
-  weight_decay: 0.0e-4
+  weight_decay: 1.0e-3
 
 scheduler:
   warmup_steps: 10
 
 loss:
   gamma: 0.95
-  value_weight: 1.0e-3
-  entropy_weight: 1.0e-0
+  value_weight: 1.0e-5
+  entropy_weight: 1.0e-2
   clip_value: 0.01
 
 replay_buffer:
   buffer_size: 2000000
-  batch_size: 2000
+  batch_size: 10000
 
 iterations:
   rollouts: 20
-  epochs: 500
+  epochs: 2000
   batches: 50
 
 treesearch:

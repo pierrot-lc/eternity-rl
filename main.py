@@ -11,7 +11,7 @@ from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch_optimizer import Lamb
-from torchrl.data import LazyTensorStorage, ReplayBuffer
+from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
 from src.model import Policy
@@ -112,7 +112,7 @@ def init_td_treesearch(config: DictConfig) -> TDTreeSearch:
 
 
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
-    return ReplayBuffer(
+    return TensorDictReplayBuffer(
         storage=LazyTensorStorage(
             max_size=config.exp.replay_buffer.buffer_size, device=config.device
         ),
