@@ -148,26 +148,25 @@ class Reinforce:
 
                 if i % eval_every == 0 and not disable_logs:
                     metrics = self.evaluate()
-                    run.log(metrics)
-
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
-                    run.log(
-                        {
-                            "best board": wandb.Image("board.png"),
-                        }
-                    )
+                    metrics["best-board"] = wandb.Image("board.png")
+                    run.log(metrics)
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
         self.model.eval()
 
-        matches = self.env.max_matches / self.env.best_matches
+        matches = self.env.max_matches / self.env.best_matches_possible
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
+        metrics["matches/best"] = (
+            self.env.best_matches_found / self.env.best_matches_possible
+        )
+        metrics["matches/total-won"] = self.env.total_won
 
         # Compute losses.
         batch = self.replay_buffer.sample()

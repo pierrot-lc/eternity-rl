@@ -34,7 +34,7 @@ replay_buffer:
 
 iterations:
   rollouts: 10
-  epochs: 10
+  epochs: 20
   batches: 100
 
 treesearch:
