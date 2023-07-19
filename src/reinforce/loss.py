@@ -31,7 +31,7 @@ class ReinforceLoss(nn.Module):
         batch["entropies"] = batch["entropies"].sum(dim=1)
 
         advantage = (batch["next-values"] - batch["values"]).detach().unsqueeze(1)
-        losses["policy"] = -batch["logprobs"] * advantage.mean()
+        losses["policy"] = -(batch["logprobs"] * advantage).mean()
         losses["value"] = self.value_weight * self.mse_loss(
             batch["values"], batch["next-values"].detach()
         )
