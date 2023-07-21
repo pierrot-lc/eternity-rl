@@ -17,7 +17,7 @@ model:
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-2
+  weight_decay: 1.0e-3
 
 scheduler:
   warmup_steps: 10
@@ -33,7 +33,7 @@ replay_buffer:
   batch_size: 1000
 
 iterations:
-  rollouts: 40
+  rollouts: 20
   epochs: 2000
   batches: 100
 
