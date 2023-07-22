@@ -4,7 +4,7 @@ description: Some weird facts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-07-11
+updated: 2023-07-21
 version: 1.1.1
 @end
 
@@ -45,7 +45,7 @@ version: 1.1.1
    Note: The actor needs to know the current timestep to properly
    predict the value function.
 
-** Reward shaping
+** Reward modeling
    The 'win' reward is good because it does not optimize for the number of
    steps to win, nor for intermediate easy rewards. But it has a problem:
    long rollouts tend to all collapse to the mean state. The mode is not
@@ -79,3 +79,22 @@ version: 1.1.1
    and/or a simple transformer encoder (with a symmetrical equivariant positional encoding, if used).
    The decoder can use a pointer network to select the tile to swap, and since the rolls
    are relative to the current tile placement, it can be done with a simple linear layer.
+
+** Parallel exploration
+   Using pure MCTS is not cool because it is hard to implement in parallel. Another way
+   of exploring potential futures and to plan is to duplicate each instance and to do
+   batched steps forward. It can be used to estimate what the next best action is.
+   This process can also be repeated multiple times to trade time for memory.
+
+** Potentially never-ending episodes
+   A proper way to train the model is to use never-ending episodes. Doing so,
+   the return is impossible to truly compute with MCTS sampling, but it can
+   be estimated with a value network.
+
+   But it is hard to train a value network in my environment since the model
+   can kind of go back in time. By switch pieces it is easy to go to a previously
+   encountered state. The value network has to take into account this fact, and
+   the training becomes harder.
+
+   The reward is also very important. A good reward shaping will make it easier
+   for the model to quickly understand what the goal is.
