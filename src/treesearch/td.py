@@ -55,7 +55,7 @@ class TDTreeSearch:
         action_visits[action_visits == 0] = 1  # Make sure we do not divide by 0.
 
         scores = action_returns / action_visits
-        return TDTreeSearch.best_actions(scores, sampling_mode="epsilon-greedy")
+        return TDTreeSearch.best_actions(scores, sampling_mode="greedy")
 
     @torch.inference_mode()
     def simulation(

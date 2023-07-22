@@ -47,7 +47,7 @@ class Reinforce:
 
         self.device = env.device
         self.gamma = loss.gamma
-        self.scramble_size = int(0.05 * self.env.batch_size)
+        self.scramble_size = int(1.00 * self.env.batch_size)
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
@@ -133,7 +133,7 @@ class Reinforce:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="epsilon", disable_logs=disable_logs)
+                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
 
                 for _ in tqdm(
                     range(self.batches),

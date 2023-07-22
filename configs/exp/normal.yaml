@@ -3,21 +3,21 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 600
+  batch_size: 2000
 
 model:
-  n_channels: 16
-  embedding_dim: 32
-  n_heads: 4
+  n_channels: 9
+  embedding_dim: 16
+  n_heads: 2
   backbone_cnn_layers: 5
-  backbone_transformer_layers: 2
+  backbone_transformer_layers: 1
   decoder_layers: 1
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-3
+  weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 10
@@ -25,19 +25,19 @@ scheduler:
 loss:
   gamma: 0.99
   value_weight: 1.0e-2
-  entropy_weight: 1.0e-2
+  entropy_weight: 1.0e-4
   clip_value: 0.1
 
 replay_buffer:
-  buffer_size: 1500000
-  batch_size: 1000
+  buffer_size: 25000
+  batch_size: 2000
 
 iterations:
-  rollouts: 20
+  rollouts: 40
   epochs: 2000
-  batches: 100
+  batches: 40
 
 treesearch:
-  n_copies: 20
+  n_copies: 1
 
 checkpoint:
