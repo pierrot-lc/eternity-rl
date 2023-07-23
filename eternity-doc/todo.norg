@@ -9,25 +9,16 @@ updated: 2023-07-16
 * TODO
   - ( ) Add a rotation invariant regularizer loss (if not using a GNN or G-CNN).
   - ( ) Cut the rollout based on the last minimum score (remove the first useless moves).
-  - (x) Start with a CNN encoder for local embeddings and finish by a transformer encoder
-        for global embeddings.
-  - (x) Go back to a rollout buffer, remove the recurrent model and add the optional
-        timestep encoding.
-  - (x) Do a special rollout by using a batched soft MCTS (see {*Ideas}) to collect better actions.
-  -- (x) It will be much longer to collect rollouts, hence the use of a rollout buffer.
-  -- (x) Possibility to add exploration by using exploration sampling methods.
-  -- (x) Merge multiple simulations of a single instance by batching copies of instances.
-  -- The training perfs start by going down and then goes up once the model learns
-     a good policy. It could be because after the first moves are with a depth of one,
-     with a bad policy, which tells better greedy moves than a bad policy with a bigger depth
-     which averages the bad overall moves. It could also be because once the model learns,
-     it lowers its exploration, leading to a bad MCTS.
-  - ( ) Start some rollouts from previous best boards.
-  -- Or simply sample from previous boards and completely new boards.
-  -- It would allow for smaller steps.
-  -- Needs to adapt the reward shaping.
-  - Use a better rollout buffer, sample more and rollout less.
-  - Use a value network to quickly estimate the value of a state => shallow MCTS!
+  -- Useless with the new reward base solely on the current state of the puzzle.
+  - (x) Use a better rollout buffer, sample more and rollout less.
+  - (x) Use a value network to quickly estimate the value of a state => shallow MCTS!
+  - Do the full rollout inside the treesearch. Use the entire rollout to compute returns.
+  -- Better TD estimate.
+  -- Can do Generalized Advantage Estimation.
+  -- Add to the rollout buffer only at the end, when we have computed the return.
+     How to dynamically compute the TD error if the value network is changing?
+  -- Option to add all the duplicated instance actions to the rollout or only the
+     best ones.
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
