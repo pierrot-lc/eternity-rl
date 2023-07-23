@@ -74,7 +74,7 @@ class TDTreeSearch:
         sample["next-states"], sample["rewards"], terminated, _, infos = env.step(
             sample["actions"]
         )
-        *_, next_values = model(sample["states"], sampling_mode)
+        *_, next_values = model(sample["next-states"], sampling_mode)
 
         returns = sample["rewards"] + self.gamma * next_values
         action_returns = TDTreeSearch.batched_add(
