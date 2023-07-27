@@ -52,15 +52,15 @@ class TDTreeSearch:
         ):
             self.simulation(duplicated_env, model, traces, sampling_mode)
 
+        # Build proper traces of shape [batch_size, rollout_depth, ...].
         for name, tensors in traces.items():
-            # Build proper traces of shape [batch_size, rollout_depth, ...].
             traces[name] = torch.stack(tensors, dim=1)
 
         # Compute the estimated returns. Do not forget to add
         # the last states' estimated returns using the value network.
         final_states = duplicated_env.render()
         *_, final_values = model(final_states, sampling_mode)
-        final_values *= duplicated_env.terminated
+        final_values *= ~duplicated_env.terminated
         traces["returns"] = traces["rewards"].clone()
         traces["returns"][:, -1] += self.gamma * final_values
         traces["returns"] = RolloutBuffer.cumulative_decay_return(

@@ -124,6 +124,7 @@ class EstimateValue(nn.Module):
         )
         self.predict_value = nn.Sequential(
             nn.Linear(embedding_dim, 1),
+            SymExp(),
         )
 
     def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
@@ -146,3 +147,15 @@ class EstimateValue(nn.Module):
         query = self.decoder(query, tiles)
         value = self.predict_value(query.squeeze(0))
         return value.squeeze(1)
+
+
+class SymExp(nn.Module):
+    """See https://arxiv.org/abs/2301.04104."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        sign_x = torch.sign(x)
+        abs_x = torch.abs(x)
+        return sign_x * (torch.exp(abs_x) - 1)
