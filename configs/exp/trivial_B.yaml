@@ -15,9 +15,9 @@ model:
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-4
   optimizer: adamw
-  weight_decay: 1.0e-2
+  weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 1
@@ -29,8 +29,8 @@ loss:
   clip_value: 0.5
 
 replay_buffer:
-  buffer_size: 20000
-  batch_size: 200
+  buffer_size: 50000
+  batch_size: 500
 
 iterations:
   rollouts: 10
@@ -38,6 +38,6 @@ iterations:
   batches: 100
 
 treesearch:
-  n_copies: 20
+  n_copies: 10
 
 checkpoint:

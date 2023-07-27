@@ -36,7 +36,7 @@ class TDTreeSearch:
     @torch.inference_mode()
     def run(
         self,
-        duplicated_env: EternityEnv,
+        original_env: EternityEnv,
         model: Policy,
         replay_buffer: ReplayBuffer,
         sampling_mode: str,
@@ -45,7 +45,6 @@ class TDTreeSearch:
     ) -> torch.Tensor:
         """Do the simulations and return the best action found for each instance."""
         traces = defaultdict(list)
-        original_env = duplicated_env
         duplicated_env = self.init_run(original_env)
 
         for _ in tqdm(
@@ -57,10 +56,11 @@ class TDTreeSearch:
             # Build proper traces of shape [batch_size, rollout_depth, ...].
             traces[name] = torch.stack(tensors, dim=1)
 
-        # Compute the estimated returns. Do not forget to add the last states' estimated
-        # returns using the value network.
+        # Compute the estimated returns. Do not forget to add
+        # the last states' estimated returns using the value network.
         final_states = duplicated_env.render()
         *_, final_values = model(final_states, sampling_mode)
+        final_values *= duplicated_env.terminated
         traces["returns"] = traces["rewards"].clone()
         traces["returns"][:, -1] += self.gamma * final_values
         traces["returns"] = RolloutBuffer.cumulative_decay_return(
@@ -69,7 +69,12 @@ class TDTreeSearch:
 
         # Find the best environment among all duplicated instances.
         # Replace the original env state by the new env states.
-        final_returns = traces["returns"][:, -1]
+        rollout_lengths = traces["masks"].sum(dim=1) - 1
+        final_returns = torch.gather(
+            traces["returns"],
+            dim=1,
+            index=rollout_lengths.unsqueeze(1),
+        ).squeeze(1)
         final_returns = rearrange(final_returns, "(b d) -> b d", d=self.n_copies)
         best_env_ids = torch.argmax(final_returns, dim=1).unsqueeze(1)
 
@@ -84,14 +89,28 @@ class TDTreeSearch:
             member_value = torch.gather(member_value, 1, gather_ids).squeeze(1)
             setattr(original_env, member_name, member_value)
 
-        original_env.best_board = duplicated_env.best_board
-        original_env.best_matches_found = duplicated_env.best_matches_found
-        original_env.total_won = duplicated_env.best_matches_found
+        if duplicated_env.best_matches_found > original_env.best_matches_found:
+            original_env.best_board = duplicated_env.best_board
+            original_env.best_matches_found = duplicated_env.best_matches_found
 
-        # Reset terminated envs.
-        to_reset = torch.arange(original_env.batch_size, device=original_env.device)
-        to_reset = to_reset[original_env.terminated]
-        original_env.reset(scramble_ids=to_reset)
+        original_env.total_won += (
+            (original_env.max_matches == original_env.best_matches_possible)
+            .sum()
+            .cpu()
+            .item()
+        )
+
+        # Add the unmasked samples to the rollout buffer.
+        samples = dict()
+        masks = traces["masks"].flatten()
+        for name, values in traces.items():
+            values = rearrange(values, "b d ... -> (b d) ...")
+            samples[name] = values[masks]
+
+        samples = TensorDict(
+            samples, batch_size=masks.sum().cpu().item(), device=masks.device
+        )
+        replay_buffer.extend(samples)
 
     @torch.inference_mode()
     def simulation(

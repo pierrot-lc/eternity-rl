@@ -15,7 +15,7 @@ model:
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-2
+  learning_rate: 1.0e-4
   optimizer: adamw
   weight_decay: 1.0e-4
 
@@ -23,14 +23,14 @@ scheduler:
   warmup_steps: 1
 
 loss:
-  gamma: 0.95
+  gamma: 0.99
   value_weight: 1.0e-2
   entropy_weight: 1.0e-5
   clip_value: 0.5
 
 replay_buffer:
-  buffer_size: 20000
-  batch_size: 200
+  buffer_size: 50000
+  batch_size: 500
 
 iterations:
   rollouts: 10

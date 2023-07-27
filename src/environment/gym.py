@@ -186,7 +186,7 @@ class EternityEnv(gym.Env):
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
 
-        previous_terminated = self.terminated.clone()
+        previously_terminated = self.terminated.clone()
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
@@ -196,11 +196,12 @@ class EternityEnv(gym.Env):
 
         # Update envs infos.
         self.update_best_env()
-        rewards = (matches / self.best_matches_possible).pow(2.0)
+        rewards = (matches / self.best_matches_possible).pow(2.0)  # Matches reward.
+        rewards -= 1  # Step penalty.
         max_matches = torch.stack((self.max_matches, matches), dim=1)
         self.max_matches = torch.max(max_matches, dim=1)[0]
         self.terminated |= matches == self.best_matches_possible
-        infos["just_won"] = self.terminated & ~previous_terminated
+        infos["just_won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just_won"].sum().cpu().item()
         return self.render(), rewards, self.terminated, False, infos
 
