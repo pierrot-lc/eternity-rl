@@ -6,15 +6,18 @@ Differences with pure MCTS:
 
 This simplications are there to enable better exploitation of the batch parallelism.
 """
+from collections import defaultdict
 from math import prod
 
 import torch
-from einops import rearrange
+from einops import rearrange, repeat
 from tensordict import TensorDict
 from torchrl.data import ReplayBuffer
+from tqdm import tqdm
 
 from ..environment import EternityEnv
 from ..model import N_SIDES, Policy
+from ..reinforce.rollout_buffer import RolloutBuffer
 from ..sampling import epsilon_greedy_sampling
 
 
@@ -27,78 +30,94 @@ class TDTreeSearch:
         self.n_copies = n_copies
         self.gamma = gamma
 
+        self.action_returns = torch.empty((0,))
+        self.action_visits = torch.empty((0,))
+
     @torch.inference_mode()
     def run(
         self,
-        env: EternityEnv,
+        duplicated_env: EternityEnv,
         model: Policy,
         replay_buffer: ReplayBuffer,
         sampling_mode: str,
+        rollout_depth: int,
+        disable_logs: bool,
     ) -> torch.Tensor:
         """Do the simulations and return the best action found for each instance."""
-        env, action_returns, action_visits = self.init_run(env)
-        action_returns, action_visits = self.simulation(
-            env, model, replay_buffer, action_returns, action_visits, sampling_mode
+        traces = defaultdict(list)
+        original_env = duplicated_env
+        duplicated_env = self.init_run(original_env)
+
+        for _ in tqdm(
+            range(rollout_depth), desc="Rollout", leave=False, disable=disable_logs
+        ):
+            self.simulation(duplicated_env, model, traces, sampling_mode)
+
+        for name, tensors in traces.items():
+            # Build proper traces of shape [batch_size, rollout_depth, ...].
+            traces[name] = torch.stack(tensors, dim=1)
+
+        # Compute the estimated returns. Do not forget to add the last states' estimated
+        # returns using the value network.
+        final_states = duplicated_env.render()
+        *_, final_values = model(final_states, sampling_mode)
+        traces["returns"] = traces["rewards"].clone()
+        traces["returns"][:, -1] += self.gamma * final_values
+        traces["returns"] = RolloutBuffer.cumulative_decay_return(
+            traces["returns"], traces["masks"], self.gamma
         )
 
-        # Merge the simulations from duplicated instances.
-        action_returns = rearrange(
-            action_returns, "(b d) ... -> b d ...", d=self.n_copies
-        )
-        action_returns = action_returns.sum(dim=1)
-        action_visits = rearrange(
-            action_visits, "(b d) ... -> b d ...", d=self.n_copies
-        )
-        action_visits = action_visits.sum(dim=1)
+        # Find the best environment among all duplicated instances.
+        # Replace the original env state by the new env states.
+        final_returns = traces["returns"][:, -1]
+        final_returns = rearrange(final_returns, "(b d) -> b d", d=self.n_copies)
+        best_env_ids = torch.argmax(final_returns, dim=1).unsqueeze(1)
 
-        action_returns[action_visits == 0] = -1  # Do not select empty visits.
-        action_visits[action_visits == 0] = 1  # Make sure we do not divide by 0.
+        for member_name in ["instances", "terminated", "max_matches"]:
+            member_value = getattr(duplicated_env, member_name)
+            member_value = rearrange(
+                member_value, "(b d) ... -> b d ...", d=self.n_copies
+            )
+            gather_ids = best_env_ids
+            for dimension_size in member_value.shape[2:]:
+                gather_ids = repeat(gather_ids, "... -> ... r", r=dimension_size)
+            member_value = torch.gather(member_value, 1, gather_ids).squeeze(1)
+            setattr(original_env, member_name, member_value)
 
-        scores = action_returns / action_visits
-        return TDTreeSearch.best_actions(scores, sampling_mode="greedy")
+        original_env.best_board = duplicated_env.best_board
+        original_env.best_matches_found = duplicated_env.best_matches_found
+        original_env.total_won = duplicated_env.best_matches_found
+
+        # Reset terminated envs.
+        to_reset = torch.arange(original_env.batch_size, device=original_env.device)
+        to_reset = to_reset[original_env.terminated]
+        original_env.reset(scramble_ids=to_reset)
 
     @torch.inference_mode()
     def simulation(
         self,
         env: EternityEnv,
         model: Policy,
-        replay_buffer: ReplayBuffer,
-        action_returns: torch.Tensor,
-        action_visits: torch.Tensor,
+        traces: dict[str, list[torch.Tensor]],
         sampling_mode: str,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ):
         """Do a look-ahead simulation and store the results in the replay buffer."""
         sample = dict()
         sample["states"] = env.render()
         sample["actions"], *_ = model(sample["states"], sampling_mode)
-        sample["next-states"], sample["rewards"], terminated, _, infos = env.step(
-            sample["actions"]
-        )
-        *_, next_values = model(sample["next-states"], sampling_mode)
+        _, sample["rewards"], terminated, _, infos = env.step(sample["actions"])
 
-        returns = sample["rewards"] + self.gamma * next_values
-        action_returns = TDTreeSearch.batched_add(
-            action_returns, sample["actions"], returns
-        )
-        action_visits = TDTreeSearch.batched_add(action_visits, sample["actions"], 1)
-
-        to_keep = ~terminated | infos["just_won"]
+        sample["masks"] = ~terminated | infos["just_won"]
         for name, tensor in sample.items():
-            sample[name] = tensor[to_keep]
+            traces[name].append(tensor)
 
-        sample = TensorDict(sample, batch_size=env.batch_size, device=env.device)
-        replay_buffer.extend(sample)
-
-        return action_returns, action_visits
-
-    def init_run(
-        self, env: EternityEnv
-    ) -> tuple[EternityEnv, torch.Tensor, torch.Tensor]:
+    def init_run(self, env: EternityEnv) -> EternityEnv:
         """Duplicate the instances and initialize the environment."""
         instances = env.instances.clone()
         instances = torch.repeat_interleave(instances, self.n_copies, dim=0)
         env = EternityEnv(instances, env.device, env.rng.seed())
-        action_returns = torch.zeros(
+
+        self.action_returns = torch.zeros(
             (
                 env.batch_size,
                 env.n_pieces,
@@ -109,13 +128,13 @@ class TDTreeSearch:
             dtype=torch.float32,
             device=env.device,
         )
-        action_visits = torch.zeros_like(
-            action_returns,
+        self.action_visits = torch.zeros_like(
+            self.action_returns,
             dtype=torch.long,
             device=env.device,
         )
 
-        return env, action_returns, action_visits
+        return env
 
     @staticmethod
     def batched_add(

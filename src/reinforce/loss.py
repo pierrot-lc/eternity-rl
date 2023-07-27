@@ -24,15 +24,18 @@ class ReinforceLoss(nn.Module):
         *_, batch["next-values"] = model(batch["next-states"], "sample")
         batch["next-values"] = batch["rewards"] + self.gamma * batch["next-values"]
 
+        # Compute the joint log probability of the actions.
+        batch["logprobs"] = batch["logprobs"].sum(dim=1)
+
         batch["entropies"][:, 0] *= 1.0
         batch["entropies"][:, 1] *= 0.5
         batch["entropies"][:, 2] *= 0.1
         batch["entropies"][:, 3] *= 0.1
         batch["entropies"] = batch["entropies"].sum(dim=1)
 
-        advantage = (batch["next-values"] - batch["values"]).detach().unsqueeze(1)
+        advantage = (batch["next-values"] - batch["values"]).detach()
         advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-5)
-        # advantage = batch["values"].detach().unsqueeze(1)
+
         losses["policy"] = -(batch["logprobs"] * advantage).mean()
         losses["value"] = self.value_weight * self.mse_loss(
             batch["values"], batch["next-values"].detach()

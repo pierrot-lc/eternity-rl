@@ -2,7 +2,7 @@
 import einops
 import torch
 
-from ..model import N_SIDES, N_ACTIONS
+from ..model import N_ACTIONS, N_SIDES
 
 
 class RolloutBuffer:
