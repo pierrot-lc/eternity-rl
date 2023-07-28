@@ -201,8 +201,8 @@ class EternityEnv(gym.Env):
         max_matches = torch.stack((self.max_matches, matches), dim=1)
         self.max_matches = torch.max(max_matches, dim=1)[0]
         self.terminated |= matches == self.best_matches_possible
-        infos["just_won"] = self.terminated & ~previously_terminated
-        self.total_won += infos["just_won"].sum().cpu().item()
+        infos["just-won"] = self.terminated & ~previously_terminated
+        self.total_won += infos["just-won"].sum().cpu().item()
         return self.render(), rewards, self.terminated, False, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):

@@ -3,7 +3,7 @@ group: Trivial A
 
 env:
   path: ./instances/eternity_trivial_A.txt
-  batch_size: 500
+  batch_size: 5000
 
 model:
   n_channels: 6
@@ -30,14 +30,11 @@ loss:
 
 replay_buffer:
   buffer_size: 50000
-  batch_size: 500
+  batch_size: 5000
 
 iterations:
   rollouts: 10
-  epochs: 10
-  batches: 100
-
-treesearch:
-  n_copies: 10
+  epochs: 100
+  batches: 10
 
 checkpoint:

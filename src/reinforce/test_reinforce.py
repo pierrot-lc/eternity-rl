@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from .reinforce import Reinforce
-from .rollout_buffer import RolloutBuffer
+from .rollout import cumulative_decay_return
 
 
 @pytest.mark.parametrize(
@@ -52,40 +51,4 @@ def test_cumulative_decay_return(
     gamma: float,
     returns: torch.Tensor,
 ):
-    assert torch.allclose(
-        RolloutBuffer.cumulative_decay_return(rewards, masks, gamma), returns
-    )
-
-
-@pytest.mark.parametrize(
-    "rewards, masks, returns, cutted_masks",
-    [
-        (
-            torch.FloatTensor([[2, 1, 1]]),
-            torch.BoolTensor([[True, True, True]]),
-            torch.FloatTensor([[2, 1, 1]]),
-            torch.BoolTensor([[True, False, False]]),
-        ),
-        (
-            torch.FloatTensor([[2, 1, 1], [3, 2, 4]]),
-            torch.BoolTensor([[True, True, True], [True, True, True]]),
-            torch.FloatTensor([[2, 1, 1], [4, 4, 4]]),
-            torch.BoolTensor([[True, False, False], [True, True, True]]),
-        ),
-        (
-            torch.FloatTensor([[2, 1, 1], [3, 2, 4]]),
-            torch.BoolTensor([[True, True, True], [True, True, False]]),
-            torch.FloatTensor([[2, 1, 1], [3, 2, 0]]),
-            torch.BoolTensor([[True, False, False], [True, False, False]]),
-        ),
-    ],
-)
-def test_cumulative_max_cut(
-    rewards: torch.Tensor,
-    masks: torch.Tensor,
-    returns: torch.Tensor,
-    cutted_masks: torch.Tensor,
-):
-    computed_returns, computed_masks = RolloutBuffer.cumulative_max_cut(rewards, masks)
-    assert torch.all(computed_returns == returns)
-    assert torch.all(computed_masks == cutted_masks)
+    assert torch.allclose(cumulative_decay_return(rewards, masks, gamma), returns)

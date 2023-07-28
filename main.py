@@ -16,7 +16,6 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from src.environment import EternityEnv
 from src.model import Policy
 from src.reinforce import Reinforce, ReinforceLoss
-from src.treesearch import TDTreeSearch
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -104,13 +103,6 @@ def init_scheduler(
     return optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
 
 
-def init_td_treesearch(config: DictConfig) -> TDTreeSearch:
-    return TDTreeSearch(
-        config.exp.treesearch.n_copies,
-        config.exp.loss.gamma,
-    )
-
-
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
     return TensorDictReplayBuffer(
         storage=LazyTensorStorage(
@@ -128,7 +120,6 @@ def init_trainer(
     loss: ReinforceLoss,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
-    td_treesearch: TDTreeSearch,
     replay_buffer: ReplayBuffer,
 ) -> Reinforce:
     """Initialize the trainer."""
@@ -139,7 +130,6 @@ def init_trainer(
         loss,
         optimizer,
         scheduler,
-        td_treesearch,
         replay_buffer,
         exp.loss.clip_value,
         exp.iterations.rollouts,
@@ -180,7 +170,6 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    td_treesearch = init_td_treesearch(config)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
         config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
@@ -208,10 +197,9 @@ def run_trainer_single_gpu(config: DictConfig):
     loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    td_treesearch = init_td_treesearch(config)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
+        config, env, model, loss, optimizer, scheduler, replay_buffer
     )
     reload_checkpoint(config, trainer)
 

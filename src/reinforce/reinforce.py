@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import einops
 import torch.optim as optim
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -14,8 +15,8 @@ import wandb
 
 from ..environment import EternityEnv
 from ..model import Policy
-from ..treesearch import TDTreeSearch
 from .loss import ReinforceLoss
+from .rollout import rollout, advantages
 
 
 class Reinforce:
@@ -26,7 +27,6 @@ class Reinforce:
         loss: ReinforceLoss,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
-        td_treesearch: TDTreeSearch,
         replay_buffer: ReplayBuffer,
         clip_value: float,
         rollouts: int,
@@ -38,7 +38,6 @@ class Reinforce:
         self.loss = loss
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.td_treesearch = td_treesearch
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
         self.rollouts = rollouts
@@ -46,7 +45,6 @@ class Reinforce:
         self.epochs = epochs
 
         self.device = env.device
-        self.gamma = loss.gamma
         self.scramble_size = int(0.05 * self.env.batch_size)
 
     @torch.inference_mode()
@@ -62,14 +60,25 @@ class Reinforce:
             to_reset = to_reset[self.env.terminated]
             self.env.reset(scramble_ids=to_reset)
 
-        self.td_treesearch.run(
-            self.env,
-            self.model,
-            self.replay_buffer,
-            sampling_mode,
-            self.rollouts,
-            disable_logs,
+        traces = rollout(
+            self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
+        advantages(traces, self.loss.gamma)
+
+        # Flatten the batch x steps dimensions and remove the masked steps.
+        samples = dict()
+        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
+        for name, tensor in traces.items():
+            if name == "masks":
+                continue
+
+            tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
+            samples[name] = tensor[masks]
+
+        samples = TensorDict(
+            samples, batch_size=samples["states"].shape[0], device=self.device
+        )
+        self.replay_buffer.extend(samples)
 
     def do_batch_update(self, batch: TensorDict):
         """Performs a batch update on the model."""
