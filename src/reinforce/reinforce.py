@@ -86,8 +86,8 @@ class Reinforce:
         self.optimizer.zero_grad()
 
         batch = batch.to(self.device)
-        losses = self.loss(batch, self.model)
-        losses["total"].backward()
+        metrics = self.loss(batch, self.model)
+        metrics["total"].backward()
 
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()

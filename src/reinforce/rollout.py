@@ -23,7 +23,9 @@ def rollout(
         sample = dict()
 
         sample["states"] = env.render()
-        sample["actions"], *_, sample["values"] = model(sample["states"], sampling_mode)
+        sample["actions"], sample["log-probs"], _, sample["values"] = model(
+            sample["states"], sampling_mode
+        )
         _, sample["rewards"], terminated, _, infos = env.step(sample["actions"])
         sample["masks"] = ~terminated | infos["just-won"]
         sample["dones"] = terminated

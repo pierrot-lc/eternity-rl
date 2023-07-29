@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 2000
+  batch_size: 8000
 
 model:
   n_channels: 9
@@ -24,20 +24,19 @@ scheduler:
 
 loss:
   gamma: 0.99
-  value_weight: 1.0e-2
-  entropy_weight: 1.0e-4
+  gae_lambda: 0.95
+  ppo_clip: 0.2
+  value_weight: 5.0e-1
+  entropy_weight: 1.0e-2
   clip_value: 0.01
 
 replay_buffer:
-  buffer_size: 800000
-  batch_size: 8000
+  buffer_size: 320000
+  batch_size: 4000
 
 iterations:
   rollouts: 40
   epochs: 2000
-  batches: 100
-
-treesearch:
-  n_copies: 10
+  batches: 80
 
 checkpoint:

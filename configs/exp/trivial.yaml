@@ -15,8 +15,8 @@ model:
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-4
   optimizer: adamw
+  learning_rate: 1.0e-4
   weight_decay: 1.0e-4
 
 scheduler:
@@ -25,7 +25,8 @@ scheduler:
 loss:
   gamma: 0.99
   gae_lambda: 0.95
-  value_weight: 1.0e-2
+  ppo_clip: 0.2
+  value_weight: 5.0e-1
   entropy_weight: 1.0e-2
   clip_value: 1.0
 
@@ -35,7 +36,7 @@ replay_buffer:
 
 iterations:
   rollouts: 10
-  epochs: 500
+  epochs: 300
   batches: 10
 
 checkpoint:

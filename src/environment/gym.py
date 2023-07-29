@@ -198,6 +198,7 @@ class EternityEnv(gym.Env):
         self.update_best_env()
         rewards = (matches / self.best_matches_possible).pow(2.0)  # Matches reward.
         rewards -= 1  # Step penalty.
+        rewards /= 10  # Downscaling.
         max_matches = torch.stack((self.max_matches, matches), dim=1)
         self.max_matches = torch.max(max_matches, dim=1)[0]
         self.terminated |= matches == self.best_matches_possible

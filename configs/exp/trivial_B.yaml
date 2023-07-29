@@ -25,17 +25,18 @@ scheduler:
 loss:
   gamma: 0.99
   gae_lambda: 0.95
-  value_weight: 1.0e-2
+  ppo_clip: 0.2
+  value_weight: 5.0e-1
   entropy_weight: 1.0e-2
   clip_value: 1.0
 
 replay_buffer:
   buffer_size: 100000
-  batch_size: 5000
+  batch_size: 2500
 
 iterations:
   rollouts: 20
-  epochs: 5000
-  batches: 20
+  epochs: 1000
+  batches: 40
 
 checkpoint:

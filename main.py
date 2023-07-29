@@ -64,6 +64,7 @@ def init_loss(config: DictConfig) -> ReinforceLoss:
         config.exp.loss.entropy_weight,
         config.exp.loss.gamma,
         config.exp.loss.gae_lambda,
+        config.exp.loss.ppo_clip,
     )
 
 
