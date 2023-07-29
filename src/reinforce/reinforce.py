@@ -16,7 +16,7 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Policy
 from .loss import ReinforceLoss
-from .rollout import rollout, advantages
+from .rollout import rollout
 
 
 class Reinforce:
@@ -44,8 +44,8 @@ class Reinforce:
         self.batches = batches
         self.epochs = epochs
 
-        self.device = env.device
         self.scramble_size = int(0.05 * self.env.batch_size)
+        self.device = env.device
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
@@ -63,7 +63,7 @@ class Reinforce:
         traces = rollout(
             self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
-        advantages(traces, self.loss.gamma)
+        self.loss.advantages(traces)
 
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
@@ -141,7 +141,7 @@ class Reinforce:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="epsilon", disable_logs=disable_logs)
+                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
 
                 for _ in tqdm(
                     range(self.batches),

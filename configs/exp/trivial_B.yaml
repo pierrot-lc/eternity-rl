@@ -3,7 +3,7 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  batch_size: 500
+  batch_size: 5000
 
 model:
   n_channels: 9
@@ -15,7 +15,7 @@ model:
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-4
   optimizer: adamw
   weight_decay: 1.0e-4
 
@@ -24,20 +24,18 @@ scheduler:
 
 loss:
   gamma: 0.99
-  value_weight: 1.0e-4
-  entropy_weight: 1.0e-1
+  gae_lambda: 0.95
+  value_weight: 1.0e-2
+  entropy_weight: 1.0e-2
   clip_value: 1.0
 
 replay_buffer:
-  buffer_size: 50000
-  batch_size: 500
+  buffer_size: 100000
+  batch_size: 5000
 
 iterations:
-  rollouts: 10
-  epochs: 2000
-  batches: 100
-
-treesearch:
-  n_copies: 10
+  rollouts: 20
+  epochs: 5000
+  batches: 20
 
 checkpoint:

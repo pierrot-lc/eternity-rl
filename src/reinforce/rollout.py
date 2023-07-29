@@ -26,6 +26,7 @@ def rollout(
         sample["actions"], *_, sample["values"] = model(sample["states"], sampling_mode)
         _, sample["rewards"], terminated, _, infos = env.step(sample["actions"])
         sample["masks"] = ~terminated | infos["just-won"]
+        sample["dones"] = terminated
         sample["values"] *= ~terminated
 
         for name, tensor in sample.items():
@@ -43,12 +44,6 @@ def rollout(
     )
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
-
-
-def advantages(traces: TensorDictBase, gamma: float):
-    traces["advantages"] = (
-        -traces["values"] + traces["rewards"] + gamma * traces["next-values"]
-    )
 
 
 def cumulative_decay_return(
