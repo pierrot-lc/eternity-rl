@@ -33,7 +33,7 @@ class Backbone(nn.Module):
 
         self.embed_board = nn.Sequential(
             # Embed the classes of each size of the tiles.
-            Rearrange("b t w h -> b h w t"),
+            Rearrange("b t h w -> b h w t"),
             nn.Embedding(n_classes, n_channels),
             nn.LayerNorm(n_channels),
             # Merge the classes of each tile into a single embedding.
