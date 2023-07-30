@@ -15,7 +15,7 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
 from src.model import Policy
-from src.policy_gradient import Trainer, PPOLoss
+from src.policy_gradient import PPOLoss, Trainer
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -107,11 +107,11 @@ def init_scheduler(
 
 
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
+    exp = config.exp
+    max_size = exp.env.batch_size * exp.iterations.rollouts
     return TensorDictReplayBuffer(
-        storage=LazyTensorStorage(
-            max_size=config.exp.replay_buffer.buffer_size, device=config.device
-        ),
-        batch_size=config.exp.replay_buffer.batch_size,
+        storage=LazyTensorStorage(max_size=max_size, device=config.device),
+        batch_size=exp.iterations.batch_size,
         pin_memory=True,
     )
 
