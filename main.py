@@ -34,9 +34,10 @@ def cleanup_distributed():
 
 def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
+    env = config.exp.env
     return EternityEnv.from_file(
-        config.exp.env.path,
-        config.exp.env.batch_size,
+        env.path,
+        env.batch_size,
         config.device,
         config.seed,
     )
@@ -44,28 +45,30 @@ def init_env(config: DictConfig) -> EternityEnv:
 
 def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
+    model = config.exp.model
     return Policy(
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        n_channels=config.exp.model.n_channels,
-        embedding_dim=config.exp.model.embedding_dim,
-        n_heads=config.exp.model.n_heads,
-        backbone_cnn_layers=config.exp.model.backbone_cnn_layers,
-        backbone_transformer_layers=config.exp.model.backbone_transformer_layers,
-        decoder_layers=config.exp.model.decoder_layers,
-        dropout=config.exp.model.dropout,
+        n_channels=model.n_channels,
+        embedding_dim=model.embedding_dim,
+        n_heads=model.n_heads,
+        backbone_cnn_layers=model.backbone_cnn_layers,
+        backbone_transformer_layers=model.backbone_transformer_layers,
+        decoder_layers=model.decoder_layers,
+        dropout=model.dropout,
     )
 
 
 def init_loss(config: DictConfig) -> PPOLoss:
+    loss = config.exp.loss
     return PPOLoss(
-        config.exp.loss.value_weight,
-        config.exp.loss.entropy_weight,
-        config.exp.loss.gamma,
-        config.exp.loss.gae_lambda,
-        config.exp.loss.ppo_clip_ac,
-        config.exp.loss.ppo_clip_vf,
+        loss.value_weight,
+        loss.entropy_weight,
+        loss.gamma,
+        loss.gae_lambda,
+        loss.ppo_clip_ac,
+        loss.ppo_clip_vf,
     )
 
 
@@ -126,7 +129,8 @@ def init_trainer(
     replay_buffer: ReplayBuffer,
 ) -> Trainer:
     """Initialize the trainer."""
-    exp = config.exp
+    trainer = config.exp.trainer
+    iterations = config.exp.iterations
     return Trainer(
         env,
         model,
@@ -134,11 +138,11 @@ def init_trainer(
         optimizer,
         scheduler,
         replay_buffer,
-        exp.trainer.clip_value,
-        exp.trainer.scramble_size,
-        exp.iterations.rollouts,
-        exp.iterations.batches,
-        exp.iterations.epochs,
+        trainer.clip_value,
+        trainer.scramble_size,
+        iterations.rollouts,
+        iterations.batches,
+        iterations.epochs,
     )
 
 

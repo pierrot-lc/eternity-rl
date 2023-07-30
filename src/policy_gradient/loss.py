@@ -134,8 +134,8 @@ class PPOLoss(nn.Module):
         metrics["policy"] = -gains.min(dim=-1).values.mean()
 
         old_values = batch["values"]
-        clipped_values = old_values + torch.clamp(
-            values - old_values, -self.ppo_clip_vf, self.ppo_clip_vf
+        clipped_values = torch.clamp(
+            values, old_values - self.ppo_clip_vf, old_values + self.ppo_clip_vf
         )
         value_losses = torch.stack(
             (
