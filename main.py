@@ -64,7 +64,8 @@ def init_loss(config: DictConfig) -> PPOLoss:
         config.exp.loss.entropy_weight,
         config.exp.loss.gamma,
         config.exp.loss.gae_lambda,
-        config.exp.loss.ppo_clip,
+        config.exp.loss.ppo_clip_ac,
+        config.exp.loss.ppo_clip_vf,
     )
 
 
@@ -133,7 +134,8 @@ def init_trainer(
         optimizer,
         scheduler,
         replay_buffer,
-        exp.loss.clip_value,
+        exp.trainer.clip_value,
+        exp.trainer.scramble_size,
         exp.iterations.rollouts,
         exp.iterations.batches,
         exp.iterations.epochs,

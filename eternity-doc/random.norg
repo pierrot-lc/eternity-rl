@@ -4,7 +4,7 @@ description: Some weird facts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-07-21
+updated: 2023-07-30
 version: 1.1.1
 @end
 
@@ -42,11 +42,12 @@ version: 1.1.1
    It also introduces a lot of hyperparameters to tune, so I decided to
    remove it.
 
-   Note: The actor needs to know the current timestep to properly
-   predict the value function.
+   Finally, I have to use it back since i'm training in a never-ending environment.
+   To have access to a return estimation, I have to estimate the values using a value function.
+
 
 ** Reward modeling
-   The 'win' reward is good because it does not optimize for the number of
+   The `win` reward is good because it does not optimize for the number of
    steps to win, nor for intermediate easy rewards. But it has a problem:
    long rollouts tend to all collapse to the mean state. The mode is not
    rewarded for the maximum intermediate state.

@@ -11,6 +11,15 @@ class PPOLoss(nn.Module):
     Also computes the advantages using the GAE algorithm.
 
     ---
+    Args:
+        value_weight: The weight of the value loss.
+        entropy_weight: The weight of the entropy loss.
+        gamma: The discount factor.
+        gae_lambda: The GAE lambda parameter.
+        ppo_clip_ac: The PPO action clipping parameter.
+        ppo_clip_vf: The PPO value clipping parameter.
+
+    ---
     Sources:
         PPO paper: https://arxiv.org/abs/1707.06347.
         PPO implementation: https://github.com/openai/baselines/blob/master/baselines/ppo2/model.py.
@@ -23,7 +32,8 @@ class PPOLoss(nn.Module):
         entropy_weight: float,
         gamma: float,
         gae_lambda: float,
-        ppo_clip: float,
+        ppo_clip_ac: float,
+        ppo_clip_vf: float,
     ):
         super().__init__()
 
@@ -31,7 +41,8 @@ class PPOLoss(nn.Module):
         self.entropy_weight = entropy_weight
         self.gamma = gamma
         self.gae_lambda = gae_lambda
-        self.ppo_clip = ppo_clip
+        self.ppo_clip_ac = ppo_clip_ac
+        self.ppo_clip_vf = ppo_clip_vf
 
     def advantages(self, traces: TensorDictBase):
         """Computes the advantages and value targets using the GAE algorithm.
@@ -110,7 +121,9 @@ class PPOLoss(nn.Module):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         prob_ratios = (logprobs - old_logprobs).exp()
-        clipped_ratios = torch.clamp(prob_ratios, 1 - self.ppo_clip, 1 + self.ppo_clip)
+        clipped_ratios = torch.clamp(
+            prob_ratios, 1 - self.ppo_clip_ac, 1 + self.ppo_clip_ac
+        )
         gains = torch.stack(
             (
                 prob_ratios * advantages,
@@ -122,7 +135,7 @@ class PPOLoss(nn.Module):
 
         old_values = batch["values"]
         clipped_values = old_values + torch.clamp(
-            values - old_values, -self.ppo_clip, self.ppo_clip
+            values - old_values, -self.ppo_clip_vf, self.ppo_clip_vf
         )
         value_losses = torch.stack(
             (
@@ -140,7 +153,7 @@ class PPOLoss(nn.Module):
         with torch.no_grad():
             metrics["approx-kl"] = (logprobs - old_logprobs).pow(2).mean() / 2
             metrics["clip-frac"] = (
-                ((prob_ratios - 1.0).abs() > self.ppo_clip).float().mean()
+                ((prob_ratios - 1.0).abs() > self.ppo_clip_ac).float().mean()
             )
 
         return metrics

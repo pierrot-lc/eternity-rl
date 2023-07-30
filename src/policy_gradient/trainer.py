@@ -29,6 +29,7 @@ class Trainer:
         scheduler: optim.lr_scheduler.LinearLR,
         replay_buffer: ReplayBuffer,
         clip_value: float,
+        scramble_size: float,
         rollouts: int,
         batches: int,
         epochs: int,
@@ -44,17 +45,17 @@ class Trainer:
         self.batches = batches
         self.epochs = epochs
 
-        self.scramble_size = int(0.05 * self.env.batch_size)
+        self.scramble_size = int(scramble_size * self.env.batch_size)
         self.device = env.device
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
-        scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
-        scramble_ids = scramble_ids[: self.scramble_size]
-        self.env.reset(scramble_ids=scramble_ids)
+        if self.scramble_size > 0:
+            scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
+            scramble_ids = scramble_ids[: self.scramble_size]
+            self.env.reset(scramble_ids=scramble_ids)
 
-        # Reset terminated envs.
         if self.env.terminated.sum() > 0:
             to_reset = torch.arange(self.env.batch_size, device=self.device)
             to_reset = to_reset[self.env.terminated]
