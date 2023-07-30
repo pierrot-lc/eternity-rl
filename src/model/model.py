@@ -89,7 +89,7 @@ class Policy(nn.Module):
         ---
         Args:
             tiles: The game state.
-                Long tensor of shape [batch_size, 4, board_height, board_width].
+                Long tensor of shape [batch_size, n_sides, board_height, board_width].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.

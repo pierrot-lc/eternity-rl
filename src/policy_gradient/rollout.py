@@ -1,4 +1,4 @@
-"""Play some steps and compute returns & advantages."""
+"""Play some steps."""
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -17,6 +17,16 @@ def rollout(
     steps: int,
     disable_logs: bool,
 ) -> TensorDictBase:
+    """Play some steps.
+
+    ---
+    Args:
+        env: The environments to play in.
+        model: The model to use to play.
+        sampling_mode: The sampling mode to use.
+        steps: The number of steps to play.
+        disable_logs: Whether to disable the logs.
+    """
     traces = defaultdict(list)
 
     for _ in tqdm(range(steps), desc="Rollout", leave=False, disable=disable_logs):

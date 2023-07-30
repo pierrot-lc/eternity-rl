@@ -15,7 +15,7 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
 from src.model import Policy
-from src.reinforce import Reinforce, ReinforceLoss
+from src.policy_gradient import Trainer, PPOLoss
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -58,8 +58,8 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     )
 
 
-def init_loss(config: DictConfig) -> ReinforceLoss:
-    return ReinforceLoss(
+def init_loss(config: DictConfig) -> PPOLoss:
+    return PPOLoss(
         config.exp.loss.value_weight,
         config.exp.loss.entropy_weight,
         config.exp.loss.gamma,
@@ -119,14 +119,14 @@ def init_trainer(
     config: DictConfig,
     env: EternityEnv,
     model: Policy | DDP,
-    loss: ReinforceLoss,
+    loss: PPOLoss,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
     replay_buffer: ReplayBuffer,
-) -> Reinforce:
+) -> Trainer:
     """Initialize the trainer."""
     exp = config.exp
-    return Reinforce(
+    return Trainer(
         env,
         model,
         loss,
@@ -140,7 +140,7 @@ def init_trainer(
     )
 
 
-def reload_checkpoint(config: DictConfig, trainer: Reinforce):
+def reload_checkpoint(config: DictConfig, trainer: Trainer):
     """Reload a checkpoint."""
     if config.exp.checkpoint is None:
         return

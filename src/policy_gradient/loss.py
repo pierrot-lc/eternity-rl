@@ -6,7 +6,17 @@ from torchrl.objectives.value.functional import vec_generalized_advantage_estima
 from ..model import Policy
 
 
-class ReinforceLoss(nn.Module):
+class PPOLoss(nn.Module):
+    """Compute the PPO loss.
+    Also computes the advantages using the GAE algorithm.
+
+    ---
+    Sources:
+        PPO paper: https://arxiv.org/abs/1707.06347.
+        PPO implementation: https://github.com/openai/baselines/blob/master/baselines/ppo2/model.py.
+        Approximating KL Divergence: http://joschu.net/blog/kl-approx.html.
+    """
+
     def __init__(
         self,
         value_weight: float,
@@ -24,6 +34,21 @@ class ReinforceLoss(nn.Module):
         self.ppo_clip = ppo_clip
 
     def advantages(self, traces: TensorDictBase):
+        """Computes the advantages and value targets using the GAE algorithm.
+        Adds the result to the `traces` dictionary.
+
+        ---
+        Args:
+            traces: A dict containing the following entries:
+                values: The rollout values of the given states.
+                    Shape of [batch_size, steps].
+                next-values: The rollout values of the next states.
+                    Shape of [batch_size, steps].
+                rewards: The rollout rewards of the given states.
+                    Shape of [batch_size, steps].
+                dones: The rollout dones of the given states.
+                    Shape of [batch_size, steps].
+        """
         advantages, value_targets = vec_generalized_advantage_estimate(
             self.gamma,
             self.gae_lambda,
@@ -36,11 +61,34 @@ class ReinforceLoss(nn.Module):
         traces["value-targets"] = value_targets.squeeze(-1)
 
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
-        """
+        """Computes the PPO loss for both actor and critic models.
+
         ---
-        Sources:
-            PPO implementation: https://github.com/openai/baselines/blob/master/baselines/ppo2/model.py
-            Approximating KL Divergence: http://joschu.net/blog/kl-approx.html
+        Args:
+            batch: A dict containing the following entries:
+                states: A batch of state observations.
+                    Shape of [batch_size, n_sides, board_height, board_width].
+                actions: The rollout actions taken in the given states.
+                    Shape of [batch_size, n_actions].
+                log-probs: The rollout log probabilities of the actions taken
+                    in the given states.
+                    Shape of [batch_size, n_actions].
+                advantages: The rollout advantages of the actions taken in the
+                    given states.
+                    Shape of [batch_size,].
+                value-targets: The rollout value targets of the given states.
+                    Shape of [batch_size,].
+            model: The model to evaluate.
+
+        ---
+        Returns:
+            metrics: A dict containing the following entries:
+                policy: The PPO actor loss.
+                value: The PPO critic loss.
+                entropy: The entropy loss.
+                total: The sum of the policy, value and entropy losses.
+                kl-divergence: The KL divergence between the old and new policies.
+                clipped-ratio: The clipped ratio between the old and new policies.
         """
         metrics = dict()
 

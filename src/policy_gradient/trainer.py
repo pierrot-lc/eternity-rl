@@ -15,16 +15,16 @@ import wandb
 
 from ..environment import EternityEnv
 from ..model import Policy
-from .loss import ReinforceLoss
+from .loss import PPOLoss
 from .rollout import rollout
 
 
-class Reinforce:
+class Trainer:
     def __init__(
         self,
         env: EternityEnv,
         model: Policy | DDP,
-        loss: ReinforceLoss,
+        loss: PPOLoss,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
         replay_buffer: ReplayBuffer,
@@ -49,7 +49,7 @@ class Reinforce:
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
-        """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
+        """Simulates a bunch of rollouts and adds them to the replay buffer."""
         scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
         scramble_ids = scramble_ids[: self.scramble_size]
         self.env.reset(scramble_ids=scramble_ids)
