@@ -9,18 +9,18 @@ model:
   n_channels: 16
   embedding_dim: 24
   n_heads: 2
-  backbone_cnn_layers: 8
-  backbone_transformer_layers: 2
+  backbone_cnn_layers: 5
+  backbone_transformer_layers: 1
   decoder_layers: 2
   dropout: 0.05
 
 optimizer:
-  optimizer: adamw
-  learning_rate: 1.0e-5
+  optimizer: lion
+  learning_rate: 1.0e-3
   weight_decay: 1.0e-5
 
 scheduler:
-  warmup_steps: 100
+  warmup_steps: 1
 
 loss:
   gamma: 0.99
@@ -28,16 +28,16 @@ loss:
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 5.0e-1
-  entropy_weight: 1.0e-2
+  entropy_weight: 1.0e-3
 
 trainer:
   clip_value: 1.0
   scramble_size: 0.10
 
 iterations:
-  rollouts: 40
+  rollouts: 60
   epochs: 20000
-  batches: 40
+  batches: 60
   batch_size: 16000
 
 checkpoint:

@@ -1,0 +1,62 @@
+# Tighter search on the normal environment.
+
+---
+program: main.py
+method: random
+
+metric:
+  name: matches/mean
+  goal: maximize
+
+parameters:
+  exp.optimizer.learning_rate:
+    value: 1.0e-3
+
+  exp.loss.value_weight:
+    min: 1.0e-3
+    max: 1.0e-0
+    distribution: log_uniform_values
+
+  exp.loss.entropy_weight:
+    min: 1.0e-4
+    max: 1.0e-2
+    distribution: log_uniform_values
+
+  exp.loss.ppo_clip_ac:
+    value: 0.30
+
+  exp.loss.ppo_clip_vf:
+    min: 0.10
+    max: 0.30
+    distribution: uniform
+
+  exp.loss.gamma:
+    min: 0.80
+    max: 0.9999
+    distribution: uniform
+
+  exp.loss.gae_lambda:
+    min: 0.50
+    max: 0.9999
+    distribution: uniform
+
+  exp.trainer.scramble_size:
+    min: 0.05
+    max: 0.25
+    distribution: uniform
+
+  exp.optimizer.optimizer:
+    values: [adamw, lion]
+    distribution: categorical
+
+  seed:
+    min: 1
+    max: 10000
+
+  exp.group:
+    value: Sweep
+
+command:
+  - python3
+  - ${program}
+  - ${args_no_hyphens}
