@@ -16,8 +16,8 @@ dependencies = [
     "torchinfo>=1.8.0",
     "tqdm>=4.65.0",
     "positional-encodings[pytorch]>=6.0.1",
-    "torch-optimizer>=0.3.0",
     "torchrl>=0.1.1",
+    "pytorch-optimizer>=2.11.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

@@ -10,7 +10,7 @@ import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch_optimizer import Lamb
+from pytorch_optimizer import Lamb, Lion
 from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
@@ -83,6 +83,7 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
         "sgd": optim.SGD,
         "rmsprop": optim.RMSprop,
         "lamb": Lamb,
+        "lion": Lion,
     }
 
     return optimizers[optimizer_name](

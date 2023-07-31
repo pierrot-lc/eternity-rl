@@ -1,5 +1,4 @@
-# Find good learning rate and gamma values.
-# Check if there is a better advantage function.
+# Search for good PPO training hyperparameters.
 
 ---
 program: main.py
@@ -11,9 +10,7 @@ metric:
 
 parameters:
   exp.optimizer.learning_rate:
-    min: 1.0e-4
-    max: 1.0e-1
-    distribution: log_uniform_values
+    value: 1.0e-3
 
   exp.loss.value_weight:
     min: 1.0e-4
@@ -24,6 +21,25 @@ parameters:
     min: 1.0e-4
     max: 1.0e-0
     distribution: log_uniform_values
+
+  exp.loss.ppo_clip_ac:
+    min: 0.10
+    max: 0.30
+    distribution: uniform
+
+  exp.loss.ppo_clip_vf:
+    min: 0.10
+    max: 0.30
+    distribution: uniform
+
+  exp.trainer.scramble_size:
+    min: 0.0
+    max: 0.5
+    distribution: uniform
+
+  exp.optimizer.optimizer:
+    values: [adamw, rmsprop, sgd, lamb, lion]
+    distribution: categorical
 
   seed:
     min: 1
