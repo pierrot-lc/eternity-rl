@@ -25,9 +25,9 @@ scheduler:
 loss:
   gamma: 0.99
   gae_lambda: 0.95
-  ppo_clip_ac: 0.2
-  ppo_clip_vf: 0.2
-  value_weight: 5.0e-3
+  ppo_clip_ac: 0.30
+  ppo_clip_vf: 0.30
+  value_weight: 5.0e-1
   entropy_weight: 1.0e-2
 
 trainer:
@@ -37,7 +37,7 @@ trainer:
 iterations:
   rollouts: 40
   epochs: 20000
-  batches: 10
-  batch_size: 64000
+  batches: 40
+  batch_size: 16000
 
 checkpoint:
