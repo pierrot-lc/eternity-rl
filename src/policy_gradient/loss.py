@@ -94,12 +94,13 @@ class PPOLoss(nn.Module):
         ---
         Returns:
             metrics: A dict containing the following entries:
-                policy: The PPO actor loss.
-                value: The PPO critic loss.
-                entropy: The entropy loss.
-                total: The sum of the policy, value and entropy losses.
-                kl-divergence: The KL divergence between the old and new policies.
-                clipped-ratio: The clipped ratio between the old and new policies.
+                loss/policy: The PPO actor loss.
+                loss/value: The PPO critic loss.
+                loss/entropy: The entropy loss.
+                loss/total: The sum of the policy, value and entropy losses.
+                metrics/policy-approx-kl: The KL divergence between the old and new policies.
+                metrics/policy-clip-frac: The clipped ratio between the old and new policies.
+                metrics/value-clip-frac: The clipped ratio between the old and new values.
         """
         metrics = dict()
 
@@ -131,7 +132,7 @@ class PPOLoss(nn.Module):
             ),
             dim=-1,
         )
-        metrics["policy"] = -gains.min(dim=-1).values.mean()
+        metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
 
         old_values = batch["values"]
         clipped_values = torch.clamp(
@@ -144,16 +145,23 @@ class PPOLoss(nn.Module):
             ),
             dim=-1,
         )
-        metrics["value"] = self.value_weight * value_losses.max(dim=-1).values.mean()
+        metrics["loss/value"] = (
+            self.value_weight * value_losses.max(dim=-1).values.mean()
+        )
 
-        metrics["entropy"] = -self.entropy_weight * entropies.mean()
-        metrics["total"] = sum(metrics.values())
+        metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
+        metrics["loss/total"] = sum(metrics.values())
 
         # Some metrics to track, but that does not contribute to the loss.
         with torch.no_grad():
-            metrics["approx-kl"] = (logprobs - old_logprobs).pow(2).mean() / 2
-            metrics["clip-frac"] = (
+            metrics["metrics/policy-approx-kl"] = (
+                (logprobs - old_logprobs).pow(2).mean()
+            ) / 2
+            metrics["metrics/policy-clip-frac"] = (
                 ((prob_ratios - 1.0).abs() > self.ppo_clip_ac).float().mean()
+            )
+            metrics["metrics/value-clip-frac"] = (
+                ((values - old_values).abs() > self.ppo_clip_vf).float().mean()
             )
 
         return metrics

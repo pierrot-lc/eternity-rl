@@ -2,8 +2,8 @@ from itertools import count
 from pathlib import Path
 from typing import Any
 
-import torch
 import einops
+import torch
 import torch.optim as optim
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -88,7 +88,7 @@ class Trainer:
 
         batch = batch.to(self.device)
         metrics = self.loss(batch, self.model)
-        metrics["total"].backward()
+        metrics["loss/total"].backward()
 
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
@@ -167,7 +167,7 @@ class Trainer:
         metrics = dict()
         self.model.eval()
 
-        matches = self.env.max_matches / self.env.best_matches_possible
+        matches = self.env.matches / self.env.best_matches_possible
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
@@ -180,13 +180,14 @@ class Trainer:
         # Compute losses.
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
-        losses = self.loss(batch, self.model)
-        for k, v in losses.items():
-            metrics[f"loss/{k}"] = v
+        metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
+        metrics["metrics/value-targets"] = wandb.Histogram(
+            batch["value-targets"].cpu().numpy()
+        )
 
         # Compute the gradient mean and maximum values.
-        losses["total"].backward()
+        metrics["loss/total"].backward()
         grads = []
         for p in self.model.parameters():
             if p.grad is not None:
