@@ -44,6 +44,8 @@ class PPOLoss(nn.Module):
         self.ppo_clip_ac = ppo_clip_ac
         self.ppo_clip_vf = ppo_clip_vf
 
+        self.value_loss = nn.HuberLoss(reduction="none")
+
     def advantages(self, traces: TensorDictBase):
         """Computes the advantages and value targets using the GAE algorithm.
         Adds the result to the `traces` dictionary.
@@ -140,8 +142,8 @@ class PPOLoss(nn.Module):
         )
         value_losses = torch.stack(
             (
-                (batch["value-targets"] - values).pow(2),
-                (batch["value-targets"] - clipped_values).pow(2),
+                self.value_loss(values, batch["value-targets"]),
+                self.value_loss(clipped_values, batch["value-targets"]),
             ),
             dim=-1,
         )
@@ -152,7 +154,7 @@ class PPOLoss(nn.Module):
         metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
         metrics["loss/total"] = sum(metrics.values())
 
-        # Some metrics to track, but that does not contribute to the loss.
+        # Some metrics to track, but it does not contribute to the loss.
         with torch.no_grad():
             metrics["metrics/policy-approx-kl"] = (
                 (logprobs - old_logprobs).pow(2).mean()
