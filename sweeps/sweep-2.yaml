@@ -11,6 +11,7 @@ metric:
 parameters:
   exp.iterations.epochs:
     value: 200
+
   exp.optimizer.learning_rate:
     value: 1.0e-4
 
@@ -21,7 +22,7 @@ parameters:
 
   exp.loss.entropy_weight:
     min: 1.0e-4
-    max: 1.0e-2
+    max: 1.0e-1
     distribution: log_uniform_values
 
   exp.loss.ppo_clip_ac:
@@ -30,7 +31,7 @@ parameters:
     distribution: uniform
 
   exp.loss.ppo_clip_vf:
-    min: 0.05
+    min: 0.10
     max: 1.00
     distribution: uniform
 
@@ -46,7 +47,7 @@ parameters:
 
   exp.trainer.scramble_size:
     min: 0.05
-    max: 0.25
+    max: 0.50
     distribution: uniform
 
   exp.optimizer.optimizer:
