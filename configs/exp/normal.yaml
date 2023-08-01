@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 32000
+  batch_size: 5000
 
 model:
   n_channels: 16
@@ -16,28 +16,29 @@ model:
 
 optimizer:
   optimizer: lion
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-4
   weight_decay: 1.0e-5
 
 scheduler:
-  warmup_steps: 1
+  warmup_steps: 0
+  cosine_tmax: 0
 
 loss:
   gamma: 0.99
   gae_lambda: 0.95
   ppo_clip_ac: 0.30
-  ppo_clip_vf: 0.30
-  value_weight: 5.0e-1
-  entropy_weight: 1.0e-3
+  ppo_clip_vf: 1.00
+  value_weight: 5.0e-3
+  entropy_weight: 1.0e-1
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.10
+  scramble_size: 0.20
 
 iterations:
   rollouts: 60
-  epochs: 100
+  epochs: -1
   batches: 60
-  batch_size: 16000
+  batch_size: 2500
 
 checkpoint:

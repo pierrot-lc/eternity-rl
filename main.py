@@ -9,8 +9,8 @@ import torch.nn as nn
 import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
-from torch.nn.parallel import DistributedDataParallel as DDP
 from pytorch_optimizer import Lamb, Lion
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
@@ -95,19 +95,35 @@ def init_scheduler(
     config: DictConfig, optimizer: optim.Optimizer
 ) -> optim.lr_scheduler.LRScheduler:
     """Initialize the scheduler."""
-    warmup_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer=optimizer,
-        start_factor=0.001,
-        end_factor=1.0,
-        total_iters=config.exp.scheduler.warmup_steps,
-    )
-    lr_scheduler = optim.lr_scheduler.LinearLR(
+    scheduler = config.exp.scheduler
+    schedulers = []
+
+    if scheduler.warmup_steps > 0:
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer=optimizer,
+            start_factor=0.001,
+            end_factor=1.0,
+            total_iters=config.exp.scheduler.warmup_steps,
+        )
+        schedulers.append(warmup_scheduler)
+
+    if scheduler.cosine_tmax > 0:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer,
+            T_max=scheduler.cosine_tmax,
+        )
+        schedulers.append(lr_scheduler)
+
+    # To make sure the schedulers isn't an empty list.
+    identity_scheduler = optim.lr_scheduler.LinearLR(
         optimizer=optimizer,
         start_factor=1.0,
         end_factor=1.0,
         total_iters=1,
     )
-    return optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
+    schedulers.append(identity_scheduler)
+
+    return optim.lr_scheduler.ChainedScheduler(schedulers)
 
 
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:

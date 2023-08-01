@@ -4,7 +4,7 @@ defaults:
   - exp: normal
 
 seed: 0
-device: auto
+device: cuda:2
 distributed: []
 mode: online
 
