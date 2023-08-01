@@ -10,7 +10,7 @@ metric:
 
 parameters:
   exp.iterations.epochs:
-    value: 200
+    value: 400
 
   exp.optimizer.learning_rate:
     value: 1.0e-4
