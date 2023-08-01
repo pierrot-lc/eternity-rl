@@ -135,6 +135,7 @@ class PPOLoss(nn.Module):
             dim=-1,
         )
         metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
+        metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
         old_values = batch["values"]
         clipped_values = torch.clamp(
@@ -147,12 +148,17 @@ class PPOLoss(nn.Module):
             ),
             dim=-1,
         )
-        metrics["loss/value"] = (
-            self.value_weight * value_losses.max(dim=-1).values.mean()
-        )
+        metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
+        metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
-        metrics["loss/entropy"] = -self.entropy_weight * entropies.mean()
-        metrics["loss/total"] = sum(metrics.values())
+        metrics["loss/entropy"] = -entropies.mean()
+        metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
+
+        metrics["loss/total"] = (
+            metrics["loss/weighted-policy"]
+            + metrics["loss/weighted-value"]
+            + metrics["loss/weighted-entropy"]
+        )
 
         # Some metrics to track, but it does not contribute to the loss.
         with torch.no_grad():
