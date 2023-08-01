@@ -15,7 +15,7 @@ model:
   dropout: 0.05
 
 optimizer:
-  optimizer: lion
+  optimizer: adamw
   learning_rate: 1.0e-4
   weight_decay: 1.0e-5
 
@@ -26,10 +26,10 @@ scheduler:
 loss:
   gamma: 0.99
   gae_lambda: 0.95
-  ppo_clip_ac: 0.30
-  ppo_clip_vf: 1.00
-  value_weight: 5.0e-3
-  entropy_weight: 1.0e-1
+  ppo_clip_ac: 1.00
+  ppo_clip_vf: 0.30
+  value_weight: 1.0e-5
+  entropy_weight: 1.0e-3
 
 trainer:
   clip_value: 1.0
@@ -37,7 +37,7 @@ trainer:
 
 iterations:
   rollouts: 60
-  epochs: 200
+  epochs: -1
   batches: 60
   batch_size: 2500
 

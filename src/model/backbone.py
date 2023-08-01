@@ -35,17 +35,19 @@ class Backbone(nn.Module):
             # Embed the classes of each size of the tiles.
             Rearrange("b t h w -> b h w t"),
             nn.Embedding(n_classes, n_channels),
-            nn.LayerNorm(n_channels),
             # Merge the classes of each tile into a single embedding.
             Rearrange("b h w t e -> b (t e) h w"),
             nn.Conv2d(4 * n_channels, n_channels, kernel_size=1, padding="same"),
             nn.GELU(),
+            nn.GroupNorm(1, n_channels),
         )
-        self.linear = nn.Linear(n_channels, embedding_dim)
+        self.linear = nn.Sequential(
+            nn.Linear(n_channels, embedding_dim),
+            nn.LayerNorm(embedding_dim),
+        )
         self.cnn_layers = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.GroupNorm(1, n_channels),
                     nn.Conv2d(
                         n_channels,
                         n_channels,
@@ -53,6 +55,7 @@ class Backbone(nn.Module):
                         padding="same",
                     ),
                     nn.GELU(),
+                    nn.GroupNorm(1, n_channels),
                 )
                 for _ in range(cnn_layers)
             ]
