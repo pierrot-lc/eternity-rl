@@ -44,7 +44,7 @@ class PPOLoss(nn.Module):
         self.ppo_clip_ac = ppo_clip_ac
         self.ppo_clip_vf = ppo_clip_vf
 
-        self.value_loss = nn.HuberLoss(reduction="none")
+        self.value_loss_fn = nn.HuberLoss(reduction="none")
 
     def advantages(self, traces: TensorDictBase):
         """Computes the advantages and value targets using the GAE algorithm.
@@ -143,8 +143,8 @@ class PPOLoss(nn.Module):
         )
         value_losses = torch.stack(
             (
-                self.value_loss(values, batch["value-targets"]),
-                self.value_loss(clipped_values, batch["value-targets"]),
+                self.value_loss_fn(values, batch["value-targets"]),
+                self.value_loss_fn(clipped_values, batch["value-targets"]),
             ),
             dim=-1,
         )

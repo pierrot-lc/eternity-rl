@@ -29,7 +29,7 @@ loss:
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 1.0e-3
-  entropy_weight: 1.0e-2
+  entropy_weight: 1.0e-4
 
 trainer:
   clip_value: 1.0
