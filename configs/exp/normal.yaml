@@ -7,8 +7,8 @@ env:
 
 model:
   n_channels: 16
-  embedding_dim: 24
-  n_heads: 2
+  embedding_dim: 12
+  n_heads: 1
   backbone_cnn_layers: 5
   backbone_transformer_layers: 1
   decoder_layers: 2
@@ -16,7 +16,7 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-3
   weight_decay: 1.0e-5
 
 scheduler:
@@ -26,9 +26,9 @@ scheduler:
 loss:
   gamma: 0.99
   gae_lambda: 0.95
-  ppo_clip_ac: 1.00
+  ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
-  value_weight: 1.0e-5
+  value_weight: 1.0e-3
   entropy_weight: 1.0e-3
 
 trainer:
