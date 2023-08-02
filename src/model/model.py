@@ -110,6 +110,9 @@ class Policy(nn.Module):
 
         tiles = self.backbone(tiles)
 
+        queries = repeat(self.value_query, "e -> b e", b=batch_size)
+        values = self.estimate_value(tiles, queries)
+
         actions, logprobs, entropies = [], [], []
 
         # Node selections.
@@ -147,14 +150,11 @@ class Policy(nn.Module):
             entropies.append(actions_entropy)
 
             side_embedding = self.side_embeddings[sampled_sides]
-            tiles = Policy.selective_add(tiles, side_embedding, sampled_sides)
+            tiles = Policy.selective_add(tiles, side_embedding, actions[side_number])
 
         actions = torch.stack(actions, dim=1)
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
-
-        queries = repeat(self.value_query, "e -> b e", b=batch_size)
-        values = self.estimate_value(tiles, queries)
 
         return actions, logprobs, entropies, values
 
