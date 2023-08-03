@@ -100,7 +100,7 @@ def test_matches_tiles():
         matches = matches // 2  # Sides have all been checked twice.
         return matches
 
-    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, 10, "cpu")
+    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, "cpu")
     assert torch.all(env.matches == 12)
     for _ in range(10):
         env.reset()
@@ -118,9 +118,10 @@ def test_matches_tiles():
     ],
 )
 def test_batch_scramble(instance_path: str):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "cpu")
     reference = env.instances[0].clone()
-    env.scramble_instances()
+    instance_ids = torch.randperm(env.batch_size)[: env.batch_size // 2]
+    env.scramble_instances(instance_ids)
 
     def compare_pieces(piece_1: torch.Tensor, piece_2: torch.Tensor) -> bool:
         """True if pieces are equal rollwise."""
@@ -147,6 +148,13 @@ def test_batch_scramble(instance_path: str):
     for instance in env.instances:
         assert compare_instances(instance, reference)
 
+    changed_instances = set(i.item() for i in instance_ids)
+    for instance_id in range(env.batch_size):
+        if instance_id in changed_instances:
+            continue
+
+        torch.all(env.instances[instance_id] == reference)
+
 
 def test_batch_roll():
     input_tensor = torch.randn((10, 5))
@@ -166,7 +174,7 @@ def test_batch_roll():
     ],
 )
 def test_batch_roll_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "cpu")
     instance_reference = env.instances[0].clone()
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     shifts = torch.randint(low=0, high=4, size=(env.batch_size,))
@@ -191,7 +199,7 @@ def test_batch_roll_action(instance_path):
     ],
 )
 def test_batch_swap_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "cpu")
     instance_reference = env.instances[0].clone()
     tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))

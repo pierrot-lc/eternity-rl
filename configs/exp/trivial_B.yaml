@@ -3,34 +3,42 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  max_steps: 24
+  batch_size: 5000
 
 model:
   n_channels: 9
   embedding_dim: 16
-  n_heads: 4
-  backbone_cnn_layers: 6
+  n_heads: 2
+  backbone_cnn_layers: 4
   backbone_transformer_layers: 1
-  decoder_layers: 2
+  decoder_layers: 1
   dropout: 0.05
 
 optimizer:
-  learning_rate: 1.0e-2
-  optimizer: adamw
-  weight_decay: 0.0e-3
+  learning_rate: 1.0e-3
+  optimizer: lion
+  weight_decay: 1.0e-4
 
 scheduler:
-  warmup_steps: 1
+  warmup_steps: 0
+  cosine_tmax: 0
 
-reinforce:
-  advantage: max
-  entropy_weight: 1.0e-5
-  total_rollouts: 300
-  clip_value: 0.5
+loss:
+  gamma: 0.99
+  gae_lambda: 0.95
+  ppo_clip_ac: 0.30
+  ppo_clip_vf: 0.30
+  value_weight: 1.0e-3
+  entropy_weight: 1.0e-4
 
-rollout_buffer:
-  buffer_size: 3600  # Number of played games in a single buffer.
-  batches_per_rollout: 5  # Number of batches sampled per rollout.
-  batch_size: 43200  # Number of samples in a single batch.
+trainer:
+  clip_value: 1.0
+  scramble_size: 0.10
+
+iterations:
+  rollouts: 40
+  epochs: 100
+  batches: 40
+  batch_size: 2500
 
 checkpoint:

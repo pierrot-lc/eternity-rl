@@ -1,23 +1,66 @@
-# Find good learning rate and gamma values.
-# Check if there is a better advantage function.
+# Search for good PPO training hyperparameters.
 
+---
 program: main.py
 method: random
+
 metric:
-  name: return/mean
+  name: matches/mean
   goal: maximize
+
 parameters:
-  reinforce.learning_rate:
+  exp.optimizer.learning_rate:
+    value: 1.0e-3
+
+  exp.loss.value_weight:
     min: 1.0e-4
-    max: 1.0e-1
-  reinforce.gamma:
-    min: 0.9
-    max: 1.0
-  reinforce.advantage:
-    values: [learned, estimated, no-advantage]
-  reinforce.value_weight:
-    min: 1.0e-2
-    max: 1.0
+    max: 1.0e-0
+    distribution: log_uniform_values
+    # Comments: It is hard to find a pattern with this HP.
+    # A good value loss looks like a steady drop for the first epochs
+    # and then a very slow increase.
+
+  exp.loss.entropy_weight:
+    min: 1.0e-4
+    max: 1.0e-0
+    distribution: log_uniform_values
+    # Comments: If this parameter is higher than 0.1, it will strongly degrade
+    # the training. Otherwise, between 1e-4 and 4e-2 looks OK.
+
+  exp.loss.ppo_clip_ac:
+    min: 0.10
+    max: 0.30
+    distribution: uniform
+    # Comments: The policy needs to learn quickly so that the value function
+    # won't overfit. The worst runs usually have a high clipping ratio at the
+    # beginning of the run. Good values are between 0.25 and 0.30.
+
+  exp.loss.ppo_clip_vf:
+    min: 0.10
+    max: 0.30
+    distribution: uniform
+    # Comments: There's no obvious trends.
+
+  exp.trainer.scramble_size:
+    min: 0.0
+    max: 0.5
+    distribution: uniform
+    # Comments: A non-zero low scramble size helps the training. It may be due
+    # to an increase of the overall episodes horizons. A value between 0.05 and
+    # 0.20 is fine.
+
+  exp.optimizer.optimizer:
+    values: [adamw, rmsprop, sgd, lamb, lion]
+    distribution: categorical
+    # Comments: Either Lion or AdamW, but Lion looks better.
+
+  seed:
+    min: 1
+    max: 10000
+
+  exp.group:
+    value: Sweep
+
 command:
   - python3
   - ${program}

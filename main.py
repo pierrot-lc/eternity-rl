@@ -9,12 +9,13 @@ import torch.nn as nn
 import torch.optim as optim
 from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
+from pytorch_optimizer import Lamb, Lion
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch_optimizer import Lamb
+from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 
 from src.environment import EternityEnv
 from src.model import Policy
-from src.reinforce import Reinforce
+from src.policy_gradient import PPOLoss, Trainer
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -33,31 +34,42 @@ def cleanup_distributed():
 
 def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
-    env = EternityEnv.from_file(
-        config.exp.env.path,
-        config.exp.rollout_buffer.buffer_size,
-        config.exp.env.max_steps,
+    env = config.exp.env
+    return EternityEnv.from_file(
+        env.path,
+        env.batch_size,
         config.device,
         config.seed,
     )
-    return env
 
 
 def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
-    model = Policy(
+    model = config.exp.model
+    return Policy(
         n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        n_channels=config.exp.model.n_channels,
-        embedding_dim=config.exp.model.embedding_dim,
-        n_heads=config.exp.model.n_heads,
-        backbone_cnn_layers=config.exp.model.backbone_cnn_layers,
-        backbone_transformer_layers=config.exp.model.backbone_transformer_layers,
-        decoder_layers=config.exp.model.decoder_layers,
-        dropout=config.exp.model.dropout,
+        n_channels=model.n_channels,
+        embedding_dim=model.embedding_dim,
+        n_heads=model.n_heads,
+        backbone_cnn_layers=model.backbone_cnn_layers,
+        backbone_transformer_layers=model.backbone_transformer_layers,
+        decoder_layers=model.decoder_layers,
+        dropout=model.dropout,
     )
-    return model
+
+
+def init_loss(config: DictConfig) -> PPOLoss:
+    loss = config.exp.loss
+    return PPOLoss(
+        loss.value_weight,
+        loss.entropy_weight,
+        loss.gamma,
+        loss.gae_lambda,
+        loss.ppo_clip_ac,
+        loss.ppo_clip_vf,
+    )
 
 
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
@@ -71,60 +83,87 @@ def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
         "sgd": optim.SGD,
         "rmsprop": optim.RMSprop,
         "lamb": Lamb,
+        "lion": Lion,
     }
 
-    optimizer = optimizers[optimizer_name](
+    return optimizers[optimizer_name](
         model.parameters(), lr=lr, weight_decay=weight_decay
     )
-
-    return optimizer
 
 
 def init_scheduler(
     config: DictConfig, optimizer: optim.Optimizer
 ) -> optim.lr_scheduler.LRScheduler:
     """Initialize the scheduler."""
-    warmup_scheduler = optim.lr_scheduler.LinearLR(
-        optimizer=optimizer,
-        start_factor=0.001,
-        end_factor=1.0,
-        total_iters=config.exp.scheduler.warmup_steps,
-    )
-    lr_scheduler = optim.lr_scheduler.LinearLR(
+    scheduler = config.exp.scheduler
+    schedulers = []
+
+    if scheduler.warmup_steps > 0:
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            optimizer=optimizer,
+            start_factor=0.001,
+            end_factor=1.0,
+            total_iters=config.exp.scheduler.warmup_steps,
+        )
+        schedulers.append(warmup_scheduler)
+
+    if scheduler.cosine_tmax > 0:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer,
+            T_max=scheduler.cosine_tmax,
+        )
+        schedulers.append(lr_scheduler)
+
+    # To make sure the schedulers isn't an empty list.
+    identity_scheduler = optim.lr_scheduler.LinearLR(
         optimizer=optimizer,
         start_factor=1.0,
         end_factor=1.0,
         total_iters=1,
     )
-    scheduler = optim.lr_scheduler.ChainedScheduler([warmup_scheduler, lr_scheduler])
-    return scheduler
+    schedulers.append(identity_scheduler)
+
+    return optim.lr_scheduler.ChainedScheduler(schedulers)
+
+
+def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
+    exp = config.exp
+    max_size = exp.env.batch_size * exp.iterations.rollouts
+    return TensorDictReplayBuffer(
+        storage=LazyTensorStorage(max_size=max_size, device=config.device),
+        batch_size=exp.iterations.batch_size,
+        pin_memory=True,
+    )
 
 
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
     model: Policy | DDP,
+    loss: PPOLoss,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LinearLR,
-) -> Reinforce:
+    replay_buffer: ReplayBuffer,
+) -> Trainer:
     """Initialize the trainer."""
-    trainer = Reinforce(
+    trainer = config.exp.trainer
+    iterations = config.exp.iterations
+    return Trainer(
         env,
         model,
+        loss,
         optimizer,
         scheduler,
-        config.device,
-        config.exp.reinforce.entropy_weight,
-        config.exp.reinforce.clip_value,
-        config.exp.rollout_buffer.batch_size,
-        config.exp.rollout_buffer.batches_per_rollout,
-        config.exp.reinforce.total_rollouts,
-        config.exp.reinforce.advantage,
+        replay_buffer,
+        trainer.clip_value,
+        trainer.scramble_size,
+        iterations.rollouts,
+        iterations.batches,
+        iterations.epochs,
     )
-    return trainer
 
 
-def reload_checkpoint(config: DictConfig, trainer: Reinforce):
+def reload_checkpoint(config: DictConfig, trainer: Trainer):
     """Reload a checkpoint."""
     if config.exp.checkpoint is None:
         return
@@ -153,9 +192,13 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     model = init_model(config, env)
     model = model.to(config.device)
     model = DDP(model, device_ids=[config.device], output_device=config.device)
+    loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    trainer = init_trainer(config, env, model, optimizer, scheduler)
+    replay_buffer = init_replay_buffer(config)
+    trainer = init_trainer(
+        config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
+    )
     reload_checkpoint(config, trainer)
 
     try:
@@ -176,9 +219,13 @@ def run_trainer_single_gpu(config: DictConfig):
     env = init_env(config)
     model = init_model(config, env)
     model = model.to(config.device)
+    loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    trainer = init_trainer(config, env, model, optimizer, scheduler)
+    replay_buffer = init_replay_buffer(config)
+    trainer = init_trainer(
+        config, env, model, loss, optimizer, scheduler, replay_buffer
+    )
     reload_checkpoint(config, trainer)
 
     trainer.launch_training(

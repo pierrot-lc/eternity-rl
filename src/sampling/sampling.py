@@ -37,7 +37,7 @@ def nucleus_sampling(distributions: torch.Tensor, top_p: float) -> torch.Tensor:
     """Sample actions from the given distributions using
     the nucleus sampling method.
 
-    From the paper : https://arxiv.org/abs/1904.09751.
+    From the paper: https://arxiv.org/abs/1904.09751.
     This implementation is my own.
 
     ---

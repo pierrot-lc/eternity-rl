@@ -2,7 +2,7 @@
 All actions are made on the batch.
 """
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import gymnasium as gym
 import gymnasium.spaces as spaces
@@ -70,7 +70,6 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instances: torch.Tensor,
-        max_steps: int,
         device: str,
         seed: int = 0,
     ):
@@ -82,7 +81,6 @@ class EternityEnv(gym.Env):
                 Long tensor of shape of [batch_size, 4, size, size].
             reward_type: The type of reward to use.
                 Can be either "delta" or "win".
-            max_steps: The maximum number of steps.
             device: The device to use.
             seed: The seed for the random number generator.
         """
@@ -100,19 +98,17 @@ class EternityEnv(gym.Env):
         self.board_size = self.instances.shape[-1]
         self.n_pieces = self.board_size * self.board_size
         self.n_classes = int(self.instances.max().cpu().item() + 1)
-        self.max_steps = max_steps
-        self.best_matches = 2 * self.board_size * (self.board_size - 1)
+        self.best_matches_possible = 2 * self.board_size * (self.board_size - 1)
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
-        self.step_id = 0
-        self.truncated = False
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
         self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
             (4, self.board_size, self.board_size), dtype=torch.long
         )
-        self.best_score = 0
+        self.best_matches_found = 0
+        self.total_won = 0
 
         # Spaces.
         # Those spaces do not take into account that
@@ -129,18 +125,28 @@ class EternityEnv(gym.Env):
             low=0, high=1, shape=self.instances.shape[1:], dtype=np.uint8
         )
 
-    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
+    def reset(
+        self,
+        instances: Optional[torch.Tensor] = None,
+        scramble_ids: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         Scrambles the instances and reset their infos.
         """
-        self.scramble_instances()
-        self.step_id = 0
-        self.truncated = False
-        self.terminated = torch.zeros(
-            self.batch_size, dtype=torch.bool, device=self.device
-        )
-        self.max_matches = self.matches
+        if instances is not None:
+            self.instances = instances.clone()
+        else:
+            self.scramble_instances(scramble_ids)
+
+        if scramble_ids is None:
+            self.terminated = self.matches == self.best_matches_possible
+            self.max_matches = self.matches
+        else:
+            self.terminated[scramble_ids] = (
+                self.matches[scramble_ids] == self.best_matches_possible
+            )
+            self.max_matches[scramble_ids] = self.matches[scramble_ids]
 
         # Do not reset the best env found, only updates it.
         # This best env is used for perpetual search purpose.
@@ -177,11 +183,11 @@ class EternityEnv(gym.Env):
         # Remove actions for already terminated environments.
         actions[self.terminated] = 0
 
-        self.step_id += 1
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
 
-        previous_terminated = self.terminated.clone()
+        previously_terminated = self.terminated.clone()
+        previous_matches = self.matches.clone()
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
@@ -191,13 +197,14 @@ class EternityEnv(gym.Env):
 
         # Update envs infos.
         self.update_best_env()
-        rewards = matches / self.best_matches
+        # rewards = matches / self.best_matches_possible - 1
+        rewards = (matches - previous_matches) / self.best_matches_possible
         max_matches = torch.stack((self.max_matches, matches), dim=1)
         self.max_matches = torch.max(max_matches, dim=1)[0]
-        self.terminated |= matches == self.best_matches
-        self.truncated = self.step_id >= self.max_steps
-        infos["just_won"] = self.terminated & ~previous_terminated
-        return self.render(), rewards, self.terminated, self.truncated, infos
+        self.terminated |= matches == self.best_matches_possible
+        infos["just-won"] = self.terminated & ~previously_terminated
+        self.total_won += infos["just-won"].sum().cpu().item()
+        return self.render(), rewards, self.terminated, False, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
@@ -288,33 +295,47 @@ class EternityEnv(gym.Env):
 
         return n_matches.long()
 
-    def scramble_instances(self):
-        """Scrambles the instances to start from a new valid configuration."""
+    def scramble_instances(self, instance_ids: Optional[torch.Tensor] = None):
+        """Scrambles the instances to start from a new valid configuration.
+
+        ---
+        Args:
+            instance_ids: The ids of the instances to scramble.
+                Shape of [batch_size,].
+        """
+        if instance_ids is None:
+            instance_ids = torch.arange(
+                start=0, end=self.batch_size, device=self.device
+            )
+
         # Scrambles the tiles.
         self.instances = rearrange(
             self.instances, "b c h w -> b (h w) c", w=self.board_size
-        )  # Shape of [batch_size, n_pieces, 4].
-        permutations = torch.stack(
-            [
-                torch.randperm(self.n_pieces, generator=self.rng, device=self.device)
-                for _ in range(self.batch_size)
-            ]
-        )  # Shape of [batch_size, n_pieces].
-        # Permute tiles according to `permutations`.
-        for instance_id in range(self.batch_size):
-            self.instances[instance_id] = self.instances[instance_id][
-                permutations[instance_id]
-            ]
+        )
+        permutations = torch.arange(start=0, end=self.n_pieces, device=self.device)
+        permutations = repeat(permutations, "p -> b p", b=self.batch_size)
+        for instance_id in instance_ids:
+            permutations[instance_id] = torch.randperm(
+                self.n_pieces, generator=self.rng, device=self.device
+            )
+        permutations = repeat(permutations, "b p -> b p c", c=self.instances.shape[2])
+        self.instances = torch.gather(self.instances, dim=1, index=permutations)
 
         # Randomly rolls the tiles.
-        shifts = torch.randint(
+        self.instances = rearrange(self.instances, "b p c -> (b p) c")
+        shifts = torch.zeros(
+            self.batch_size * self.n_pieces, dtype=torch.long, device=self.device
+        )
+        mask = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
+        mask[instance_ids] = True
+        mask = torch.repeat_interleave(mask, self.n_pieces)
+        shifts[mask] = torch.randint(
             low=0,
             high=4,
-            size=(self.batch_size * self.n_pieces,),
+            size=(instance_ids.shape[0] * self.n_pieces,),
             generator=self.rng,
             device=self.device,
         )
-        self.instances = rearrange(self.instances, "b p c -> (b p) c")
         self.instances = self.batched_roll(self.instances, shifts)
         self.instances = rearrange(
             self.instances,
@@ -346,15 +367,15 @@ class EternityEnv(gym.Env):
         and updates the best env if the new one is better.
         """
         best_env_id = self.matches.argmax()
-        best_score = self.matches[best_env_id].cpu().item()
+        best_matches_found = self.matches[best_env_id].cpu().item()
 
-        if self.best_score < best_score:
-            self.best_score = best_score
+        if self.best_matches_found < best_matches_found:
+            self.best_matches_found = best_matches_found
             self.best_board = self.instances[best_env_id].cpu()
 
     def save_best_env(self, filepath: Path | str):
         """Render the best environment and save it on disk."""
-        draw_instance(self.best_board.numpy(), self.best_score, filepath)
+        draw_instance(self.best_board.numpy(), self.best_matches_found, filepath)
 
     @staticmethod
     def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:
@@ -394,13 +415,12 @@ class EternityEnv(gym.Env):
         cls,
         instance_path: Path,
         batch_size: int,
-        max_steps: int,
         device: str,
         seed: int = 0,
     ):
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, max_steps, device, seed)
+        return cls(instances, device, seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:

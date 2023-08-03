@@ -4,11 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
+from einops.layers.torch import Reduce
 from torch.distributions import Categorical
 from torchinfo import summary
 
+from ..sampling import epsilon_sampling
 from .backbone import Backbone
-from .heads import SelectSide, SelectTile
+from .heads import EstimateValue, SelectSide, SelectTile
 
 N_SIDES, N_ACTIONS = 4, 4
 
@@ -46,8 +48,12 @@ class Policy(nn.Module):
         self.select_side = SelectSide(
             embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
         )
+        self.estimate_value = EstimateValue(
+            embedding_dim, n_heads, decoder_layers, dropout
+        )
         self.node_query = nn.Parameter(torch.randn(embedding_dim))
         self.side_query = nn.Parameter(torch.randn(embedding_dim))
+        self.value_query = nn.Parameter(torch.randn(embedding_dim))
         self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
         self.side_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
@@ -77,13 +83,13 @@ class Policy(nn.Module):
         tiles: torch.Tensor,
         sampling_mode: str = "sample",
         sampled_actions: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
         Args:
             tiles: The game state.
-                Long tensor of shape [batch_size, 4, board_height, board_width].
+                Long tensor of shape [batch_size, n_sides, board_height, board_width].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.
@@ -97,10 +103,15 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
             entropies: The entropies of the predicted actions.
                 Shape of [batch_size, n_actions].
+            values: The predicted values.
+                Shape of [batch_size,].
         """
         batch_size = tiles.shape[0]
 
         tiles = self.backbone(tiles)
+
+        queries = repeat(self.value_query, "e -> b e", b=batch_size)
+        values = self.estimate_value(tiles, queries)
 
         actions, logprobs, entropies = [], [], []
 
@@ -139,13 +150,13 @@ class Policy(nn.Module):
             entropies.append(actions_entropy)
 
             side_embedding = self.side_embeddings[sampled_sides]
-            tiles = Policy.selective_add(tiles, side_embedding, sampled_sides)
+            tiles = Policy.selective_add(tiles, side_embedding, actions[side_number])
 
         actions = torch.stack(actions, dim=1)
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies
+        return actions, logprobs, entropies, values
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
@@ -155,6 +166,8 @@ class Policy(nn.Module):
                 action_ids = categorical.sample()
             case "argmax":
                 action_ids = torch.argmax(probs, dim=-1)
+            case "epsilon":
+                action_ids = epsilon_sampling(probs, epsilon=0.05)
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
         return action_ids

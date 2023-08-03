@@ -2,106 +2,93 @@ from itertools import count
 from pathlib import Path
 from typing import Any
 
+import einops
 import torch
 import torch.optim as optim
+from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
+from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
 import wandb
 
 from ..environment import EternityEnv
 from ..model import Policy
-from .rollout_buffer import RolloutBuffer
+from .loss import PPOLoss
+from .rollout import rollout
 
 
-class Reinforce:
+class Trainer:
     def __init__(
         self,
         env: EternityEnv,
         model: Policy | DDP,
+        loss: PPOLoss,
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.LinearLR,
-        device: str,
-        entropy_weight: float,
+        replay_buffer: ReplayBuffer,
         clip_value: float,
-        batch_size: int,
-        batches_per_rollout: int,
-        total_rollouts: int,
-        advantage: str,
+        scramble_size: float,
+        rollouts: int,
+        batches: int,
+        epochs: int,
     ):
         self.env = env
         self.model = model
+        self.loss = loss
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.device = device
-        self.entropy_weight = entropy_weight
+        self.replay_buffer = replay_buffer
         self.clip_value = clip_value
-        self.batch_size = batch_size
-        self.batches_per_rollout = batches_per_rollout
-        self.total_rollouts = total_rollouts
-        self.advantage = advantage
+        self.rollouts = rollouts
+        self.batches = batches
+        self.epochs = epochs
 
-        # Instantiate the rollout buffer once.
-        self.rollout_buffer = RolloutBuffer(
-            buffer_size=self.env.batch_size,
-            max_steps=self.env.max_steps,
-            board_width=self.env.board_size,
-            board_height=self.env.board_size,
-            n_classes=self.env.n_classes,
-            device=self.device,
-        )
+        self.scramble_size = int(scramble_size * self.env.batch_size)
+        self.device = env.device
 
     @torch.inference_mode()
-    def do_rollouts(self, sampling_mode: str):
-        """Simulates a bunch of rollouts and returns a prepared rollout buffer."""
-        self.rollout_buffer.reset()
-        states, _ = self.env.reset()
+    def do_rollouts(self, sampling_mode: str, disable_logs: bool):
+        """Simulates a bunch of rollouts and adds them to the replay buffer."""
+        if self.scramble_size > 0:
+            scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
+            scramble_ids = scramble_ids[: self.scramble_size]
+            self.env.reset(scramble_ids=scramble_ids)
 
-        while not self.env.truncated and not torch.all(self.env.terminated):
-            actions, logprobs, entropies = self.model(states, sampling_mode)
-            new_states, rewards, _, _, infos = self.env.step(actions)
-            self.rollout_buffer.store(
-                states,
-                actions,
-                rewards,
-                ~self.env.terminated | infos["just_won"],
-            )
+        if self.env.terminated.sum() > 0:
+            to_reset = torch.arange(self.env.batch_size, device=self.device)
+            to_reset = to_reset[self.env.terminated]
+            self.env.reset(scramble_ids=to_reset)
 
-            states = new_states
-
-        self.rollout_buffer.finalize(self.advantage)
-
-    def compute_loss(self, sample: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        losses = dict()
-        for key, value in sample.items():
-            sample[key] = value.to(self.device)
-
-        _, sample["logprobs"], sample["entropies"] = self.model(
-            sample["states"], "sample", sample["actions"]
+        traces = rollout(
+            self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
+        self.loss.advantages(traces)
 
-        sample["entropies"][:, 0] *= 1.0
-        sample["entropies"][:, 1] *= 0.5
-        sample["entropies"][:, 2] *= 0.1
-        sample["entropies"][:, 3] *= 0.1
-        sample["entropies"] = sample["entropies"].sum(dim=1)
+        # Flatten the batch x steps dimensions and remove the masked steps.
+        samples = dict()
+        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
+        for name, tensor in traces.items():
+            if name == "masks":
+                continue
 
-        losses["policy"] = -(
-            sample["logprobs"] * sample["advantages"].unsqueeze(1).detach()
-        ).mean()
-        losses["entropy"] = -self.entropy_weight * sample["entropies"].mean()
-        losses["total"] = sum(losses.values())
-        return losses
+            tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
+            samples[name] = tensor[masks]
 
-    def do_batch_update(self):
+        samples = TensorDict(
+            samples, batch_size=samples["states"].shape[0], device=self.device
+        )
+        self.replay_buffer.extend(samples)
+
+    def do_batch_update(self, batch: TensorDict):
         """Performs a batch update on the model."""
         self.model.train()
         self.optimizer.zero_grad()
 
-        sample = self.rollout_buffer.sample(self.batch_size)
-        losses = self.compute_loss(sample)
-        losses["total"].backward()
+        batch = batch.to(self.device)
+        metrics = self.loss(batch, self.model)
+        metrics["loss/total"].backward()
 
         clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
         self.optimizer.step()
@@ -111,7 +98,7 @@ class Reinforce:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 10,
+        eval_every: int = 1,
     ):
         """Launches the training loop.
 
@@ -128,6 +115,8 @@ class Reinforce:
                     Useful for multi-GPU training.
             eval_every: The number of rollouts between each evaluation.
         """
+        disable_logs = mode == "disabled"
+
         with wandb.init(
             project="eternity-rl",
             entity="pierrotlc",
@@ -136,8 +125,9 @@ class Reinforce:
             mode=mode,
         ) as run:
             self.model.to(self.device)
+            self.env.reset()
 
-            if mode != "disabled":
+            if not disable_logs:
                 if isinstance(self.model, DDP):
                     self.model.module.summary(self.device)
                 else:
@@ -148,61 +138,56 @@ class Reinforce:
             run.watch(self.model)
 
             # Infinite loop if n_batches is -1.
-            iter = count(0) if self.total_rollouts == -1 else range(self.total_rollouts)
+            iter = count(0) if self.epochs == -1 else range(self.epochs)
 
-            for i in tqdm(
-                iter,
-                desc="Rollout",
-                disable=mode == "disabled",
-            ):
+            for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="sample")
+                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
+
                 for _ in tqdm(
-                    range(self.batches_per_rollout), desc="Batch", leave=False
+                    range(self.batches),
+                    desc="Batch",
+                    leave=False,
+                    disable=disable_logs,
                 ):
-                    self.do_batch_update()
+                    batch = self.replay_buffer.sample()
+                    self.do_batch_update(batch)
+
                 self.scheduler.step()
 
-                if i % eval_every == 0 and mode != "disabled":
+                if i % eval_every == 0 and not disable_logs:
                     metrics = self.evaluate()
-                    run.log(metrics)
-
                     self.save_model("model.pt")
                     self.env.save_best_env("board.png")
-                    run.log(
-                        {
-                            "best board": wandb.Image("board.png"),
-                        }
-                    )
+                    metrics["best-board"] = wandb.Image("board.png")
+                    run.log(metrics)
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
         self.model.eval()
 
-        self.do_rollouts(sampling_mode="sample")
-
-        matches = self.env.max_matches / self.env.best_matches
+        matches = self.env.matches / self.env.best_matches_possible
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
-
-        episodes_len = self.rollout_buffer.mask_buffer.float().sum(dim=1)
-        metrics["ep-len/mean"] = episodes_len.mean()
-        metrics["ep-len/max"] = episodes_len.max()
-        metrics["ep-len/min"] = episodes_len.min()
-        metrics["ep-len/hist"] = wandb.Histogram(episodes_len.cpu().numpy())
+        metrics["matches/best"] = (
+            self.env.best_matches_found / self.env.best_matches_possible
+        )
+        metrics["matches/total-won"] = self.env.total_won
 
         # Compute losses.
-        sample = self.rollout_buffer.sample(self.batch_size)
-        losses = self.compute_loss(sample)
-        for k, v in losses.items():
-            metrics[f"loss/{k}"] = v
+        batch = self.replay_buffer.sample()
+        batch = batch.to(self.device)
+        metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
+        metrics["metrics/value-targets"] = wandb.Histogram(
+            batch["value-targets"].cpu().numpy()
+        )
 
         # Compute the gradient mean and maximum values.
-        losses["total"].backward()
+        metrics["loss/total"].backward()
         grads = []
         for p in self.model.parameters():
             if p.grad is not None:

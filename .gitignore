@@ -12,3 +12,4 @@ pdm.lock
 .pdm-python
 dist/
 build/
+.python-version
