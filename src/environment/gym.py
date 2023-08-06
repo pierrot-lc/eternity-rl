@@ -104,6 +104,7 @@ class EternityEnv(gym.Env):
         # Dynamic infos.
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
         self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
+        self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
             (4, self.board_size, self.board_size), dtype=torch.long
         )
@@ -127,26 +128,24 @@ class EternityEnv(gym.Env):
 
     def reset(
         self,
-        instances: Optional[torch.Tensor] = None,
         scramble_ids: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         Scrambles the instances and reset their infos.
         """
-        if instances is not None:
-            self.instances = instances.clone()
-        else:
-            self.scramble_instances(scramble_ids)
+        self.scramble_instances(scramble_ids)
 
         if scramble_ids is None:
             self.terminated = self.matches == self.best_matches_possible
             self.max_matches = self.matches
+            self.n_steps.fill_(0)
         else:
             self.terminated[scramble_ids] = (
                 self.matches[scramble_ids] == self.best_matches_possible
             )
             self.max_matches[scramble_ids] = self.matches[scramble_ids]
+            self.n_steps[scramble_ids] = 0
 
         # Do not reset the best env found, only updates it.
         # This best env is used for perpetual search purpose.
@@ -182,6 +181,7 @@ class EternityEnv(gym.Env):
 
         # Remove actions for already terminated environments.
         actions[self.terminated] = 0
+        self.n_steps[~self.terminated] += 1
 
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]

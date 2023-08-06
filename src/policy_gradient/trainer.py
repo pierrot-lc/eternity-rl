@@ -185,6 +185,7 @@ class Trainer:
         metrics["metrics/value-targets"] = wandb.Histogram(
             batch["value-targets"].cpu().numpy()
         )
+        metrics["metrics/n_steps"] = wandb.Histogram(self.env.n_steps.cpu().numpy())
 
         # Compute the gradient mean and maximum values.
         metrics["loss/total"].backward()
