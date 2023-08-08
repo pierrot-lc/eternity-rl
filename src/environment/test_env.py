@@ -16,6 +16,7 @@ from .gym import (
     next_instance,
     read_instance_file,
 )
+from .generate import random_perfect_instances
 
 
 def test_read_instance():
@@ -245,3 +246,25 @@ def test_batch_swap_action(instance_path):
 )
 def test_instance_upgrade(instance_1: str, instance_2: str):
     assert next_instance(ENV_DIR / instance_1) == ENV_DIR / instance_2
+
+
+@pytest.mark.parametrize(
+    "size, n_classes, n_instances",
+    [
+        (2, 2, 100),
+        (3, 3, 100),
+        (4, 4, 100),
+    ],
+)
+def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int):
+    generator = torch.Generator()
+    instances = random_perfect_instances(size, n_classes, n_instances, generator)
+    env = EternityEnv(instances, "cpu")
+    assert torch.all(
+        env.matches == env.best_matches_possible
+    ), "The instance is not solved!"
+
+    assert torch.all(instances[:, SOUTH, 0, :] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, NORTH, -1, :] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, WEST, :, 0] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, EAST, :, -1] == 0), "No walls around the instances!"
