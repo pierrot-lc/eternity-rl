@@ -10,51 +10,40 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 
+from .constants import (
+    EAST,
+    ENV_DIR,
+    ENV_ORDERED,
+    N_SIDES,
+    NORTH,
+    ORIGIN_EAST,
+    ORIGIN_NORTH,
+    ORIGIN_SOUTH,
+    ORIGIN_WEST,
+    SOUTH,
+    WEST,
+)
 from .draw import draw_instance
-
-ENV_DIR = Path("./instances")
-ENV_ORDERED = [
-    "eternity_trivial_A.txt",
-    "eternity_trivial_B.txt",
-    "eternity_A.txt",
-    "eternity_B.txt",
-    "eternity_C.txt",
-    "eternity_D.txt",
-    "eternity_E.txt",
-    "eternity_complet.txt",
-]
-
-# Ids of the sides of the tiles.
-# The y-axis has its origin at the bottom.
-# The x-axis has its origin at the left.
-NORTH = 0
-EAST = 1
-SOUTH = 2
-WEST = 3
-
-ORIGIN_NORTH = 0
-ORIGIN_SOUTH = 1
-ORIGIN_WEST = 2
-ORIGIN_EAST = 3
+from .generate import random_perfect_instances
 
 # Defines convs that will compute vertical and horizontal matches.
 # Shapes are [out_channels, in_channels, kernel_height, kernel_width].
 # See `BatchedEternityEnv.matches` for more information.
 # Don't forget that the y-axis is reversed!!
-HORIZONTAL_CONV = torch.zeros((1, 4, 2, 1))
+HORIZONTAL_CONV = torch.zeros((1, N_SIDES, 2, 1))
 HORIZONTAL_CONV[0, SOUTH, 1, 0] = 1
 HORIZONTAL_CONV[0, NORTH, 0, 0] = -1
 
-VERTICAL_CONV = torch.zeros((1, 4, 1, 2))
+VERTICAL_CONV = torch.zeros((1, N_SIDES, 1, 2))
 VERTICAL_CONV[0, EAST, 0, 0] = 1
 VERTICAL_CONV[0, WEST, 0, 1] = -1
 
 # Convs to detect the 0-0 matches.
-HORIZONTAL_ZERO_CONV = torch.zeros((1, 4, 2, 1))
+HORIZONTAL_ZERO_CONV = torch.zeros((1, N_SIDES, 2, 1))
 HORIZONTAL_ZERO_CONV[0, SOUTH, 1, 0] = 1
 HORIZONTAL_ZERO_CONV[0, NORTH, 0, 0] = 1
 
-VERTICAL_ZERO_CONV = torch.zeros((1, 4, 1, 2))
+VERTICAL_ZERO_CONV = torch.zeros((1, N_SIDES, 1, 2))
 VERTICAL_ZERO_CONV[0, EAST, 0, 0] = 1
 VERTICAL_ZERO_CONV[0, WEST, 0, 1] = 1
 
@@ -78,14 +67,14 @@ class EternityEnv(gym.Env):
         ---
         Args:
             instances: The instances of this environment.
-                Long tensor of shape of [batch_size, 4, size, size].
+                Long tensor of shape of [batch_size, N_SIDES, size, size].
             reward_type: The type of reward to use.
                 Can be either "delta" or "win".
             device: The device to use.
             seed: The seed for the random number generator.
         """
         assert len(instances.shape) == 4, "Tensor must have 4 dimensions."
-        assert instances.shape[1] == 4, "The pieces must have 4 sides."
+        assert instances.shape[1] == N_SIDES, "The pieces must have 4 sides."
         assert instances.shape[2] == instances.shape[3], "Instances are not squares."
         assert torch.all(instances >= 0), "Classes must be positives."
 
@@ -106,7 +95,7 @@ class EternityEnv(gym.Env):
         self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
-            (4, self.board_size, self.board_size), dtype=torch.long
+            (N_SIDES, self.board_size, self.board_size), dtype=torch.long
         )
         self.best_matches_found = 0
         self.total_won = 0
@@ -118,8 +107,8 @@ class EternityEnv(gym.Env):
             [
                 self.n_pieces,  # Tile id to swap.
                 self.n_pieces,  # Tile id to swap.
-                4,  # How much rolls for the first tile.
-                4,  # How much rolls for the first tile.
+                N_SIDES,  # How much rolls for the first tile.
+                N_SIDES,  # How much rolls for the first tile.
             ]
         )
         self.observation_space = spaces.Box(
@@ -134,6 +123,15 @@ class EternityEnv(gym.Env):
 
         Scrambles the instances and reset their infos.
         """
+        if scramble_ids is None:
+            self.instances = random_perfect_instances(
+                self.board_size, self.n_classes, self.batch_size, self.rng
+            )
+        else:
+            self.instances[scramble_ids] = random_perfect_instances(
+                self.board_size, self.n_classes, len(scramble_ids), self.rng
+            )
+
         self.scramble_instances(scramble_ids)
 
         if scramble_ids is None:
@@ -168,7 +166,7 @@ class EternityEnv(gym.Env):
         ---
         Returns:
             observations: The observation of the environments.
-                Shape of [batch_size, 4, size, size].
+                Shape of [batch_size, N_SIDES, size, size].
             rewards: The reward of the environments.
                 Shape of [batch_size,].
             terminated: Whether the environments are terminated (won).
@@ -331,7 +329,7 @@ class EternityEnv(gym.Env):
         mask = torch.repeat_interleave(mask, self.n_pieces)
         shifts[mask] = torch.randint(
             low=0,
-            high=4,
+            high=N_SIDES,
             size=(instance_ids.shape[0] * self.n_pieces,),
             generator=self.rng,
             device=self.device,
@@ -354,7 +352,7 @@ class EternityEnv(gym.Env):
 
         ---
         Returns:
-            The observation of shape [batch_size, 4, size, size].
+            The observation of shape [batch_size, N_SIDES, size, size].
         """
         match mode:
             case "computer":
@@ -429,13 +427,13 @@ def read_instance_file(instance_path: Path | str) -> torch.Tensor:
     ---
     Returns:
         data: Matrix containing each tile.
-            Shape of [4, y-axis, x-axis].
+            Shape of [N_SIDES, y-axis, x-axis].
             Origin is in the bottom left corner.
     """
     with open(instance_path, "r") as instance_file:
         instance_file = iter(instance_file)
         n = int(next(instance_file))
-        data = torch.zeros((4, n * n), dtype=torch.long)
+        data = torch.zeros((N_SIDES, n * n), dtype=torch.long)
 
         # Read all tiles.
         for element_id, element in enumerate(instance_file):

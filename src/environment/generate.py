@@ -1,8 +1,7 @@
 """Generate random instances of the puzzle."""
 import torch
 
-
-from .gym import EAST, NORTH, SOUTH, WEST
+from .constants import EAST, N_SIDES, NORTH, SOUTH, WEST
 
 
 def random_perfect_instances(
@@ -12,11 +11,12 @@ def random_perfect_instances(
     generator: torch.Generator,
 ) -> torch.Tensor:
     """Generate a random solved instance.
+    The instance's device is the same as the device of the given generator.
 
     ---
     Args:
         size: The width and height of the instance.
-        n_classes: The number of different classes.
+        n_classes: The number of different classes (wall class included).
         n_instances: How many instances to be generated.
 
     ---
@@ -24,12 +24,19 @@ def random_perfect_instances(
         The generated solved instances.
             Shape of [n_instances, N_SIDES, size, size].
     """
-    instances = torch.zeros((n_instances, 4, size, size), dtype=torch.long)
+    device = generator.device
+    instances = torch.zeros(
+        (n_instances, N_SIDES, size, size), dtype=torch.long, device=device
+    )
 
     for y in range(size):
         for x in range(size):
             tiles = torch.randint(
-                1, n_classes, size=(n_instances, 4), generator=generator
+                low=1,
+                high=n_classes,
+                size=(n_instances, N_SIDES),
+                generator=generator,
+                device=device,
             )
 
             # Fill the south side to be equal to the north value of the under tile.
