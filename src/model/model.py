@@ -12,8 +12,6 @@ from ..sampling import epsilon_sampling
 from .backbone import Backbone
 from .heads import EstimateValue, SelectSide, SelectTile
 
-N_ACTIONS = 4
-
 
 class Policy(nn.Module):
     def __init__(
@@ -45,9 +43,7 @@ class Policy(nn.Module):
         )
 
         self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
-        self.select_side = SelectSide(
-            embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
-        )
+        self.select_side = SelectSide(embedding_dim, n_heads, decoder_layers, dropout)
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout
         )

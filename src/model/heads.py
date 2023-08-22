@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from ..environment import N_SIDES
+
 
 class SelectTile(nn.Module):
     def __init__(self, embedding_dim: int, n_heads: int, n_layers: int, dropout: float):
@@ -56,28 +58,21 @@ class SelectTile(nn.Module):
 
 
 class SelectSide(nn.Module):
-    def __init__(
-        self,
-        embedding_dim: int,
-        n_heads: int,
-        n_layers: int,
-        dropout: float,
-        n_sides: int,
-    ):
+    def __init__(self, embedding_dim: int, n_heads: int, n_layers: int, dropout: float):
         super().__init__()
 
         self.decoder = nn.TransformerDecoder(
             nn.TransformerDecoderLayer(
                 embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=2 * embedding_dim,
+                dim_feedforward=4 * embedding_dim,
                 dropout=dropout,
                 batch_first=False,
             ),
             num_layers=n_layers,
         )
         self.predict_side = nn.Sequential(
-            nn.Linear(embedding_dim, n_sides),
+            nn.Linear(embedding_dim, N_SIDES),
             nn.Softmax(dim=-1),
         )
 
@@ -95,7 +90,7 @@ class SelectSide(nn.Module):
         ---
         Returns:
             A probability distribution over the sides.
-                Tensor of shape [batch_size, n_sides].
+                Tensor of shape [batch_size, N_SIDES].
         """
         query = query.unsqueeze(0)
         query = self.decoder(query, tiles)
