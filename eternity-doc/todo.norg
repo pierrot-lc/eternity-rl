@@ -24,6 +24,13 @@ updated: 2023-08-09
   - Do not randomly reset the environments before each rollout.
   - Make sure at least X% of the original puzzle is present.
   -- Measure the overall performances and the performances on that original puzzle.
+  - Curriculum learning.
+  -- Capacité de faire plusieurs tailles de puzzle en même temps.
+  -- Préciser la taille de chaque puzzle avec un token de condition.
+  - Ajouter du 2D encoding.
+  - Visualize some rollouts.
+  -- Check if the model is locked in some local states.
+  -- Check if the model is converging to the same local states across different rollouts.
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
