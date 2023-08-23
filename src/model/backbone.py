@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from positional_encodings.torch_encodings import PositionalEncoding2D
 
 from ..environment import N_SIDES
 
@@ -47,6 +48,8 @@ class Backbone(nn.Module):
             nn.Linear(n_channels, embedding_dim),
             nn.LayerNorm(embedding_dim),
         )
+        self.positional_enc = PositionalEncoding2D(embedding_dim)
+
         self.cnn_layers = nn.ModuleList(
             [
                 nn.Sequential(
@@ -95,8 +98,10 @@ class Backbone(nn.Module):
         for layer in self.cnn_layers:
             tiles = layer(tiles) + tiles
 
-        tokens = rearrange(tiles, "b e h w -> (h w) b e")
+        tokens = rearrange(tiles, "b e h w -> b h w e")
         tokens = self.linear(tokens)
+        tokens = self.positional_enc(tokens) + tokens
+        tokens = rearrange(tokens, "b h w e -> (h w) b e")
         tokens = self.transformer_layers(tokens)
 
         return tokens

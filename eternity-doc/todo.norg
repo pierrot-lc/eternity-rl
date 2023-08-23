@@ -27,6 +27,7 @@ updated: 2023-08-09
   - Curriculum learning.
   -- Capacité de faire plusieurs tailles de puzzle en même temps.
   -- Préciser la taille de chaque puzzle avec un token de condition.
+  -- 2x2 original < 2x2 randoms < 3x3 original < 3x3 random < ...
   - Ajouter du 2D encoding.
   - Visualize some rollouts.
   -- Check if the model is locked in some local states.
