@@ -124,26 +124,22 @@ class EternityEnv(gym.Env):
         Scrambles the instances and reset their infos.
         """
         if scramble_ids is None:
-            self.instances = random_perfect_instances(
-                self.board_size, self.n_classes, self.batch_size, self.rng
+            scramble_ids = torch.arange(
+                start=0, end=self.batch_size, device=self.device
             )
-        else:
-            self.instances[scramble_ids] = random_perfect_instances(
-                self.board_size, self.n_classes, len(scramble_ids), self.rng
-            )
+
+        # # Generate new random instances.
+        # self.instances[scramble_ids] = random_perfect_instances(
+        #     self.board_size, self.n_classes, len(scramble_ids), self.rng
+        # )
 
         self.scramble_instances(scramble_ids)
 
-        if scramble_ids is None:
-            self.terminated = self.matches == self.best_matches_possible
-            self.max_matches = self.matches
-            self.n_steps.fill_(0)
-        else:
-            self.terminated[scramble_ids] = (
-                self.matches[scramble_ids] == self.best_matches_possible
-            )
-            self.max_matches[scramble_ids] = self.matches[scramble_ids]
-            self.n_steps[scramble_ids] = 0
+        self.terminated[scramble_ids] = (
+            self.matches[scramble_ids] == self.best_matches_possible
+        )
+        self.max_matches[scramble_ids] = self.matches[scramble_ids]
+        self.n_steps[scramble_ids] = 0
 
         # Do not reset the best env found, only updates it.
         # This best env is used for perpetual search purpose.
