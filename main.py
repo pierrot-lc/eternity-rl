@@ -197,7 +197,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     scheduler = init_scheduler(config, optimizer)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, td_treesearch, replay_buffer
+        config, env, model, loss, optimizer, scheduler, replay_buffer
     )
     reload_checkpoint(config, trainer)
 

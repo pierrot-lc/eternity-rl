@@ -80,7 +80,7 @@ class PPOLoss(nn.Module):
         Args:
             batch: A dict containing the following entries:
                 states: A batch of state observations.
-                    Shape of [batch_size, n_sides, board_height, board_width].
+                    Shape of [batch_size, N_SIDES, board_height, board_width].
                 actions: The rollout actions taken in the given states.
                     Shape of [batch_size, n_actions].
                 log-probs: The rollout log probabilities of the actions taken

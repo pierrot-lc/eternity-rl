@@ -5,17 +5,9 @@ import einops
 import pytest
 import torch
 
-from .gym import (
-    EAST,
-    ENV_DIR,
-    ENV_ORDERED,
-    NORTH,
-    SOUTH,
-    WEST,
-    EternityEnv,
-    next_instance,
-    read_instance_file,
-)
+from .constants import EAST, ENV_DIR, ENV_ORDERED, N_SIDES, NORTH, SOUTH, WEST
+from .generate import random_perfect_instances
+from .gym import EternityEnv, next_instance, read_instance_file
 
 
 def test_read_instance():
@@ -125,7 +117,7 @@ def test_batch_scramble(instance_path: str):
 
     def compare_pieces(piece_1: torch.Tensor, piece_2: torch.Tensor) -> bool:
         """True if pieces are equal rollwise."""
-        for shifts in range(4):
+        for shifts in range(N_SIDES):
             rolled_piece = torch.roll(piece_2, shifts)
             if torch.all(piece_1 == rolled_piece):
                 return True
@@ -177,7 +169,7 @@ def test_batch_roll_action(instance_path):
     env = EternityEnv.from_file(ENV_DIR / instance_path, 10, "cpu")
     instance_reference = env.instances[0].clone()
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
-    shifts = torch.randint(low=0, high=4, size=(env.batch_size,))
+    shifts = torch.randint(low=0, high=N_SIDES, size=(env.batch_size,))
     env.roll_tiles(tile_ids, shifts)
 
     for instance_rolled, tile_id, shift in zip(env.instances, tile_ids, shifts):
@@ -245,3 +237,25 @@ def test_batch_swap_action(instance_path):
 )
 def test_instance_upgrade(instance_1: str, instance_2: str):
     assert next_instance(ENV_DIR / instance_1) == ENV_DIR / instance_2
+
+
+@pytest.mark.parametrize(
+    "size, n_classes, n_instances",
+    [
+        (2, 2, 100),
+        (3, 3, 100),
+        (4, 4, 100),
+    ],
+)
+def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int):
+    generator = torch.Generator()
+    instances = random_perfect_instances(size, n_classes, n_instances, generator)
+    env = EternityEnv(instances, "cpu")
+    assert torch.all(
+        env.matches == env.best_matches_possible
+    ), "The instance is not solved!"
+
+    assert torch.all(instances[:, SOUTH, 0, :] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, NORTH, -1, :] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, WEST, :, 0] == 0), "No walls around the instances!"
+    assert torch.all(instances[:, EAST, :, -1] == 0), "No walls around the instances!"

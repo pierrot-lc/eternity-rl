@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from positional_encodings.torch_encodings import PositionalEncoding2D
+
+from ..environment import N_SIDES
 
 
 class Backbone(nn.Module):
@@ -37,7 +40,7 @@ class Backbone(nn.Module):
             nn.Embedding(n_classes, n_channels),
             # Merge the classes of each tile into a single embedding.
             Rearrange("b h w t e -> b (t e) h w"),
-            nn.Conv2d(4 * n_channels, n_channels, kernel_size=1, padding="same"),
+            nn.Conv2d(N_SIDES * n_channels, n_channels, kernel_size=1, padding="same"),
             nn.GELU(),
             nn.GroupNorm(1, n_channels),
         )
@@ -45,6 +48,8 @@ class Backbone(nn.Module):
             nn.Linear(n_channels, embedding_dim),
             nn.LayerNorm(embedding_dim),
         )
+        self.positional_enc = PositionalEncoding2D(embedding_dim)
+
         self.cnn_layers = nn.ModuleList(
             [
                 nn.Sequential(
@@ -80,7 +85,7 @@ class Backbone(nn.Module):
         ---
         Args:
             tiles: The game state.
-                Tensor of shape [batch_size, 4, board_height, board_width].
+                Tensor of shape [batch_size, N_SIDES, board_height, board_width].
 
         ---
         Returns:
@@ -93,8 +98,10 @@ class Backbone(nn.Module):
         for layer in self.cnn_layers:
             tiles = layer(tiles) + tiles
 
-        tokens = rearrange(tiles, "b e h w -> (h w) b e")
+        tokens = rearrange(tiles, "b e h w -> b h w e")
         tokens = self.linear(tokens)
+        tokens = self.positional_enc(tokens) + tokens
+        tokens = rearrange(tokens, "b h w e -> (h w) b e")
         tokens = self.transformer_layers(tokens)
 
         return tokens

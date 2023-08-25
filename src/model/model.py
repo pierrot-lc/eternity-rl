@@ -4,15 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
-from einops.layers.torch import Reduce
 from torch.distributions import Categorical
 from torchinfo import summary
 
+from ..environment import N_SIDES
 from ..sampling import epsilon_sampling
 from .backbone import Backbone
 from .heads import EstimateValue, SelectSide, SelectTile
-
-N_SIDES, N_ACTIONS = 4, 4
 
 
 class Policy(nn.Module):
@@ -45,9 +43,7 @@ class Policy(nn.Module):
         )
 
         self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
-        self.select_side = SelectSide(
-            embedding_dim, n_heads, decoder_layers, dropout, N_SIDES
-        )
+        self.select_side = SelectSide(embedding_dim, n_heads, decoder_layers, dropout)
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout
         )
@@ -89,7 +85,7 @@ class Policy(nn.Module):
         ---
         Args:
             tiles: The game state.
-                Long tensor of shape [batch_size, n_sides, board_height, board_width].
+                Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.
