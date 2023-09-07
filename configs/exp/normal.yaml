@@ -6,17 +6,15 @@ env:
   batch_size: 5000
 
 model:
-  n_channels: 16
-  embedding_dim: 12
-  n_heads: 1
-  backbone_cnn_layers: 5
-  backbone_transformer_layers: 1
+  embedding_dim: 64
+  n_heads: 4
+  backbone_transformer_layers: 6
   decoder_layers: 2
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-3
+  learning_rate: 1.0e-4
   weight_decay: 1.0e-3
 
 scheduler:

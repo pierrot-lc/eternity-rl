@@ -47,13 +47,10 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
     model = config.exp.model
     return Policy(
-        n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        n_channels=model.n_channels,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
-        backbone_cnn_layers=model.backbone_cnn_layers,
         backbone_transformer_layers=model.backbone_transformer_layers,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
