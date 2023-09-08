@@ -104,10 +104,11 @@ def init_scheduler(
         )
         schedulers.append(warmup_scheduler)
 
-    if scheduler.cosine_tmax > 0:
-        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+    if scheduler.cosine_t0 > 0:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer=optimizer,
-            T_max=scheduler.cosine_tmax,
+            T_0=scheduler.cosine_t0,
+            T_mult=scheduler.cosine_tmult,
         )
         schedulers.append(lr_scheduler)
 

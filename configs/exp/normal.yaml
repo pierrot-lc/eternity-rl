@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 5000
+  batch_size: 10000
 
 model:
   embedding_dim: 64
@@ -19,7 +19,8 @@ optimizer:
 
 scheduler:
   warmup_steps: 0
-  cosine_tmax: 0
+  cosine_t0: 0
+  cosine_tmult: 0
 
 loss:
   gamma: 0.99
@@ -31,12 +32,12 @@ loss:
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.20
+  scramble_size: 0.50
 
 iterations:
   rollouts: 60
-  epochs: -1
+  epochs: 1000
   batches: 60
-  batch_size: 2500
+  batch_size: 5000
 
 checkpoint:
