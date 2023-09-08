@@ -39,12 +39,10 @@ class Backbone(nn.Module):
             Rearrange("b t h w e -> b h w (t e)"),
             nn.Linear(N_SIDES * embedding_dim, embedding_dim),
             # Add the 2D positional encodings.
-            Rearrange("b h w e -> b e h w"),
             Summer(PositionalEncoding2D(embedding_dim)),
             # To transformer layout.
-            Rearrange("b e h w -> (h w) b e"),
+            Rearrange("b h w e -> (h w) b e"),
         )
-        self.class_enc = ClassEncoding(embedding_dim)
 
         self.transformer_layers = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
