@@ -170,6 +170,7 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
     trainer.model.load_state_dict(state_dict["model"])
     # HACK: The training seems to not be stable when loading the optimizer state.
     # trainer.optimizer.load_state_dict(state_dict["optimizer"])
+    trainer.scheduler.load_state_dict(state_dict["scheduler"])
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
 

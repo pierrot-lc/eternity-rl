@@ -207,10 +207,12 @@ class Trainer:
     def save_model(self, filepath: Path | str):
         model_state = self.model.state_dict()
         optimizer_state = self.optimizer.state_dict()
+        scheduler_state = self.scheduler.state_dict()
         torch.save(
             {
                 "model": model_state,
                 "optimizer": optimizer_state,
+                "scheduler": scheduler_state,
             },
             filepath,
         )
