@@ -28,7 +28,7 @@ loss:
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 1.0e-3
-  entropy_weight: 5.0e-4
+  entropy_weight: 1.0e-3
 
 trainer:
   clip_value: 1.0
@@ -36,7 +36,7 @@ trainer:
 
 iterations:
   rollouts: 60
-  epochs: 1000
+  epochs: -1
   batches: 60
   batch_size: 5000
 
