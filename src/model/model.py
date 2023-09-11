@@ -16,13 +16,10 @@ from .heads import EstimateValue, SelectSide, SelectTile
 class Policy(nn.Module):
     def __init__(
         self,
-        n_classes: int,
         board_width: int,
         board_height: int,
-        n_channels: int,
         embedding_dim: int,
         n_heads: int,
-        backbone_cnn_layers: int,
         backbone_transformer_layers: int,
         decoder_layers: int,
         dropout: float,
@@ -33,11 +30,8 @@ class Policy(nn.Module):
         self.embedding_dim = embedding_dim
 
         self.backbone = Backbone(
-            n_classes,
-            n_channels,
             embedding_dim,
             n_heads,
-            backbone_cnn_layers,
             backbone_transformer_layers,
             dropout,
         )

@@ -42,13 +42,13 @@ class ClassEncoding(nn.Module):
         ---
         Args:
             board: The timesteps of the game states.
-                Shape of [batch_size, board_height, board_width, N_SIDES].
+                Shape of [...].
         ---
         Returns:
             The board with encoded classes.
-                Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
+                Shape of [..., embedding_dim].
         """
-        assert board.max() <= self.embedding_dim, "Not enough orthogonal vectors!"
+        assert board.max() < self.embedding_dim, "Not enough orthogonal vectors!"
 
         # Encode the classes of each tile.
         return self.class_enc(board)

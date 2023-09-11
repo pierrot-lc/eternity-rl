@@ -47,13 +47,10 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
     """Initialize the model."""
     model = config.exp.model
     return Policy(
-        n_classes=env.n_classes,
         board_width=env.board_size,
         board_height=env.board_size,
-        n_channels=model.n_channels,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
-        backbone_cnn_layers=model.backbone_cnn_layers,
         backbone_transformer_layers=model.backbone_transformer_layers,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
@@ -107,10 +104,11 @@ def init_scheduler(
         )
         schedulers.append(warmup_scheduler)
 
-    if scheduler.cosine_tmax > 0:
-        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+    if scheduler.cosine_t0 > 0:
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
             optimizer=optimizer,
-            T_max=scheduler.cosine_tmax,
+            T_0=scheduler.cosine_t0,
+            T_mult=scheduler.cosine_tmult,
         )
         schedulers.append(lr_scheduler)
 
@@ -173,6 +171,7 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
     trainer.model.load_state_dict(state_dict["model"])
     # HACK: The training seems to not be stable when loading the optimizer state.
     # trainer.optimizer.load_state_dict(state_dict["optimizer"])
+    trainer.scheduler.load_state_dict(state_dict["scheduler"])
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
 

@@ -6,22 +6,21 @@ env:
   batch_size: 5000
 
 model:
-  n_channels: 6
-  embedding_dim: 12
-  n_heads: 1
-  backbone_cnn_layers: 4
-  backbone_transformer_layers: 1
+  embedding_dim: 24
+  n_heads: 2
+  backbone_transformer_layers: 4
   decoder_layers: 1
   dropout: 0.05
 
 optimizer:
-  optimizer: lion
+  optimizer: adamw
   learning_rate: 1.0e-3
   weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 0
-  cosine_tmax: 0
+  cosine_t0: 0
+  cosine_tmult: 0
 
 loss:
   gamma: 0.99
@@ -33,7 +32,7 @@ loss:
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.25
+  scramble_size: 0.50
 
 iterations:
   rollouts: 10
