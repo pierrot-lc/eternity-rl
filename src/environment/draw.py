@@ -1,7 +1,8 @@
 from itertools import product
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
+import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import patches, path
@@ -103,7 +104,7 @@ def draw_triangles(ax: plt.Axes, x: int, y: int, tile: np.ndarray):
 def draw_instance(
     instance: np.ndarray,
     score: float,
-    filename: Optional[Union[Path, str]] = None,
+    filename: Optional[Path | str] = None,
 ) -> np.ndarray:
     _, height, width = instance.shape
 
@@ -137,3 +138,16 @@ def draw_instance(
     plt.close(fig)
 
     return image
+
+
+def draw_gif(
+    instances: np.ndarray,
+    scores: np.ndarray,
+    filename: Path | str,
+):
+    images = [
+        draw_instance(instance, score, filename=None)
+        for instance, score in zip(instances, scores)
+    ]
+
+    imageio.mimsave(filename, images, duration=500)

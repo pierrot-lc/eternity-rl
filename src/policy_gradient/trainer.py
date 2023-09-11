@@ -98,7 +98,7 @@ class Trainer:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 1,
+        save_every: int = 100,
     ):
         """Launches the training loop.
 
@@ -155,12 +155,12 @@ class Trainer:
 
                 self.scheduler.step()
 
-                if i % eval_every == 0 and not disable_logs:
-                    metrics = self.evaluate()
+                metrics = self.evaluate()
+                run.log(metrics)
+
+                if i % save_every == 0 and not disable_logs:
                     self.save_model("model.pt")
-                    self.env.save_best_env("board.png")
-                    metrics["best-board"] = wandb.Image("board.png")
-                    run.log(metrics)
+                    self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
@@ -201,6 +201,9 @@ class Trainer:
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):
                 metrics[name] = value.cpu().item()
+
+        self.env.save_best_env("board.png")
+        metrics["best-board"] = wandb.Image("board.png")
 
         return metrics
 

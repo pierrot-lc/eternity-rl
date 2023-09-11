@@ -23,7 +23,7 @@ from .constants import (
     SOUTH,
     WEST,
 )
-from .draw import draw_instance
+from .draw import draw_gif, draw_instance
 from .generate import random_perfect_instances
 
 # Defines convs that will compute vertical and horizontal matches.
@@ -61,6 +61,7 @@ class EternityEnv(gym.Env):
         instances: torch.Tensor,
         device: str,
         seed: int = 0,
+        sample_size: int = 40,
     ):
         """Initialize the environment.
 
@@ -99,6 +100,13 @@ class EternityEnv(gym.Env):
         )
         self.best_matches_found = 0
         self.total_won = 0
+        self.current_sample_step = 0
+        self.sample_size = sample_size
+        self.game_sample = torch.zeros(
+            (sample_size, N_SIDES, self.board_size, self.board_size),
+            dtype=torch.long,
+            device="cpu",
+        )
 
         # Spaces.
         # Those spaces do not take into account that
@@ -189,15 +197,17 @@ class EternityEnv(gym.Env):
 
         matches = self.matches
 
-        # Update envs infos.
         self.update_best_env()
-        # rewards = matches / self.best_matches_possible - 1
+        self.game_sample[self.current_sample_step] = self.instances[0].cpu()
+        self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
+
         rewards = (matches - previous_matches) / self.best_matches_possible
         max_matches = torch.stack((self.max_matches, matches), dim=1)
         self.max_matches = torch.max(max_matches, dim=1)[0]
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just-won"].sum().cpu().item()
+
         return self.render(), rewards, self.terminated, False, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
@@ -345,6 +355,7 @@ class EternityEnv(gym.Env):
         ---
         Args:
             mode: The rendering type.
+                Only "computer" is accepted.
 
         ---
         Returns:
@@ -370,6 +381,38 @@ class EternityEnv(gym.Env):
     def save_best_env(self, filepath: Path | str):
         """Render the best environment and save it on disk."""
         draw_instance(self.best_board.numpy(), self.best_matches_found, filepath)
+
+    def save_sample(self, filepath: Path | str):
+        """Render the current game sample and save it as a GIF on disk."""
+        scores = EternityEnv.count_matches(self.game_sample)
+        draw_gif(self.game_sample.numpy(), scores.numpy(), filepath)
+
+    @staticmethod
+    def count_matches(instances: torch.Tensor) -> torch.Tensor:
+        """Return the number of matches of the given instances.
+
+        ---
+        Args:
+            instances: The instances of this environment.
+                Long tensor of shape of [batch_size, N_SIDES, size, size].
+
+        ---
+        Returns:
+            The matches.
+                Long tensor of shape [batch_size,].
+        """
+        n_matches = torch.zeros(instances.shape[0], device=instances.device)
+
+        for conv in [HORIZONTAL_CONV, VERTICAL_CONV]:
+            res = torch.conv2d(instances.float(), conv.to(instances.device))
+            n_matches += (res == 0).float().flatten(start_dim=1).sum(dim=1)
+
+        # Remove the 0-0 matches from the count.
+        for conv in [HORIZONTAL_ZERO_CONV, VERTICAL_ZERO_CONV]:
+            res = torch.conv2d(instances.float(), conv.to(instances.device))
+            n_matches -= (res == 0).float().flatten(start_dim=1).sum(dim=1)
+
+        return n_matches.long()
 
     @staticmethod
     def batched_roll(input_tensor: torch.Tensor, shifts: torch.Tensor) -> torch.Tensor:
