@@ -3,25 +3,12 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-09-05
+updated: 2023-09-12T16:43:51+0100
 @end
 
 * TODO
-  - ( ) Add a rotation invariant regularizer loss (if not using a GNN or G-CNN).
-  - (_) Cut the rollout based on the last minimum score (remove the first useless moves).
-  -- (_) Useless with the new reward base solely on the current state of the puzzle.
-  - (x) Use a better rollout buffer, sample more and rollout less.
-  - (x) Use a value network to quickly estimate the value of a state => shallow MCTS!
-  - Do the full rollout inside the treesearch. Use the entire rollout to compute returns.
-  -- (x) Better TD estimate.
-  -- (x) Can do Generalized Advantage Estimation.
-  -- (x) Add to the rollout buffer only at the end, when we have computed the return.
-     How to dynamically compute the TD error if the value network is changing?
-  -- (_) Option to add all the duplicated instance actions to the rollout or only the
-     best ones.
+  - Add a rotation invariant regularizer loss (if not using a GNN or G-CNN).
   - Do not share parameters between actor and critic models.
-  - Use a delta reward only.
-  - Do not randomly reset the environments before each rollout.
   - Make sure at least X% of the original puzzle is present.
   -- Measure the overall performances and the performances on that original puzzle.
   - Curriculum learning.
@@ -30,7 +17,6 @@ updated: 2023-09-05
   -- 2x2 original < 2x2 randoms < 3x3 original < 3x3 random < ...
   -- Tester une baseline où chaque difficulté est choisie uniformement pour entraîner
      le modèle.
-  - Ajouter du 2D encoding.
   - Visualize some rollouts.
   -- Check if the model is locked in some local states.
   -- Check if the model is converging to the same local states across different rollouts.
@@ -42,6 +28,7 @@ updated: 2023-09-05
   - Is curriculum learning helpful?
   - Should I let the model train longer?
   - Does random instances help?
+  - How to escape from the final plateau?
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.
@@ -78,3 +65,5 @@ updated: 2023-09-05
   -- The second agent is also trained from time to time on the real target puzzle.
   -- The games should gradually increase in difficulty by doing so.
   -- See {https://arxiv.org/abs/1703.05407}.
+  - Use ROPE positional encoding.
+  - How to use random generated instances?
