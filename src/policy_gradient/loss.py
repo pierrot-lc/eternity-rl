@@ -30,7 +30,6 @@ class PPOLoss(nn.Module):
         self,
         value_weight: float,
         entropy_weight: float,
-        entropy_actions_weights: list[float],
         gamma: float,
         gae_lambda: float,
         ppo_clip_ac: float,
@@ -40,7 +39,6 @@ class PPOLoss(nn.Module):
 
         self.value_weight = value_weight
         self.entropy_weight = entropy_weight
-        self.entropy_actions_weights = entropy_actions_weights
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.ppo_clip_ac = ppo_clip_ac
@@ -116,8 +114,10 @@ class PPOLoss(nn.Module):
         logprobs = logprobs.sum(dim=1)
         old_logprobs = batch["log-probs"].sum(dim=1)
 
-        for action_id in range(entropies.shape[1]):
-            entropies[:, action_id] *= self.entropy_actions_weights[action_id]
+        entropies[:, 0] *= 1.0
+        entropies[:, 1] *= 0.1
+        entropies[:, 2] *= 0.01
+        entropies[:, 3] *= 0.01
         entropies = entropies.sum(dim=1)
 
         advantages = batch["advantages"]

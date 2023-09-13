@@ -62,7 +62,6 @@ def init_loss(config: DictConfig) -> PPOLoss:
     return PPOLoss(
         loss.value_weight,
         loss.entropy_weight,
-        loss.entropy_actions_weights,
         loss.gamma,
         loss.gae_lambda,
         loss.ppo_clip_ac,

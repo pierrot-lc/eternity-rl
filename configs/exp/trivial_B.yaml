@@ -1,5 +1,5 @@
 ---
-group: Entropy weights search
+group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
@@ -29,7 +29,6 @@ loss:
   ppo_clip_vf: 0.30
   value_weight: 1.0e-3
   entropy_weight: 1.0e-2
-  entropy_actions_weights: [1.0, 0.1, 0.01, 0.01]
 
 trainer:
   clip_value: 1.0
