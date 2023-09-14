@@ -51,7 +51,7 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
         board_height=env.board_size,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
-        backbone_transformer_layers=model.backbone_transformer_layers,
+        backbone_layers=model.backbone_layers,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
     )

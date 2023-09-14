@@ -8,7 +8,7 @@ env:
 model:
   embedding_dim: 64
   n_heads: 2
-  backbone_transformer_layers: 6
+  backbone_layers: 6
   decoder_layers: 2
   dropout: 0.05
 

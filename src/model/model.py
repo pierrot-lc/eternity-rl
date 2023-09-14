@@ -20,7 +20,7 @@ class Policy(nn.Module):
         board_height: int,
         embedding_dim: int,
         n_heads: int,
-        backbone_transformer_layers: int,
+        backbone_layers: int,
         decoder_layers: int,
         dropout: float,
     ):
@@ -32,7 +32,7 @@ class Policy(nn.Module):
         self.backbone = Backbone(
             embedding_dim,
             n_heads,
-            backbone_transformer_layers,
+            backbone_layers,
             dropout,
         )
 

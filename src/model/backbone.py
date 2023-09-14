@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
@@ -13,21 +12,18 @@ class Backbone(nn.Module):
     wanted size.
 
     The board is encoded as follows:
-        - Embed the classes of each size of the tiles.
+        - Embed the classes of each side of the tiles.
         - Merge the classes of each tile into a single embedding.
-        - CNN layers to encode local features.
+        - Add 2D positional encoding.
         - Flatten into 1D sequence of tokens.
-        - Transformer layers to encode global features.
-
-    The CNN layers are there to provide the tiles information about their localisation.
-    The transformer layers are there to provide global overview of the states.
+        - Transformer encoder to compute features.
     """
 
     def __init__(
         self,
         embedding_dim: int,
         n_heads: int,
-        transformer_layers: int,
+        n_layers: int,
         dropout: float,
     ):
         super().__init__()
@@ -52,7 +48,7 @@ class Backbone(nn.Module):
                 dropout=dropout,
                 batch_first=False,
             ),
-            num_layers=transformer_layers,
+            num_layers=n_layers,
         )
 
     def forward(
