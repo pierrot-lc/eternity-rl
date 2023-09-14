@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import epsilon_sampling
+from ..sampling import epsilon_sampling, epsilon_greedy_sampling
 from .backbone import Backbone
 from .heads import EstimateValue, SelectSide, SelectTile
 
@@ -152,12 +152,17 @@ class Policy(nn.Module):
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
         match mode:
             case "sample":
-                categorical = Categorical(probs=probs)
-                action_ids = categorical.sample()
-            case "argmax":
+                action_ids = Categorical(probs=probs).sample()
+            case "greedy":
                 action_ids = torch.argmax(probs, dim=-1)
             case "epsilon":
                 action_ids = epsilon_sampling(probs, epsilon=0.05)
+            case "epsilon-greedy":
+                action_ids = epsilon_greedy_sampling(probs, epsilon=0.05)
+            case "tempered":
+                logits = Categorical(probs=probs).logits
+                logits = logits / 2.0
+                action_ids = Categorical(logits=logits).sample()
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
         return action_ids
