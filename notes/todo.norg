@@ -1,0 +1,51 @@
+@document.meta
+title: todo
+authors: pierrotlc
+categories: notes
+created: 2023-03-08
+updated: 2023-09-16T00:26:18+0100
+@end
+
+* TODO
+  - Do not randomly reset the environments before each rollout.
+  - Why is the training unstable?
+  -- {https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}
+  -- ( ) Try a pure on-policy learning.
+  -- ( ) Separate actor and critic.
+  - Curriculum learning.
+  -- trivial < 2x2 randoms < trivial_B < 3x3 randoms < ...
+  -- Randomly sample problem difficulties.
+  -- Easily implement with one environment for each difficulties.
+
+* Questions
+  - Is the model better with conv layers, transfo layers, or little bit of both?
+  -- Should I use positional encoding or are the conv layers enough?
+  -- Ended up using transformer layers only, to have a simpler architecture and to
+     make sure the model can easily attend to long interactions.
+  - Does the perf scale with model size really?
+  - Is curriculum learning helpful?
+  - Should I let the model train longer?
+  - Does random instances help?
+  - Is it important to randomly reset the instances?
+
+* Ideas
+  - Do MCTS once the model is trained and see if it is better than the model alone.
+  - Use MC sampling to sample the actions based on the result of the multiple simulations.
+  - Once a model is trained, it is possible to do a soft MCTS:
+  ~~ Start from a random state.
+  ~~ Duplicate the state into many (many) batch games.
+  ~~ Do a rollout with random sampling for each games in the batch.
+  ~~ Aggregate the final results and apply the actions that led to the best final (maximum) state.
+  ~~ Go back to point B
+  -- This should enhance the overall search for a solution. It may be possible to apply this search
+     with many different games in parallel, and to make the search over and over.
+  - Could it be possible to coordinate the search among the batch? A kind of multi-agent
+    search. Avoid states that are being searched by others.
+  -- ex: VAE giving a sense of how close two game states are. By the end of a rollout
+     I can reward agents that have looked away from other agents, and that have not
+     stayed in the same states during its rollout.
+  - Better weight the entropy action loss.
+  -- The first action can have great entropy, the last two should not!
+  - Use a rotation and symmetry invariant model.
+  - Use 2D RoPE.
+  - Do not share parameters between actor and critic models.
