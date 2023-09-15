@@ -98,7 +98,7 @@ class Trainer:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        eval_every: int = 1,
+        save_every: int = 50,
     ):
         """Launches the training loop.
 
@@ -142,7 +142,7 @@ class Trainer:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
+                self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
 
                 for _ in tqdm(
                     range(self.batches),
@@ -155,12 +155,12 @@ class Trainer:
 
                 self.scheduler.step()
 
-                if i % eval_every == 0 and not disable_logs:
-                    metrics = self.evaluate()
+                metrics = self.evaluate()
+                run.log(metrics)
+
+                if i % save_every == 0 and not disable_logs:
                     self.save_model("model.pt")
-                    self.env.save_best_env("board.png")
-                    metrics["best-board"] = wandb.Image("board.png")
-                    run.log(metrics)
+                    self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
@@ -202,15 +202,20 @@ class Trainer:
             if isinstance(value, torch.Tensor):
                 metrics[name] = value.cpu().item()
 
+        self.env.save_best_env("board.png")
+        metrics["best-board"] = wandb.Image("board.png")
+
         return metrics
 
     def save_model(self, filepath: Path | str):
         model_state = self.model.state_dict()
         optimizer_state = self.optimizer.state_dict()
+        scheduler_state = self.scheduler.state_dict()
         torch.save(
             {
                 "model": model_state,
                 "optimizer": optimizer_state,
+                "scheduler": scheduler_state,
             },
             filepath,
         )

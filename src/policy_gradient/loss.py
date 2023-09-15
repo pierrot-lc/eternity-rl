@@ -115,13 +115,13 @@ class PPOLoss(nn.Module):
         old_logprobs = batch["log-probs"].sum(dim=1)
 
         entropies[:, 0] *= 1.0
-        entropies[:, 1] *= 0.5
-        entropies[:, 2] *= 0.1
-        entropies[:, 3] *= 0.1
+        entropies[:, 1] *= 0.1
+        entropies[:, 2] *= 0.01
+        entropies[:, 3] *= 0.01
         entropies = entropies.sum(dim=1)
 
         advantages = batch["advantages"]
-        advantages = advantages - advantages.mean()
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-3)
 
         prob_ratios = (logprobs - old_logprobs).exp()
         clipped_ratios = torch.clamp(

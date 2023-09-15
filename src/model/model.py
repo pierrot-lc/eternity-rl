@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import epsilon_sampling
+from ..sampling import epsilon_sampling, epsilon_greedy_sampling
 from .backbone import Backbone
 from .heads import EstimateValue, SelectSide, SelectTile
 
@@ -16,14 +16,11 @@ from .heads import EstimateValue, SelectSide, SelectTile
 class Policy(nn.Module):
     def __init__(
         self,
-        n_classes: int,
         board_width: int,
         board_height: int,
-        n_channels: int,
         embedding_dim: int,
         n_heads: int,
-        backbone_cnn_layers: int,
-        backbone_transformer_layers: int,
+        backbone_layers: int,
         decoder_layers: int,
         dropout: float,
     ):
@@ -33,12 +30,9 @@ class Policy(nn.Module):
         self.embedding_dim = embedding_dim
 
         self.backbone = Backbone(
-            n_classes,
-            n_channels,
             embedding_dim,
             n_heads,
-            backbone_cnn_layers,
-            backbone_transformer_layers,
+            backbone_layers,
             dropout,
         )
 
@@ -77,7 +71,7 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        sampling_mode: str = "sample",
+        sampling_mode: str = "softmax",
         sampled_actions: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -157,13 +151,18 @@ class Policy(nn.Module):
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
         match mode:
-            case "sample":
-                categorical = Categorical(probs=probs)
-                action_ids = categorical.sample()
-            case "argmax":
+            case "softmax":
+                action_ids = Categorical(probs=probs).sample()
+            case "greedy":
                 action_ids = torch.argmax(probs, dim=-1)
             case "epsilon":
                 action_ids = epsilon_sampling(probs, epsilon=0.05)
+            case "epsilon-greedy":
+                action_ids = epsilon_greedy_sampling(probs, epsilon=0.05)
+            case "tempered":
+                logits = Categorical(probs=probs).logits
+                logits = logits / 2.0
+                action_ids = Categorical(logits=logits).sample()
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
         return action_ids
