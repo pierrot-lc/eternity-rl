@@ -142,7 +142,7 @@ class Trainer:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="sample", disable_logs=disable_logs)
+                self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
 
                 for _ in tqdm(
                     range(self.batches),

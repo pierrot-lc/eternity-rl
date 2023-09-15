@@ -71,7 +71,7 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        sampling_mode: str = "sample",
+        sampling_mode: str = "softmax",
         sampled_actions: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -151,7 +151,7 @@ class Policy(nn.Module):
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
         match mode:
-            case "sample":
+            case "softmax":
                 action_ids = Categorical(probs=probs).sample()
             case "greedy":
                 action_ids = torch.argmax(probs, dim=-1)
