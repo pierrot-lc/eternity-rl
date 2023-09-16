@@ -163,9 +163,8 @@ class PPOLoss(nn.Module):
 
         # Some metrics to track, but it does not contribute to the loss.
         with torch.no_grad():
-            metrics["metrics/policy-approx-kl"] = (
-                (logprobs - old_logprobs).pow(2).mean()
-            ) / 2
+            logr = logprobs - old_logprobs
+            metrics["metrics/policy-approx-kl"] = ((logr.exp() - 1) - logr).mean()
             metrics["metrics/policy-clip-frac"] = (
                 ((prob_ratios - 1.0).abs() > self.ppo_clip_ac).float().mean()
             )

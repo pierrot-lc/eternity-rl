@@ -12,6 +12,8 @@ updated: 2023-09-16T01:26:36+0100
   -- {https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}
   -- ( ) Try a pure on-policy learning.
   -- ( ) Separate actor and critic.
+  -- ( ) Reset terminated envs during rollouts.
+  -- ( ) Sample without replacement during training.
   - Curriculum learning.
   -- trivial < 2x2 randoms < trivial_B < 3x3 randoms < ...
   -- Randomly sample problem difficulties.
@@ -59,3 +61,4 @@ updated: 2023-09-16T01:26:36+0100
   -- The second agent is also trained from time to time on the real target puzzle.
   -- The games should gradually increase in difficulty by doing so.
   -- See {https://arxiv.org/abs/1703.05407}.
+  - Add tricks from {https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}
