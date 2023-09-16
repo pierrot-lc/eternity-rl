@@ -23,6 +23,7 @@ class PPOLoss(nn.Module):
     Sources:
         PPO paper: https://arxiv.org/abs/1707.06347.
         PPO implementation: https://github.com/openai/baselines/blob/master/baselines/ppo2/model.py.
+        37 implementation details of PPO: https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/.
         Approximating KL Divergence: http://joschu.net/blog/kl-approx.html.
     """
 

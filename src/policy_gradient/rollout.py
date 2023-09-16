@@ -44,6 +44,12 @@ def rollout(
         for name, tensor in sample.items():
             traces[name].append(tensor)
 
+        # TODO: Reset terminated envs.
+        # Overwise the roullout buffer could be filled with a low number of
+        # unmasked samples. During the epoch, the model could loop many times to the
+        # same samples, leading to an off-policy training.
+        # Do not forget to adapt the advantage computation.
+
     # To [batch_size, steps, ...].
     for name, tensors in traces.items():
         traces[name] = torch.stack(tensors, dim=1)
