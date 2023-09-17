@@ -39,7 +39,6 @@ def rollout(
         _, sample["rewards"], terminated, truncated, infos = env.step(sample["actions"])
         sample["truncated"] = truncated
         sample["dones"] = terminated
-        sample["values"] *= ~terminated
 
         for name, tensor in sample.items():
             traces[name].append(tensor)
@@ -55,10 +54,16 @@ def rollout(
 
     final_states = env.render()
     *_, final_values = model(final_states, sampling_mode)
-    final_values *= ~env.terminated
     traces["next-values"] = torch.concat(
         (traces["values"][:, 1:], final_values.unsqueeze(1)), dim=1
     )
+    # TODO: Handle the next-values that are of different episodes within the rollout sample.
+
+    for id, (dones, rewards) in enumerate(zip(traces["dones"], traces["rewards"])):
+        if rewards.sum() > 1:
+            print("\n")
+            print(traces["rewards"][id].cpu().tolist())
+            assert rewards.sum() < 1
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 
@@ -82,6 +87,8 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     Returns:
         The splitted traces.
             The traces are augmented with a "masks" entry.
+            A sample is masked if it is the last state of a done episode,
+            or if it is some padding.
     """
     resets = traces["dones"] | traces["truncated"]
     resets[:, -1] = True
@@ -115,10 +122,7 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     masks = torch.cummax(masks, dim=1).values
     masks = ~masks
 
-    split_traces = {
-        "masks": masks,
-    }
-
+    split_traces = dict()
     for name, tensor in traces.items():
         split_tensor = torch.zeros(
             (split_batch_size, steps, *tensor.shape[2:]),
@@ -128,6 +132,18 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
         split_tensor[masks] = einops.rearrange(tensor, "b s ... -> (b s) ...")
 
         split_traces[name] = split_tensor
+
+    # Remove the True value corresponding to a `done` state of the episodes.
+    done_indices = torch.arange(0, steps, device=device)
+    done_indices = einops.repeat(done_indices, "s -> b s", b=batch_size)
+    done_indices = done_indices[traces["dones"]]  # Shape of [split_batch_size].
+    shifted_done_indices = torch.roll(done_indices, shifts=1, dims=(0,))
+    episode_lenghts = (done_indices - shifted_done_indices) % steps
+
+    episode_lenghts -= 1  # Get indices.
+    episode_lenghts[episode_lenghts == -1] = steps - 1  # `-1` is not valid for scatter.
+    masks.scatter_(1, episode_lenghts.unsqueeze(1), 0)
+    split_traces["masks"] = masks
 
     return TensorDict(
         split_traces, batch_size=split_traces["dones"].shape[0], device=device

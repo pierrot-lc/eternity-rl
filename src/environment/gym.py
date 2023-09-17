@@ -203,14 +203,15 @@ class EternityEnv(gym.Env):
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
         rewards = (matches - previous_matches) / self.best_matches_possible
-        max_matches = torch.stack((self.max_matches, matches), dim=1)
-        self.max_matches = torch.max(max_matches, dim=1)[0]
+        self.max_matches = (
+            torch.stack((self.max_matches, matches), dim=1).max(dim=1).values
+        )
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just-won"].sum().cpu().item()
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
-        return self.render(), rewards, self.terminated, truncated, infos
+        return self.render(), rewards, self.terminated.clone(), truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
@@ -301,23 +302,16 @@ class EternityEnv(gym.Env):
 
         return n_matches.long()
 
-    def scramble_instances(self, instance_ids: Optional[torch.Tensor] = None):
+    def scramble_instances(self, instance_ids: torch.Tensor):
         """Scrambles the instances to start from a new valid configuration.
 
         ---
         Args:
             instance_ids: The ids of the instances to scramble.
-                Shape of [batch_size,].
+                Shape of [instances,].
         """
-        if instance_ids is None:
-            instance_ids = torch.arange(
-                start=0, end=self.batch_size, device=self.device
-            )
-
         # Scrambles the tiles.
-        self.instances = rearrange(
-            self.instances, "b c h w -> b (h w) c", w=self.board_size
-        )
+        self.instances = rearrange(self.instances, "b c h w -> b (h w) c")
         permutations = torch.arange(start=0, end=self.n_pieces, device=self.device)
         permutations = repeat(permutations, "p -> b p", b=self.batch_size)
         for instance_id in instance_ids:
