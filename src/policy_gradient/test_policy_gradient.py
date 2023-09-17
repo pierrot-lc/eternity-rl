@@ -1,7 +1,8 @@
 import pytest
 import torch
+from tensordict import TensorDict
 
-from .rollout import cumulative_decay_return
+from .rollout import cumulative_decay_return, split_reset_rollouts
 
 
 @pytest.mark.parametrize(
@@ -52,3 +53,17 @@ def test_cumulative_decay_return(
     returns: torch.Tensor,
 ):
     assert torch.allclose(cumulative_decay_return(rewards, masks, gamma), returns)
+
+
+@pytest.mark.parametrize(
+    "traces",
+    [
+        {
+            "dones": torch.BoolTensor([[False, False, True]]),
+            "truncated": torch.BoolTensor([[False, False, False]]),
+        },
+    ],
+)
+def test_split_reset_rollouts(traces: dict):
+    traces = TensorDict(traces, batch_size=traces["dones"].shape[0], device="cpu")
+    split_reset_rollouts(traces)

@@ -89,19 +89,32 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     split_batch_size = resets.sum()
     device = resets.device
 
+    # NOTE: The construction of the mask is done as follows:
+    # 1. Find the length of each splitted rollouts.
+    # 2. Fill the mask with "True" at the end of the each rollouts.
+    # 3. Use `cummax` to propagate the "True" until the start of the rollouts.
     masks = torch.zeros(
         (split_batch_size, steps),
         dtype=torch.bool,
         device=device,
     )
 
-    reset_ids = torch.arange(0, steps, device=device)
-    reset_ids = einops.repeat(reset_ids, "s -> b s", b=batch_size)
-    reset_ids = reset_ids[resets]  # Shape of [split_batch_size].
+    reset_indices = torch.arange(0, steps, device=device)
+    reset_indices = einops.repeat(reset_indices, "s -> b s", b=batch_size)
+    reset_indices = reset_indices[resets]  # Shape of [split_batch_size].
+    shifted_reset_indices = torch.roll(reset_indices, shifts=1, dims=(0,))
+    episode_lenghts = (reset_indices - shifted_reset_indices) % steps
 
-    episode_start_ids = torch.arange(0, split_batch_size * steps, steps, device=device)
+    masks.scatter_(dim=1, index=episode_lenghts.unsqueeze(1), src=1)
 
-    split_traces = dict()
+    masks = torch.roll(masks, shifts=1, dims=(1,))
+    masks[:, 0] = False
+    masks = torch.cummax(masks, dim=1).values
+    masks = ~masks
+
+    split_traces = {
+        "masks": masks,
+    }
 
     for name, tensor in traces.items():
         split_tensor = torch.zeros(
@@ -112,6 +125,8 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
         split_tensor[masks] = tensor
 
         split_traces[name] = split_tensor
+
+    return TensorDict(split_traces, batch_size=split_batch_size, device=device)
 
 
 def cumulative_decay_return(
