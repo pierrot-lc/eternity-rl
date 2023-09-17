@@ -14,9 +14,10 @@ updated: 2023-09-16T01:26:36+0100
   -- ( ) Separate actor and critic.
   -- (x) Reset terminated envs during rollouts.
   -- ( ) Handle GAE multiple terminated envs in a batch sample.
-  -- ( ) Handle truncated envs.
+  -- (x) Handle truncated envs.
   -- (x) Remove masks.
   -- ( ) Sample without replacement during training.
+  -- ( ) Why the value target is going above 1?
   - Curriculum learning.
   -- trivial < 2x2 randoms < trivial_B < 3x3 randoms < ...
   -- Randomly sample problem difficulties.

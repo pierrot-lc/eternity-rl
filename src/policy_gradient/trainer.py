@@ -16,7 +16,7 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Policy
 from .loss import PPOLoss
-from .rollout import rollout
+from .rollout import rollout, split_reset_rollouts
 
 
 class Trainer:
@@ -64,13 +64,18 @@ class Trainer:
         traces = rollout(
             self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
+        traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
-        # Flatten the batch x steps dimensions.
+        # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
+        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
         for name, tensor in traces.items():
+            if name == "masks":
+                continue
+
             tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
-            samples[name] = tensor
+            samples[name] = tensor[masks]
 
         samples = TensorDict(
             samples, batch_size=samples["states"].shape[0], device=self.device
