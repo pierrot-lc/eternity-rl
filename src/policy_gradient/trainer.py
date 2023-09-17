@@ -66,15 +66,11 @@ class Trainer:
         )
         self.loss.advantages(traces)
 
-        # Flatten the batch x steps dimensions and remove the masked steps.
+        # Flatten the batch x steps dimensions.
         samples = dict()
-        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
         for name, tensor in traces.items():
-            if name == "masks":
-                continue
-
             tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
-            samples[name] = tensor[masks]
+            samples[name] = tensor
 
         samples = TensorDict(
             samples, batch_size=samples["states"].shape[0], device=self.device

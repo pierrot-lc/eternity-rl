@@ -176,6 +176,7 @@ class EternityEnv(gym.Env):
             terminated: Whether the environments are terminated (won).
                 Shape of [batch_size,].
             truncated: Whether the environments are truncated (max steps reached).
+                Shape of [batch_size,].
             infos: Additional infos.
                 - `just_won`: Whether the environments has just been won.
         """
@@ -207,8 +208,9 @@ class EternityEnv(gym.Env):
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just-won"].sum().cpu().item()
+        truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
-        return self.render(), rewards, self.terminated, False, infos
+        return self.render(), rewards, self.terminated, truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
