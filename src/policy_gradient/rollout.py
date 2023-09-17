@@ -81,6 +81,7 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     ---
     Returns:
         The splitted traces.
+            The traces are augmented with a "masks" entry.
     """
     resets = traces["dones"] | traces["truncated"]
     resets[:, -1] = True
@@ -105,7 +106,9 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     shifted_reset_indices = torch.roll(reset_indices, shifts=1, dims=(0,))
     episode_lenghts = (reset_indices - shifted_reset_indices) % steps
 
-    masks.scatter_(dim=1, index=episode_lenghts.unsqueeze(1), src=1)
+    episode_lenghts -= 1  # Get indices.
+    episode_lenghts[episode_lenghts == -1] = steps - 1  # `-1` is not valid for scatter.
+    masks.scatter_(1, episode_lenghts.unsqueeze(1), 1)
 
     masks = torch.roll(masks, shifts=1, dims=(1,))
     masks[:, 0] = False
@@ -126,7 +129,9 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
 
         split_traces[name] = split_tensor
 
-    return TensorDict(split_traces, batch_size=split_batch_size, device=device)
+    return TensorDict(
+        split_traces, batch_size=split_traces["dones"].shape[0], device=device
+    )
 
 
 def cumulative_decay_return(
