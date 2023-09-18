@@ -145,7 +145,7 @@ def test_batch_scramble(instance_path: str):
         if instance_id in changed_instances:
             continue
 
-        torch.all(env.instances[instance_id] == reference)
+        assert torch.all(env.instances[instance_id] == reference)
 
 
 def test_batch_roll():

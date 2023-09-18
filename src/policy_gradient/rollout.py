@@ -36,16 +36,16 @@ def rollout(
         sample["actions"], sample["log-probs"], _, sample["values"] = model(
             sample["states"], sampling_mode
         )
-        _, sample["rewards"], terminated, truncated, infos = env.step(sample["actions"])
+        _, sample["rewards"], dones, truncated, infos = env.step(sample["actions"])
         sample["truncated"] = truncated
-        sample["dones"] = terminated
+        sample["dones"] = dones
 
         for name, tensor in sample.items():
             traces[name].append(tensor)
 
-        if (terminated | truncated).sum() > 0:
+        if (dones | truncated).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
-            reset_ids = reset_ids[terminated | truncated]
+            reset_ids = reset_ids[dones | truncated]
             env.reset(reset_ids)
 
     # To [batch_size, steps, ...].
@@ -58,12 +58,6 @@ def rollout(
         (traces["values"][:, 1:], final_values.unsqueeze(1)), dim=1
     )
     # TODO: Handle the next-values that are of different episodes within the rollout sample.
-
-    for id, (dones, rewards) in enumerate(zip(traces["dones"], traces["rewards"])):
-        if rewards.sum() > 1:
-            print("\n")
-            print(traces["rewards"][id].cpu().tolist())
-            assert rewards.sum() < 1
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 
