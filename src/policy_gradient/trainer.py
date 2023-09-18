@@ -31,7 +31,6 @@ class Trainer:
         clip_value: float,
         scramble_size: float,
         rollouts: int,
-        batches: int,
         epochs: int,
     ):
         self.env = env
@@ -42,7 +41,6 @@ class Trainer:
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
         self.rollouts = rollouts
-        self.batches = batches
         self.epochs = epochs
 
         self.scramble_size = int(scramble_size * self.env.batch_size)
@@ -145,13 +143,13 @@ class Trainer:
                 self.model.train()
                 self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
 
-                for _ in tqdm(
-                    range(self.batches),
+                for batch in tqdm(
+                    self.replay_buffer,
+                    total=len(self.replay_buffer) // self.replay_buffer._batch_size,
                     desc="Batch",
                     leave=False,
                     disable=disable_logs,
                 ):
-                    batch = self.replay_buffer.sample()
                     self.do_batch_update(batch)
 
                 self.scheduler.step()

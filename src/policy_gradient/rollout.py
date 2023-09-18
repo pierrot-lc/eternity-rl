@@ -127,7 +127,6 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
             device=tensor.device,
         )
         split_tensor[masks] = einops.rearrange(tensor, "b s ... -> (b s) ...")
-
         split_traces[name] = split_tensor
 
     split_traces["masks"] = masks

@@ -37,7 +37,6 @@ trainer:
 iterations:
   rollouts: 60
   epochs: -1
-  batches: 60
   batch_size: 5000
 
 checkpoint:
