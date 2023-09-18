@@ -172,7 +172,7 @@ class Trainer:
         metrics["matches/mean"] = matches.mean()
         metrics["matches/max"] = matches.max()
         metrics["matches/min"] = matches.min()
-        metrics["matches/hist"] = wandb.Histogram(matches.cpu().numpy())
+        metrics["matches/hist"] = wandb.Histogram(matches.cpu())
         metrics["matches/best"] = (
             self.env.best_matches_found / self.env.best_matches_possible
         )
@@ -183,10 +183,8 @@ class Trainer:
         batch = batch.to(self.device)
         metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
-        metrics["metrics/value-targets"] = wandb.Histogram(
-            batch["value-targets"].cpu().numpy()
-        )
-        metrics["metrics/n_steps"] = wandb.Histogram(self.env.n_steps.cpu().numpy())
+        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        metrics["metrics/n_steps"] = wandb.Histogram(self.env.n_steps.cpu())
 
         # Compute the gradient mean and maximum values.
         metrics["loss/total"].backward()

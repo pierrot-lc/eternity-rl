@@ -57,7 +57,7 @@ def rollout(
     traces["next-values"] = torch.concat(
         (traces["values"][:, 1:], final_values.unsqueeze(1)), dim=1
     )
-    # TODO: Handle the next-values that are of different episodes within the rollout sample.
+    traces["next-values"] *= traces["dones"] | traces["truncated"]
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 
