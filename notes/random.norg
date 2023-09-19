@@ -137,3 +137,7 @@ version: 1.1.1
   others are also affected. This means that my training was wrong all along (estimation
   of the advantage, value targets, and overall environment length). This problem was
   undetected thanks to an `assert` that was missing in a unit-test.
+
+  Make sure the value agent does not know what actions are sampled. Since my actor needs
+  to know which sub-action is sampled before outputting the rest of the sub-action distributions,
+  the value network can also see them. In this case, training was collapsing at some point.
