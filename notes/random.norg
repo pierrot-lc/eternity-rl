@@ -4,7 +4,7 @@ description: Some random thoughts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-09-19
+updated: 2023-09-20T22:01:22+0100
 version: 1.1.1
 @end
 
@@ -45,6 +45,13 @@ version: 1.1.1
 
   Finally, I have to use it back since i'm training in a never-ending environment.
   To have access to a return estimation, I have to estimate the values using a value function.
+
+  It is advised to have two separate networks for the actor and the critic.
+  After little testing, I have not found so much differences. But I have found a $30%$
+  increase in total time per epoch. This is because during my training a lot of the compute
+  is spent on the model since the rest is pretty well optimized and batched. Note that
+  I did not really spend a lot of time experimenting this. It may be worth to have
+  two small models that are faster than a single big shared model for both actor and critic.
 
 * Reward modeling
   The `win` reward is good because it does not optimize for the number of
