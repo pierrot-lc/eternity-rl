@@ -1,110 +1,150 @@
 @document.meta
 title: random
-description: Some weird facts
+description: Some random thoughts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-09-16T00:16:32+0100
+updated: 2023-09-20T22:01:22+0100
 version: 1.1.1
 @end
 
 
-* Random thoughts
-** Computing the logprobs with logits and softmax
-   It is not the same to compute the logprobs from the outputted logits
-   and from the softmax distribution.
+* Computing the logprobs with logits and softmax
+  It is not the same to compute the logprobs from the outputted logits
+  and from the softmax distribution.
 
-   @code python3
-   distrib = torch.distributions.Categorical(logits=logits)
-   logprobs = distrib.log_prob(actions)
-   @end
+  @code python3
+  distrib = torch.distributions.Categorical(logits=logits)
+  logprobs = distrib.log_prob(actions)
+  @end
 
-   @code python3
-   distrib = torch.distributions.Categorical(probs=torch.softmax(logits))
-   logprobs = distrib.log_prob(actions)
-   @end
+  @code python3
+  distrib = torch.distributions.Categorical(probs=torch.softmax(logits))
+  logprobs = distrib.log_prob(actions)
+  @end
 
-   The second one is the one that should be used.
-   I think that the first one is either wrong or inefficient.
+  The second one is the one that should be used.
+  I think that the first one is either wrong or inefficient.
 
-** Instability in the training
-   The reward normalization can lead to instabilities in the training.
-   It is important to take this into account and to use a rather large epsilon.
+* Instability in the training
+  The reward normalization can lead to instabilities in the training.
+  It is important to take this into account and to use a rather large epsilon.
 
-   A recurrent policy is also hard to train since it can lead to huge BPTT
-   gradient updates. To counter this, I regularly stop the gradient during the rollout.
+  A recurrent policy is also hard to train since it can lead to huge BPTT
+  gradient updates. To counter this, I regularly stop the gradient during the rollout.
+  Would it be feasible to stop the gradient at each step? This would make the use of
+  a replay buffer easier.
 
-** Actor/critic
-   My implementation seems to not be working so well, or at most to do
-   equally as the base implementation. It may be because the current reward
-   estimation is already good enough thanks to the high batch MC sampling.
+* Actor/critic
+  My implementation seems to not be working so well, or at most to do
+  equally as the base implementation. It may be because the current reward
+  estimation is already good enough thanks to the high batch MC sampling.
 
-   It also introduces a lot of hyperparameters to tune, so I decided to
-   remove it.
+  It also introduces a lot of hyperparameters to tune, so I decided to
+  remove it.
 
-   Finally, I have to use it back since i'm training in a never-ending environment.
-   To have access to a return estimation, I have to estimate the values using a value function.
+  Finally, I have to use it back since i'm training in a never-ending environment.
+  To have access to a return estimation, I have to estimate the values using a value function.
 
+  It is advised to have two separate networks for the actor and the critic.
+  After little testing, I have not found so much differences. But I have found a $30%$
+  increase in total time per epoch. This is because during my training a lot of the compute
+  is spent on the model since the rest is pretty well optimized and batched. Note that
+  I did not really spend a lot of time experimenting this. It may be worth to have
+  two small models that are faster than a single big shared model for both actor and critic.
 
-** Reward modeling
-   The `win` reward is good because it does not optimize for the number of
-   steps to win, nor for intermediate easy rewards. But it has a problem:
-   long rollouts tend to all collapse to the mean state. The mode is not
-   rewarded for the maximum intermediate state.
+* Reward modeling
+  The `win` reward is good because it does not optimize for the number of
+  steps to win, nor for intermediate easy rewards. But it has a problem:
+  long rollouts tend to all collapse to the mean state. The mode is not
+  rewarded for the maximum intermediate state.
 
-   The new reward called `max-cut` provides a more stable training, and is
-   way more sample efficient.
+  The new reward called `max-cut` provides a more stable training, and is
+  way more sample efficient.
 
-** Rollout buffer
-   The rollout buffer is primarily used to be more sample efficient by reusing past
-   samples during the training. But in my case, collecting the rollout samples is
-   pretty fast so that I can do without such a buffer.
+* Replay buffer
+  The replay buffer is primarily used to be more sample efficient by reusing past
+  samples during the training. But in my case, collecting the rollout samples is
+  pretty fast so that I can do without such a buffer.
 
-   Being able to train without a rollout buffer is nice because it makes it easier
-   to implement tricky policies such as RNNs (useful for planning).
+  Being able to train without a replay buffer is nice because it makes it easier
+  to implement tricky policies such as RNNs (useful for planning).
+  On the other hand, a replay buffer can be useful to implement tricky sampling policies
+  such as the prioritized experience replay.
 
-** Rotation equivariant
-   The game is strictly rotation equivariant, meaning that the model should output
-   the same rotated actions to a rotated board. This can be integrated in the algorithm
-   in multiple ways:
-   ~ Properly randomize the board state, so that the model sees a lot of diverse board
-     states and learns to be equivariant by itself.
-   ~ Add a regularization loss that directly enforce the model to be equivariant to
-     rotations of the board.
-   ~ Design the model so that it is naturally equivariant to rotations.
+* Rotation equivariant
+  The game is strictly rotation equivariant, meaning that the model should output
+  the same rotated actions to a rotated board. This can be integrated in the algorithm
+  in multiple ways:
+  ~ Properly randomize the board state, so that the model sees a lot of diverse board
+    states and learns to be equivariant by itself.
+  ~ Add a regularization loss that directly enforce the model to be equivariant to
+    rotations of the board.
+  ~ Design the model so that it is naturally equivariant to rotations.
 
-   Note that the game is also strictly equivariant to horizontal and vertical flips.
+  Note that the game is also strictly equivariant to horizontal and vertical flips.
 
-   The best thing to do is to design the model to be equivariant to rotations and flips.
-   To do so, the encoder can use a {https://arxiv.org/abs/1602.07576}[group equivariant CNN]
-   and/or a simple transformer encoder (with a symmetrical equivariant positional encoding, if used).
-   The decoder can use a pointer network to select the tile to swap, and since the rolls
-   are relative to the current tile placement, it can be done with a simple linear layer.
+  The best thing to do is to design the model to be equivariant to rotations and flips.
+  To do so, the encoder can use a {https://arxiv.org/abs/1602.07576}[group equivariant CNN]
+  and/or a simple transformer encoder (with a symmetrical equivariant positional encoding, if used).
+  The decoder can use a pointer network to select the tile to swap, and since the rolls
+  are relative to the current tile placement, it can be done with a simple linear layer.
 
-** Parallel exploration
-   Using pure MCTS is not cool because it is hard to implement in parallel. Another way
-   of exploring potential futures and to plan is to duplicate each instance and to do
-   batched steps forward. It can be used to estimate what the next best action is.
-   This process can also be repeated multiple times to trade time for memory.
+* Parallel exploration
+  Using pure MCTS is not cool because it is hard to implement in parallel. Another way
+  of exploring potential futures and to plan is to duplicate each instance and to do
+  batched steps forward. It can be used to estimate what the next best action is.
+  This process can also be repeated multiple times to trade time for memory.
 
-** Potentially never-ending episodes
-   A proper way to train the model is to use never-ending episodes. Doing so,
-   the return is impossible to truly compute with MCTS sampling, but it can
-   be estimated with a value network.
+* Potentially never-ending episodes
+  A proper way to train the model is to use never-ending episodes. Doing so,
+  the return is impossible to truly compute with MCTS sampling, but it can
+  be estimated with a value network.
 
-   But it is hard to train a value network in my environment since the model
-   can kind of go back in time. By switch pieces it is easy to go to a previously
-   encountered state. The value network has to take into account this fact, and
-   the training becomes harder.
+  But it is hard to train a value network in my environment since the model
+  can kind of go back in time. By switching pieces, it is easy to go to a previously
+  encountered state. The value network has to take into account this fact, and
+  the training becomes harder.
 
-   The reward is also very important. A good reward shaping will make it easier
-   for the model to quickly understand what the goal is.
+  The reward is also very important. A good reward shaping will make it easier
+  for the model to quickly understand what the goal is.
 
-** About on-policy learning and exploration
-   It's harder to implement a forced exploration or exploitation when using an on-policy
-   algorithm. You can't use a tempered softmax, epsilon-greedy or a mix of samplings.
-   That's a shame!
+* About on-policy learning and exploration
+  It's harder to implement a forced exploration or exploitation when using an on-policy
+  algorithm. You can't use a tempered softmax, epsilon-greedy or a mix of samplings.
+  That's a shame!
 
-   It could be interesting to sample the tile selection with a tempered softmax and
-   the tile rotation with epsilon-greedy.
+  It could be interesting to sample the tile selection with a tempered softmax and
+  the tile rotation with epsilon-greedy.
 
+* Resetting an environment during rollout collection
+  I met some instabilities when training on small puzzles, and I couldn't find where
+  they could come from.
+  The following blog post {https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}[37 implementation details of PPO] gave me the answer.
+
+  When collecting experience replay samples, you /should/ reset the environment once an
+  environment is either done or truncated. Doing this ensure that your replay buffer will
+  always have the same fixed size. My instability problem was due to the fact that
+  once the model was acing the small puzzle it was looking at, it started to be so good
+  that each environment in the batch was done very quickly. This lead to a replay buffer
+  that is smaller than what was expected and my model would be trained on the same samples
+  many times before collecting new samples (because I used a fixed number of iterations
+  over the buffer with random sampling with replacement).
+
+  All and all, not resetting the environment lead to an unstable training due to the fact
+  that my on-policy algorithm was not really on-policy anymore, since samples were used
+  many times during training.
+
+  Note that to implement this you need to properly take into account the done and truncated
+  flags of the rollout when computing advantages and value targets. Moreover, doing this
+  efficiently on GPU is hard.
+
+* RL bugs are hard
+  Many months later, I found out that when I reset some specific envs of the batch, the
+  others are also affected. This means that my training was wrong all along (estimation
+  of the advantage, value targets, and overall environment length). This problem was
+  undetected thanks to an `assert` that was missing in a unit-test.
+
+  Make sure the value agent does not know what actions are sampled. Since my actor needs
+  to know which sub-action is sampled before outputting the rest of the sub-action distributions,
+  the value network can also see them. In this case, training was collapsing at some point.

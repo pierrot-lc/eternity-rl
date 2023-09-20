@@ -1,10 +1,10 @@
 """Play some steps."""
-from tqdm import tqdm
 from collections import defaultdict
 
-import torch
 import einops
-from tensordict import TensorDictBase, TensorDict
+import torch
+from tensordict import TensorDict, TensorDictBase
+from tqdm import tqdm
 
 from ..environment import EternityEnv
 from ..model import Policy
@@ -33,35 +33,107 @@ def rollout(
         sample = dict()
 
         sample["states"] = env.render()
-        sample["actions"], sample["log-probs"], _, sample["values"] = model(
-            sample["states"], sampling_mode
-        )
-        _, sample["rewards"], terminated, _, infos = env.step(sample["actions"])
-        sample["masks"] = ~terminated | infos["just-won"]
-        sample["dones"] = terminated
-        sample["values"] *= ~terminated
+        (
+            sample["actions"],
+            sample["log-probs"],
+            _,
+            sample["values"],
+        ) = model(sample["states"], sampling_mode)
+
+        (
+            _,
+            sample["rewards"],
+            sample["dones"],
+            sample["truncated"],
+            infos,
+        ) = env.step(sample["actions"])
+
+        *_, sample["next-values"] = model(env.render(), sampling_mode)
 
         for name, tensor in sample.items():
             traces[name].append(tensor)
 
-        # TODO: Reset terminated envs.
-        # Overwise the roullout buffer could be filled with a low number of
-        # unmasked samples. During the epoch, the model could loop many times to the
-        # same samples, leading to an off-policy training.
-        # Do not forget to adapt the advantage computation.
+        if (sample["dones"] | sample["truncated"]).sum() > 0:
+            reset_ids = torch.arange(0, env.batch_size, device=env.device)
+            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
+            env.reset(reset_ids)
 
     # To [batch_size, steps, ...].
     for name, tensors in traces.items():
         traces[name] = torch.stack(tensors, dim=1)
 
-    final_states = env.render()
-    *_, final_values = model(final_states, sampling_mode)
-    final_values *= ~env.terminated
-    traces["next-values"] = torch.concat(
-        (traces["values"][:, 1:], final_values.unsqueeze(1)), dim=1
+    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+
+
+def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
+    """Split the samples that have been reset during the rollouts.
+    For each element of the batch, if at some point the trace is either
+    done or truncated, the rollout is splitted.
+
+    ---
+    Args:
+        traces: A dict containing at least the following entries:
+            dones: The rollout dones of the given states.
+                Shape of [batch_size, steps].
+            truncated: The rollout truncated of the given states.
+                Shape of [batch_size, steps].
+
+            The other entries must be of shape [batch_size, steps, ...].
+
+    ---
+    Returns:
+        The splitted traces.
+            The traces are augmented with a "masks" entry.
+            A sample is masked if it is the last state of a done episode,
+            or if it is some padding.
+    """
+    resets = traces["dones"] | traces["truncated"]
+    resets[:, -1] = True
+
+    batch_size, steps = resets.shape
+    split_batch_size = resets.sum()
+    device = resets.device
+
+    # NOTE: The construction of the mask is done as follows:
+    # 1. Find the length of each splitted rollouts.
+    # 2. Fill the mask with "True" at the end of the each rollouts.
+    # 3. Use `cummax` to propagate the "True" until the start of the rollouts.
+    masks = torch.zeros(
+        (split_batch_size, steps),
+        dtype=torch.bool,
+        device=device,
     )
 
-    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+    reset_indices = torch.arange(0, steps, device=device)
+    reset_indices = einops.repeat(reset_indices, "s -> b s", b=batch_size)
+    reset_indices = reset_indices[resets]  # Shape of [split_batch_size].
+    shifted_reset_indices = torch.roll(reset_indices, shifts=1, dims=(0,))
+    episode_lenghts = (reset_indices - shifted_reset_indices) % steps
+
+    episode_lenghts -= 1  # Get indices.
+    episode_lenghts[episode_lenghts == -1] = steps - 1  # `-1` is not valid for scatter.
+    masks.scatter_(1, episode_lenghts.unsqueeze(1), 1)
+
+    masks = torch.roll(masks, shifts=1, dims=(1,))
+    masks[:, 0] = False
+    masks = torch.cummax(masks, dim=1).values
+    masks = ~masks
+
+    split_traces = dict()
+    for name, tensor in traces.items():
+        split_tensor = torch.zeros(
+            (split_batch_size, steps, *tensor.shape[2:]),
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        split_tensor[masks] = einops.rearrange(tensor, "b s ... -> (b s) ...")
+        split_traces[name] = split_tensor
+
+    split_traces["masks"] = masks
+
+    return TensorDict(
+        split_traces, batch_size=split_traces["dones"].shape[0], device=device
+    )
 
 
 def cumulative_decay_return(

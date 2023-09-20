@@ -176,6 +176,7 @@ class EternityEnv(gym.Env):
             terminated: Whether the environments are terminated (won).
                 Shape of [batch_size,].
             truncated: Whether the environments are truncated (max steps reached).
+                Shape of [batch_size,].
             infos: Additional infos.
                 - `just_won`: Whether the environments has just been won.
         """
@@ -202,13 +203,15 @@ class EternityEnv(gym.Env):
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
         rewards = (matches - previous_matches) / self.best_matches_possible
-        max_matches = torch.stack((self.max_matches, matches), dim=1)
-        self.max_matches = torch.max(max_matches, dim=1)[0]
+        self.max_matches = (
+            torch.stack((self.max_matches, matches), dim=1).max(dim=1).values
+        )
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just-won"].sum().cpu().item()
+        truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
-        return self.render(), rewards, self.terminated, False, infos
+        return self.render(), rewards, self.terminated.clone(), truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
@@ -231,7 +234,7 @@ class EternityEnv(gym.Env):
         total_shifts[tile_ids + offsets] = shifts
 
         self.instances = rearrange(self.instances, "b c h w -> (b h w) c")
-        self.instances = self.batched_roll(self.instances, total_shifts)
+        self.instances = EternityEnv.batched_roll(self.instances, total_shifts)
         self.instances = rearrange(
             self.instances,
             "(b h w) c -> b c h w",
@@ -299,34 +302,30 @@ class EternityEnv(gym.Env):
 
         return n_matches.long()
 
-    def scramble_instances(self, instance_ids: Optional[torch.Tensor] = None):
+    def scramble_instances(self, instance_ids: torch.Tensor):
         """Scrambles the instances to start from a new valid configuration.
 
         ---
         Args:
             instance_ids: The ids of the instances to scramble.
-                Shape of [batch_size,].
+                Shape of [instances,].
         """
-        if instance_ids is None:
-            instance_ids = torch.arange(
-                start=0, end=self.batch_size, device=self.device
-            )
-
         # Scrambles the tiles.
-        self.instances = rearrange(
-            self.instances, "b c h w -> b (h w) c", w=self.board_size
-        )
+        self.instances = rearrange(self.instances, "b s h w -> b (h w) s")
         permutations = torch.arange(start=0, end=self.n_pieces, device=self.device)
-        permutations = repeat(permutations, "p -> b p", b=self.batch_size)
+        permutations = repeat(
+            permutations, "p -> b p s", b=self.batch_size, s=N_SIDES
+        ).clone()
+
         for instance_id in instance_ids:
-            permutations[instance_id] = torch.randperm(
-                self.n_pieces, generator=self.rng, device=self.device
-            )
-        permutations = repeat(permutations, "b p -> b p c", c=self.instances.shape[2])
+            perm = torch.randperm(self.n_pieces, generator=self.rng, device=self.device)
+            perm = repeat(perm, "p -> p s", s=N_SIDES)
+            permutations[instance_id] = perm
+
         self.instances = torch.gather(self.instances, dim=1, index=permutations)
 
         # Randomly rolls the tiles.
-        self.instances = rearrange(self.instances, "b p c -> (b p) c")
+        self.instances = rearrange(self.instances, "b p s -> (b p) s")
         shifts = torch.zeros(
             self.batch_size * self.n_pieces, dtype=torch.long, device=self.device
         )
@@ -340,10 +339,10 @@ class EternityEnv(gym.Env):
             generator=self.rng,
             device=self.device,
         )
-        self.instances = self.batched_roll(self.instances, shifts)
+        self.instances = EternityEnv.batched_roll(self.instances, shifts)
         self.instances = rearrange(
             self.instances,
-            "(b h w) c -> b c h w",
+            "(b h w) s -> b s h w",
             b=self.batch_size,
             h=self.board_size,
             w=self.board_size,

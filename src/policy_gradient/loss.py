@@ -11,7 +11,7 @@ class PPOLoss(nn.Module):
     Also computes the advantages using the GAE algorithm.
 
     ---
-    Args:
+    Parameters:
         value_weight: The weight of the value loss.
         entropy_weight: The weight of the entropy loss.
         gamma: The discount factor.
