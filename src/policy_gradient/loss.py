@@ -116,9 +116,9 @@ class PPOLoss(nn.Module):
         old_logprobs = batch["log-probs"].sum(dim=1)
 
         entropies[:, 0] *= 1.0
-        entropies[:, 1] *= 0.1
-        entropies[:, 2] *= 0.01
-        entropies[:, 3] *= 0.01
+        entropies[:, 1] *= 1.0
+        entropies[:, 2] *= 0.10
+        entropies[:, 3] *= 0.10
         entropies = entropies.sum(dim=1)
 
         advantages = batch["advantages"]
@@ -152,7 +152,7 @@ class PPOLoss(nn.Module):
         metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
         metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
-        metrics["loss/entropy"] = -entropies.mean()
+        metrics["loss/entropy"] = torch.relu(0.5 - entropies).mean()
         metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
 
         metrics["loss/total"] = (
@@ -171,5 +171,6 @@ class PPOLoss(nn.Module):
             metrics["metrics/value-clip-frac"] = (
                 ((values - old_values).abs() > self.ppo_clip_vf).float().mean()
             )
+            metrics["metrics/entropy"] = entropies.mean()
 
         return metrics

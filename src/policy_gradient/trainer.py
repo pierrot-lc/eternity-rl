@@ -168,8 +168,6 @@ class Trainer:
 
         matches = self.env.matches / self.env.best_matches_possible
         metrics["matches/mean"] = matches.mean()
-        metrics["matches/max"] = matches.max()
-        metrics["matches/min"] = matches.min()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu())
         metrics["matches/best"] = (
             self.env.best_matches_found / self.env.best_matches_possible
