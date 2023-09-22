@@ -22,7 +22,7 @@ from .rollout import rollout, split_reset_rollouts
 class Trainer:
     def __init__(
         self,
-        env: EternityEnv,
+        envs: list[EternityEnv],
         model: Policy | DDP,
         loss: PPOLoss,
         optimizer: optim.Optimizer,
@@ -33,7 +33,7 @@ class Trainer:
         rollouts: int,
         epochs: int,
     ):
-        self.env = env
+        self.envs = envs
         self.model = model
         self.loss = loss
         self.optimizer = optimizer
@@ -43,25 +43,27 @@ class Trainer:
         self.rollouts = rollouts
         self.epochs = epochs
 
-        self.scramble_size = int(scramble_size * self.env.batch_size)
-        self.device = env.device
+        self.scramble_size = int(scramble_size * self.envs[-1].batch_size)
+        self.max_board_size = max(env.board_size for env in envs)
+        self.rng = envs[0].rng
+        self.device = envs[0].device
 
     @torch.inference_mode()
-    def do_rollouts(self, sampling_mode: str, disable_logs: bool):
+    def do_rollouts(self, env: EternityEnv, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
         if self.scramble_size > 0:
-            scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
+            scramble_ids = torch.randperm(
+                env.batch_size, generator=self.rng, device=self.device
+            )
             scramble_ids = scramble_ids[: self.scramble_size]
-            self.env.reset(scramble_ids=scramble_ids)
+            env.reset(scramble_ids=scramble_ids)
 
-        if self.env.terminated.sum() > 0:
-            to_reset = torch.arange(self.env.batch_size, device=self.device)
-            to_reset = to_reset[self.env.terminated]
-            self.env.reset(scramble_ids=to_reset)
+        if env.terminated.sum() > 0:
+            to_reset = torch.arange(env.batch_size, device=self.device)
+            to_reset = to_reset[env.terminated]
+            env.reset(scramble_ids=to_reset)
 
-        traces = rollout(
-            self.env, self.model, sampling_mode, self.rollouts, disable_logs
-        )
+        traces = rollout(env, self.model, sampling_mode, self.rollouts, disable_logs)
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
@@ -78,6 +80,50 @@ class Trainer:
         samples = TensorDict(
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
+
+        # Add padding to match the biggest env.
+        states = samples["states"]
+        batch_size, n_sides, board_size, board_size = states.shape
+
+        states = torch.cat(
+            (
+                states,
+                torch.zeros(
+                    (batch_size, n_sides, self.max_board_size - board_size, board_size),
+                    dtype=torch.long,
+                    device=self.device,
+                ),
+            ),
+            dim=2,
+        )
+        states = torch.cat(
+            (
+                states,
+                torch.zeros(
+                    (
+                        batch_size,
+                        n_sides,
+                        self.max_board_size,
+                        self.max_board_size - board_size,
+                    ),
+                    dtype=torch.long,
+                    device=self.device,
+                ),
+            ),
+            dim=3,
+        )
+        paddings = torch.zeros(
+            (batch_size, self.max_board_size, self.max_board_size),
+            dtype=torch.bool,
+            device=self.device,
+        )
+        paddings[
+            :, self.max_board_size - board_size :, self.max_board_size - board_size :
+        ] = True
+
+        samples["states"] = states
+        samples["paddings"] = paddings
+
         self.replay_buffer.extend(samples)
 
     def do_batch_update(self, batch: TensorDict):
@@ -124,7 +170,8 @@ class Trainer:
             mode=mode,
         ) as run:
             self.model.to(self.device)
-            self.env.reset()
+            for env in self.envs:
+                env.reset()
 
             if not disable_logs:
                 if isinstance(self.model, DDP):
@@ -141,7 +188,11 @@ class Trainer:
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
                 self.model.train()
-                self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
+
+                for env in self.envs:
+                    self.do_rollouts(
+                        env, sampling_mode="softmax", disable_logs=disable_logs
+                    )
 
                 for batch in tqdm(
                     self.replay_buffer,
@@ -159,20 +210,20 @@ class Trainer:
 
                 if i % save_every == 0 and not disable_logs:
                     self.save_model("model.pt")
-                    self.env.save_sample("sample.gif")
+                    self.envs[-1].save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
         self.model.eval()
 
-        matches = self.env.matches / self.env.best_matches_possible
+        matches = self.envs[-1].matches / self.envs[-1].best_matches_possible
         metrics["matches/mean"] = matches.mean()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu())
         metrics["matches/best"] = (
-            self.env.best_matches_found / self.env.best_matches_possible
+            self.envs[-1].best_matches_found / self.envs[-1].best_matches_possible
         )
-        metrics["matches/total-won"] = self.env.total_won
+        metrics["matches/total-won"] = self.envs[-1].total_won
 
         # Compute losses.
         batch = self.replay_buffer.sample()
@@ -180,7 +231,7 @@ class Trainer:
         metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
-        metrics["metrics/n_steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        metrics["metrics/n_steps"] = wandb.Histogram(self.envs[-1].n_steps.cpu())
 
         # Compute the gradient mean and maximum values.
         metrics["loss/total"].backward()
@@ -197,7 +248,7 @@ class Trainer:
             if isinstance(value, torch.Tensor):
                 metrics[name] = value.cpu().item()
 
-        self.env.save_best_env("board.png")
+        self.envs[-1].save_best_env("board.png")
         metrics["best-board"] = wandb.Image("board.png")
 
         return metrics

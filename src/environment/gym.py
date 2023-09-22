@@ -59,6 +59,7 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instances: torch.Tensor,
+        random_instances: bool,
         device: str,
         seed: int = 0,
         sample_size: int = 40,
@@ -81,6 +82,7 @@ class EternityEnv(gym.Env):
 
         super().__init__()
         self.instances = instances.to(device)
+        self.random_instances = random_instances
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -136,10 +138,10 @@ class EternityEnv(gym.Env):
                 start=0, end=self.batch_size, device=self.device
             )
 
-        # # Generate new random instances.
-        # self.instances[scramble_ids] = random_perfect_instances(
-        #     self.board_size, self.n_classes, len(scramble_ids), self.rng
-        # )
+        if self.random_instances:
+            self.instances[scramble_ids] = random_perfect_instances(
+                self.board_size, self.n_classes, len(scramble_ids), self.rng
+            )
 
         self.scramble_instances(scramble_ids)
 
@@ -165,7 +167,7 @@ class EternityEnv(gym.Env):
         Args:
             actions: Batch of actions to apply.
                 Long tensor of shape of [batch_size, actions]
-                where actions are a tuple (tile_id_1, tile_id_2, shift_1, shift_2).
+                where actions are tuples (tile_id_1, tile_id_2, shift_1, shift_2).
 
         ---
         Returns:
@@ -456,7 +458,7 @@ class EternityEnv(gym.Env):
     ):
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, device, seed)
+        return cls(instances, random_instances=False, device=device, seed=seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:

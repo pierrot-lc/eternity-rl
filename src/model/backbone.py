@@ -51,9 +51,12 @@ class Backbone(nn.Module):
             num_layers=n_layers,
         )
 
+        self.flatten_padding = Rearrange("b h w -> (h w) b")
+
     def forward(
         self,
         tiles: torch.Tensor,
+        padding: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -61,6 +64,8 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
+            padding: Padding tiles that should be ignored by the transformer encoder.
+                Tensor of shape [batch_size, board_height, board_width].
 
         ---
         Returns:
@@ -68,5 +73,6 @@ class Backbone(nn.Module):
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
         tokens = self.embed_board(tiles)
-        tokens = self.transformer_layers(tokens)
+        padding = self.flatten_padding(padding)
+        tokens = self.transformer_layers(tokens, mask=padding)
         return tokens
