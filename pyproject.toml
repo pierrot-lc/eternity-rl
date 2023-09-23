@@ -1,7 +1,7 @@
 
 [project]
 name = "eternity-rl"
-version = "0.1.0"
+version = "1.0.0"
 description = "Learn to play the Eternity game using RL."
 authors = [
     {name = "Pierrot LC", email = "pstmrtem@outlook.com"},
