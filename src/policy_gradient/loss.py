@@ -152,7 +152,7 @@ class PPOLoss(nn.Module):
         metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
         metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
-        metrics["loss/entropy"] = torch.relu(0.5 - entropies).mean()
+        metrics["loss/entropy"] = torch.relu(1.0 - entropies).mean()
         metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
 
         metrics["loss/total"] = (

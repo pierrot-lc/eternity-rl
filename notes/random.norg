@@ -4,7 +4,7 @@ description: Some random thoughts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-09-23T00:33:54+0100
+updated: 2023-09-23
 version: 1.1.1
 @end
 
@@ -37,7 +37,7 @@ version: 1.1.1
 
 * Actor/critic
   My implementation seems to not be working so well, or at most to do
-  equally as the base implementation. It may be because the current reward
+  as the base implementation. It may be because the current reward
   estimation is already good enough thanks to the high batch MC sampling.
 
   It also introduces a lot of hyperparameters to tune, so I decided to
@@ -61,6 +61,12 @@ version: 1.1.1
 
   The new reward called `max-cut` provides a more stable training, and is
   way more sample efficient.
+
+  *The reward should be designed so that the model is not locked in a local minimum of
+  the puzzle.*
+  - $current_matches - previous_matches$: this makes it hard for the model to degrade a solution in order to improve it.
+  - $max(matches - previous_max_matches, 0)$: this is a good reward, as it promotes only new best solutions
+    and does not penalize the model for degrading a solution.
 
 * Replay buffer
   The replay buffer is primarily used to be more sample efficient by reusing past

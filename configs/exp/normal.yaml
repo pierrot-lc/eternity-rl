@@ -32,11 +32,11 @@ loss:
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.50
+  scramble_size: 0.30
 
 iterations:
   rollouts: 60
-  epochs: 2000
+  epochs: 10000
   batch_size: 1000
 
 checkpoint:

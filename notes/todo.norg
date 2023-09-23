@@ -3,10 +3,13 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-09-23T00:37:12+0100
+updated: 2023-09-23
 @end
 
 * TODO
+  - Better reward that does not penalyze the model when degrading a solution.
+  - Add an optionnal memory for the model, which should makes it easier for the critic
+    to predict the reward.
   - Properly test if a splitted actor and critic network is useful.
   - Add new wandb metrics to follow the model uncertainty over its actions.
   - Do episode-only training.
