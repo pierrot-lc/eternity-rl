@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import epsilon_sampling, epsilon_greedy_sampling
+from ..sampling import epsilon_greedy_sampling, epsilon_sampling
 from .backbone import Backbone
 from .heads import EstimateValue, SelectSide, SelectTile
 
@@ -74,7 +74,7 @@ class Policy(nn.Module):
         tiles: torch.Tensor,
         matches: torch.Tensor,
         best_matches: torch.Tensor,
-        sampling_mode: str = "softmax",
+        sampling_mode: Optional[str] = "softmax",
         sampled_actions: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -103,6 +103,9 @@ class Policy(nn.Module):
             values: The predicted values.
                 Shape of [batch_size,].
         """
+        assert not (
+            sampling_mode is None and sampled_actions is None
+        ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
         tiles = self.backbone(tiles, matches, best_matches)

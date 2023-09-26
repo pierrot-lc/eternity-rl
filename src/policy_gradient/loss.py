@@ -111,7 +111,7 @@ class PPOLoss(nn.Module):
             batch["states"],
             batch["matches"],
             batch["best-matches"],
-            "sample",
+            None,
             batch["actions"],
         )
 

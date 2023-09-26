@@ -65,6 +65,13 @@ class Trainer:
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
+        assert torch.all(traces["rewards"].sum(dim=1) <= 1), "Some rewards are > 1."
+        assert (
+            self.replay_buffer._storage.max_size
+            == traces["masks"].sum().item()
+            == self.env.batch_size * self.rollouts
+        ), "Some samples are missing."
+
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
         masks = einops.rearrange(traces["masks"], "b d -> (b d)")

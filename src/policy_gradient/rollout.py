@@ -35,22 +35,17 @@ def rollout(
         sample["states"] = env.render()
         sample["matches"] = env.matches
         sample["best-matches"] = env.best_matches
-        (
-            sample["actions"],
-            sample["log-probs"],
-            _,
-            sample["values"],
-        ) = model(
-            sample["states"], sample["matches"], sample["best-matches"], sampling_mode
+
+        sample["actions"], sample["log-probs"], _, sample["values"] = model(
+            sample["states"],
+            sample["matches"],
+            sample["best-matches"],
+            sampling_mode,
         )
 
-        (
-            _,
-            sample["rewards"],
-            sample["dones"],
-            sample["truncated"],
-            infos,
-        ) = env.step(sample["actions"])
+        _, sample["rewards"], sample["dones"], sample["truncated"], infos = env.step(
+            sample["actions"]
+        )
 
         *_, sample["next-values"] = model(
             env.render(), env.matches, env.best_matches, sampling_mode
