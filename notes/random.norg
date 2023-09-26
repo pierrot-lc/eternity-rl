@@ -4,7 +4,7 @@ description: Some random thoughts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-09-20T22:01:22+0100
+updated: 2023-09-23T00:33:54+0100
 version: 1.1.1
 @end
 
@@ -108,6 +108,15 @@ version: 1.1.1
 
   The reward is also very important. A good reward shaping will make it easier
   for the model to quickly understand what the goal is.
+
+  *Hypothesis: this training is very prone to local minimas. Once the board is almost
+  complete, the model is having a really hard time to finish the puzzle because most of
+  the time it means that many pieces have to be swapped around. Doing so is asking for
+  a lot of exploration, arguably too much exploration.*
+
+  To avoid local minimas, the model should build the board from scratch everytime
+  and only be given the reward at the end of the episode (like I used to to at the
+  beginning.
 
 * About on-policy learning and exploration
   It's harder to implement a forced exploration or exploitation when using an on-policy
