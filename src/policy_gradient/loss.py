@@ -108,7 +108,11 @@ class PPOLoss(nn.Module):
         metrics = dict()
 
         _, logprobs, entropies, values = model(
-            batch["states"], "sample", batch["actions"]
+            batch["states"],
+            batch["matches"],
+            batch["best-matches"],
+            "sample",
+            batch["actions"],
         )
 
         # Compute the joint log probability of the actions.

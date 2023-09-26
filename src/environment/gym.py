@@ -93,12 +93,12 @@ class EternityEnv(gym.Env):
 
         # Dynamic infos.
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
-        self.max_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
+        self.best_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
             (N_SIDES, self.board_size, self.board_size), dtype=torch.long
         )
-        self.best_matches_found = 0
+        self.best_matches_ever = 0
         self.total_won = 0
         self.current_sample_step = 0
         self.sample_size = sample_size
@@ -146,7 +146,7 @@ class EternityEnv(gym.Env):
         self.terminated[scramble_ids] = (
             self.matches[scramble_ids] == self.best_matches_possible
         )
-        self.max_matches[scramble_ids] = self.matches[scramble_ids]
+        self.best_matches[scramble_ids] = self.matches[scramble_ids]
         self.n_steps[scramble_ids] = 0
 
         # Do not reset the best env found, only updates it.
@@ -201,10 +201,9 @@ class EternityEnv(gym.Env):
         self.game_sample[self.current_sample_step] = self.instances[0].cpu()
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
-        rewards = matches - self.max_matches
-        rewards *= (rewards > 0).long()  # Remove negative rewards.
-        self.max_matches = (
-            torch.stack((self.max_matches, matches), dim=1).max(dim=1).values
+        rewards = torch.relu(matches - self.best_matches) / self.best_matches_possible
+        self.best_matches = (
+            torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
         )
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
@@ -373,13 +372,13 @@ class EternityEnv(gym.Env):
         best_env_id = self.matches.argmax()
         best_matches_found = self.matches[best_env_id].cpu().item()
 
-        if self.best_matches_found < best_matches_found:
-            self.best_matches_found = best_matches_found
+        if self.best_matches_ever < best_matches_found:
+            self.best_matches_ever = best_matches_found
             self.best_board = self.instances[best_env_id].cpu()
 
     def save_best_env(self, filepath: Path | str):
         """Render the best environment and save it on disk."""
-        draw_instance(self.best_board.numpy(), self.best_matches_found, filepath)
+        draw_instance(self.best_board.numpy(), self.best_matches_ever, filepath)
 
     def save_sample(self, filepath: Path | str):
         """Render the current game sample and save it as a GIF on disk."""

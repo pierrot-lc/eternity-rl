@@ -33,12 +33,16 @@ def rollout(
         sample = dict()
 
         sample["states"] = env.render()
+        sample["matches"] = env.matches
+        sample["best-matches"] = env.best_matches
         (
             sample["actions"],
             sample["log-probs"],
             _,
             sample["values"],
-        ) = model(sample["states"], sampling_mode)
+        ) = model(
+            sample["states"], sample["matches"], sample["best-matches"], sampling_mode
+        )
 
         (
             _,
@@ -48,7 +52,9 @@ def rollout(
             infos,
         ) = env.step(sample["actions"])
 
-        *_, sample["next-values"] = model(env.render(), sampling_mode)
+        *_, sample["next-values"] = model(
+            env.render(), env.matches, env.best_matches, sampling_mode
+        )
 
         for name, tensor in sample.items():
             traces[name].append(tensor)

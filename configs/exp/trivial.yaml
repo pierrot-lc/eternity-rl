@@ -32,7 +32,7 @@ loss:
 
 trainer:
   clip_value: 1.000
-  scramble_size: 0.00
+  scramble_size: 0.50
 
 iterations:
   rollouts: 10

@@ -170,7 +170,7 @@ class Trainer:
         metrics["matches/mean"] = matches.mean()
         metrics["matches/hist"] = wandb.Histogram(matches.cpu())
         metrics["matches/best"] = (
-            self.env.best_matches_found / self.env.best_matches_possible
+            self.env.best_matches_ever / self.env.best_matches_possible
         )
         metrics["matches/total-won"] = self.env.total_won
 

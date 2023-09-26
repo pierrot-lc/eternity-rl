@@ -5,6 +5,7 @@ from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
+from .integer_encoding import IntegerEncoding
 
 
 class Backbone(nn.Module):
@@ -40,6 +41,8 @@ class Backbone(nn.Module):
             Rearrange("b h w e -> (h w) b e"),
         )
 
+        self.matches_encoding = IntegerEncoding(embedding_dim)
+
         self.transformer_layers = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=embedding_dim,
@@ -54,6 +57,8 @@ class Backbone(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
+        matches: torch.Tensor,
+        best_matches: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -61,12 +66,23 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
+            matches: The game current matches.
+                Long tensor of shape [batch_size,].
+            best_matches: The game best matches.
+                Long tensor of shape [batch_size,].
 
         ---
         Returns:
             The embedded game state.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
-        tokens = self.embed_board(tiles)
+        matches = self.matches_encoding(matches)
+        best_matches = self.matches_encoding(best_matches)
+        tiles = self.embed_board(tiles)
+
+        tokens = torch.cat(
+            (matches.unsqueeze(0), best_matches.unsqueeze(0), tiles),
+            dim=0,
+        )
         tokens = self.transformer_layers(tokens)
-        return tokens
+        return tokens[2:]
