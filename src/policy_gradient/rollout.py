@@ -33,8 +33,8 @@ def rollout(
         sample = dict()
 
         sample["states"] = env.render()
-        sample["matches"] = env.matches
-        sample["best-matches"] = env.best_matches
+        sample["matches"] = env.n_steps
+        sample["best-matches"] = env.best_matches * 0
 
         sample["actions"], sample["log-probs"], _, sample["values"] = model(
             sample["states"],

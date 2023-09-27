@@ -59,6 +59,7 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instances: torch.Tensor,
+        episode_length: int,
         device: str,
         seed: int = 0,
         sample_size: int = 40,
@@ -81,6 +82,7 @@ class EternityEnv(gym.Env):
 
         super().__init__()
         self.instances = instances.to(device)
+        self.episode_length = episode_length
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -93,7 +95,9 @@ class EternityEnv(gym.Env):
 
         # Dynamic infos.
         self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
-        self.best_matches = torch.zeros(self.batch_size, dtype=torch.long, device=device)
+        self.best_matches = torch.zeros(
+            self.batch_size, dtype=torch.long, device=device
+        )
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
             (N_SIDES, self.board_size, self.board_size), dtype=torch.long
@@ -201,14 +205,16 @@ class EternityEnv(gym.Env):
         self.game_sample[self.current_sample_step] = self.instances[0].cpu()
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
-        rewards = torch.relu(matches - self.best_matches) / self.best_matches_possible
         self.best_matches = (
             torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
         )
         self.terminated |= matches == self.best_matches_possible
         infos["just-won"] = self.terminated & ~previously_terminated
         self.total_won += infos["just-won"].sum().cpu().item()
-        truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
+        truncated = self.n_steps >= self.episode_length
+        rewards = (self.best_matches / self.best_matches_possible) * (
+            truncated | self.terminated
+        ).float()
 
         return self.render(), rewards, self.terminated.clone(), truncated, infos
 
@@ -449,13 +455,14 @@ class EternityEnv(gym.Env):
     def from_file(
         cls,
         instance_path: Path,
+        episode_length: int,
         batch_size: int,
         device: str,
         seed: int = 0,
     ):
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, device, seed)
+        return cls(instances, episode_length, device, seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:
