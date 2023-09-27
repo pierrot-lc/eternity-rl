@@ -54,18 +54,13 @@ class Trainer:
             scramble_ids = scramble_ids[: self.scramble_size]
             self.env.reset(scramble_ids=scramble_ids)
 
-        if self.env.terminated.sum() > 0:
-            to_reset = torch.arange(self.env.batch_size, device=self.device)
-            to_reset = to_reset[self.env.terminated]
-            self.env.reset(scramble_ids=to_reset)
-
         traces = rollout(
             self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
-        assert torch.all(traces["rewards"].sum(dim=1) <= 1), "Some rewards are > 1."
+        assert torch.all(traces["rewards"].sum(dim=1) <= 1), "Some returns are > 1."
         assert (
             self.replay_buffer._storage.max_size
             == traces["masks"].sum().item()

@@ -94,7 +94,6 @@ class EternityEnv(gym.Env):
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
-        self.terminated = torch.zeros(self.batch_size, dtype=torch.bool, device=device)
         self.best_matches = torch.zeros(
             self.batch_size, dtype=torch.long, device=device
         )
@@ -147,9 +146,6 @@ class EternityEnv(gym.Env):
 
         self.scramble_instances(scramble_ids)
 
-        self.terminated[scramble_ids] = (
-            self.matches[scramble_ids] == self.best_matches_possible
-        )
         self.best_matches[scramble_ids] = self.matches[scramble_ids]
         self.n_steps[scramble_ids] = 0
 
@@ -186,14 +182,8 @@ class EternityEnv(gym.Env):
         """
         infos = dict()
 
-        # Remove actions for already terminated environments.
-        actions[self.terminated] = 0
-        self.n_steps[~self.terminated] += 1
-
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
-
-        previously_terminated = self.terminated.clone()
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
@@ -208,15 +198,13 @@ class EternityEnv(gym.Env):
         self.best_matches = (
             torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
         )
-        self.terminated |= matches == self.best_matches_possible
-        infos["just-won"] = self.terminated & ~previously_terminated
+        infos["just-won"] = matches == self.best_matches_possible
+        terminated = infos["just-won"] | (self.n_steps >= self.episode_length)
         self.total_won += infos["just-won"].sum().cpu().item()
-        truncated = self.n_steps >= self.episode_length
-        rewards = (self.best_matches / self.best_matches_possible) * (
-            truncated | self.terminated
-        ).float()
+        truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
+        rewards = (self.best_matches / self.best_matches_possible) * terminated.float()
 
-        return self.render(), rewards, self.terminated.clone(), truncated, infos
+        return self.render(), rewards, terminated, truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
