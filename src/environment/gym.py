@@ -204,8 +204,8 @@ class EternityEnv(gym.Env):
         dones = infos["just-won"] | (self.n_steps >= self.episode_length)
         self.total_won += infos["just-won"].sum().cpu().item()
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        rewards = (matches / self.best_matches_possible) * dones.float()
-        # rewards = (matches - previous_matches) / self.best_matches_possible
+        # rewards = (matches / self.best_matches_possible) * dones.float()
+        rewards = (matches - previous_matches) / self.best_matches_possible
 
         return self.render(), rewards, dones, truncated, infos
 
