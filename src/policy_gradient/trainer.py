@@ -26,7 +26,7 @@ class Trainer:
         model: Policy | DDP,
         loss: PPOLoss,
         optimizer: optim.Optimizer,
-        scheduler: optim.lr_scheduler.LinearLR,
+        scheduler: optim.lr_scheduler.LRScheduler,
         replay_buffer: ReplayBuffer,
         clip_value: float,
         scramble_size: float,

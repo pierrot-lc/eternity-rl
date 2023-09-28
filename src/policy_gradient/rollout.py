@@ -33,22 +33,22 @@ def rollout(
         sample = dict()
 
         sample["states"] = env.render()
-        sample["matches"] = env.n_steps
-        sample["best-matches"] = env.best_matches * 0
+        sample["conditionals"] = env.n_steps
 
         sample["actions"], sample["log-probs"], _, sample["values"] = model(
             sample["states"],
-            sample["matches"],
-            sample["best-matches"],
+            sample["conditionals"],
             sampling_mode,
         )
 
-        _, sample["rewards"], sample["dones"], sample["truncated"], infos = env.step(
+        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
             sample["actions"]
         )
 
         *_, sample["next-values"] = model(
-            env.render(), env.matches, env.best_matches, sampling_mode
+            env.render(),
+            env.n_steps,
+            sampling_mode,
         )
 
         for name, tensor in sample.items():
@@ -69,7 +69,7 @@ def rollout(
 def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     """Split the samples that have been reset during the rollouts.
     For each element of the batch, if at some point the trace is either
-    done or truncated, the rollout is splitted.
+    done or truncated, the rollout is split.
 
     ---
     Args:
@@ -83,10 +83,9 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
 
     ---
     Returns:
-        The splitted traces.
+        The split traces.
             The traces are augmented with a "masks" entry.
-            A sample is masked if it is the last state of a done episode,
-            or if it is some padding.
+            A sample is masked if it is some padding.
     """
     resets = traces["dones"] | traces["truncated"]
     resets[:, -1] = True
@@ -96,7 +95,7 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     device = resets.device
 
     # NOTE: The construction of the mask is done as follows:
-    # 1. Find the length of each splitted rollouts.
+    # 1. Find the length of each split rollouts.
     # 2. Fill the mask with "True" at the end of the each rollouts.
     # 3. Use `cummax` to propagate the "True" until the start of the rollouts.
     masks = torch.zeros(
@@ -109,11 +108,11 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     reset_indices = einops.repeat(reset_indices, "s -> b s", b=batch_size)
     reset_indices = reset_indices[resets]  # Shape of [split_batch_size].
     shifted_reset_indices = torch.roll(reset_indices, shifts=1, dims=(0,))
-    episode_lenghts = (reset_indices - shifted_reset_indices) % steps
+    episodes_length = (reset_indices - shifted_reset_indices) % steps
 
-    episode_lenghts -= 1  # Get indices.
-    episode_lenghts[episode_lenghts == -1] = steps - 1  # `-1` is not valid for scatter.
-    masks.scatter_(1, episode_lenghts.unsqueeze(1), 1)
+    episodes_length -= 1  # Get indices.
+    episodes_length[episodes_length == -1] = steps - 1  # `-1` is not valid for scatter.
+    masks.scatter_(1, episodes_length.unsqueeze(1), 1)
 
     masks = torch.roll(masks, shifts=1, dims=(1,))
     masks[:, 0] = False

@@ -109,8 +109,7 @@ class PPOLoss(nn.Module):
 
         _, logprobs, entropies, values = model(
             batch["states"],
-            batch["matches"],
-            batch["best-matches"],
+            batch["conditionals"],
             None,
             batch["actions"],
         )

@@ -41,7 +41,7 @@ class Backbone(nn.Module):
             Rearrange("b h w e -> (h w) b e"),
         )
 
-        self.matches_encoding = IntegerEncoding(embedding_dim)
+        self.conditional_encoding = IntegerEncoding(embedding_dim)
 
         self.transformer_layers = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
@@ -57,8 +57,7 @@ class Backbone(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        matches: torch.Tensor,
-        best_matches: torch.Tensor,
+        conditionals: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -66,9 +65,8 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            matches: The game current matches.
-                Long tensor of shape [batch_size,].
-            best_matches: The game best matches.
+            conditionals: Some contextual informations. Typically you can provide the
+                current number of steps of each game.
                 Long tensor of shape [batch_size,].
 
         ---
@@ -76,13 +74,12 @@ class Backbone(nn.Module):
             The embedded game state.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
-        matches = self.matches_encoding(matches)
-        best_matches = self.matches_encoding(best_matches)
+        conditionals = self.conditional_encoding(conditionals)
         tiles = self.embed_board(tiles)
 
         tokens = torch.cat(
-            (matches.unsqueeze(0), best_matches.unsqueeze(0), tiles),
+            (conditionals.unsqueeze(0), tiles),
             dim=0,
         )
         tokens = self.transformer_layers(tokens)
-        return tokens[2:]
+        return tokens[1:]

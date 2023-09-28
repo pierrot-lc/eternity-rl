@@ -56,8 +56,8 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        matches = torch.zeros(1, dtype=torch.long, device=device)
-        return (tiles, matches, matches)
+        conditionals = torch.zeros(1, dtype=torch.long, device=device)
+        return (tiles, conditionals)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -72,8 +72,7 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        matches: torch.Tensor,
-        best_matches: torch.Tensor,
+        conditionals: torch.Tensor,
         sampling_mode: Optional[str] = "softmax",
         sampled_actions: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -83,9 +82,8 @@ class Policy(nn.Module):
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            matches: The game current matches.
-                Long tensor of shape [batch_size,].
-            best_matches: The game best matches.
+            conditionals: Some contextual informations. Typically you can provide the
+                current number of steps of each game.
                 Long tensor of shape [batch_size,].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
@@ -108,7 +106,7 @@ class Policy(nn.Module):
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
-        tiles = self.backbone(tiles, matches, best_matches)
+        tiles = self.backbone(tiles, conditionals)
 
         queries = repeat(self.value_query, "e -> b e", b=batch_size)
         values = self.estimate_value(tiles, queries)

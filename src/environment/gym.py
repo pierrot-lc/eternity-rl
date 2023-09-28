@@ -173,7 +173,7 @@ class EternityEnv(gym.Env):
                 Shape of [batch_size, N_SIDES, size, size].
             rewards: The reward of the environments.
                 Shape of [batch_size,].
-            terminated: Whether the environments are terminated (won).
+            dones: Whether the environments are terminated (won or end of episode).
                 Shape of [batch_size,].
             truncated: Whether the environments are truncated (max steps reached).
                 Shape of [batch_size,].
@@ -184,6 +184,8 @@ class EternityEnv(gym.Env):
 
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
+
+        previous_matches = self.matches
 
         self.roll_tiles(tiles_id_1, shifts_1)
         self.roll_tiles(tiles_id_2, shifts_2)
@@ -199,12 +201,13 @@ class EternityEnv(gym.Env):
             torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
         )
         infos["just-won"] = matches == self.best_matches_possible
-        terminated = infos["just-won"] | (self.n_steps >= self.episode_length)
+        dones = infos["just-won"] | (self.n_steps >= self.episode_length)
         self.total_won += infos["just-won"].sum().cpu().item()
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        rewards = (self.best_matches / self.best_matches_possible) * terminated.float()
+        rewards = (matches / self.best_matches_possible) * dones.float()
+        # rewards = (matches - previous_matches) / self.best_matches_possible
 
-        return self.render(), rewards, terminated, truncated, infos
+        return self.render(), rewards, dones, truncated, infos
 
     def roll_tiles(self, tile_ids: torch.Tensor, shifts: torch.Tensor):
         """Rolls tiles at the given ids for the given shifts.
