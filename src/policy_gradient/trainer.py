@@ -5,13 +5,12 @@ from typing import Any
 import einops
 import torch
 import torch.optim as optim
+import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import EternityEnv
 from ..model import Policy
@@ -170,9 +169,11 @@ class Trainer:
 
         matches = self.env.matches / self.env.best_matches_possible
         metrics["matches/mean"] = matches.mean()
-        metrics["matches/hist"] = wandb.Histogram(matches.cpu())
         metrics["matches/best"] = (
             self.env.best_matches_ever / self.env.best_matches_possible
+        )
+        metrics["matches/rolling"] = (
+            self.env.rolling_matches / self.env.best_matches_possible
         )
         metrics["matches/total-won"] = self.env.total_won
 
@@ -185,11 +186,18 @@ class Trainer:
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
 
         # Compute the gradient mean and maximum values.
+        # Also computes the weight absolute mean and maximum values.
         metrics["loss/total"].backward()
-        grads = []
+        weights, grads = [], []
         for p in self.model.parameters():
+            weights.append(p.data.abs().mean().item())
+
             if p.grad is not None:
                 grads.append(p.grad.data.abs().mean().item())
+
+        metrics["global-weights/mean"] = sum(weights) / (len(weights) + 1)
+        metrics["global-weights/max"] = max(weights)
+        metrics["global-weights/hist"] = wandb.Histogram(weights)
 
         metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
         metrics["global-gradients/max"] = max(grads)

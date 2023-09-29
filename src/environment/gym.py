@@ -97,6 +97,7 @@ class EternityEnv(gym.Env):
         self.best_matches = torch.zeros(
             self.batch_size, dtype=torch.long, device=device
         )
+        self.rolling_matches = torch.zeros(1, dtype=torch.float, device=device)
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board = torch.zeros(
             (N_SIDES, self.board_size, self.board_size), dtype=torch.long
@@ -185,7 +186,7 @@ class EternityEnv(gym.Env):
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
 
-        previous_matches = self.matches
+        # previous_matches = self.matches.clone()
         self.n_steps += 1
 
         self.roll_tiles(tiles_id_1, shifts_1)
@@ -200,6 +201,9 @@ class EternityEnv(gym.Env):
 
         self.best_matches = (
             torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
+        )
+        self.rolling_matches = (
+            0.99 * self.rolling_matches + 0.01 * matches.float().mean()
         )
         infos["just-won"] = matches == self.best_matches_possible
         dones = infos["just-won"] | (self.n_steps >= self.episode_length)
