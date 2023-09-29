@@ -182,7 +182,7 @@ class Trainer:
         metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
-        metrics["metrics/n_steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
 
         # Compute the gradient mean and maximum values.
         metrics["loss/total"].backward()
