@@ -60,10 +60,12 @@ def rollout(
             env.reset(reset_ids)
 
     # To [batch_size, steps, ...].
+    # BUG: When steps >= 128 the stack creates anomalies in the tensor's values.
+    samples = dict()
     for name, tensors in traces.items():
-        traces[name] = torch.stack(tensors, dim=1)
+        samples[name] = torch.stack(tensors, dim=1)
 
-    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+    return TensorDict(samples, batch_size=samples["states"].shape[0], device=env.device)
 
 
 def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:

@@ -187,6 +187,7 @@ class Trainer:
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
+        self.model.zero_grad()
         metrics["loss/total"].backward()
         weights, grads = [], []
         for p in self.model.parameters():
@@ -202,10 +203,11 @@ class Trainer:
         metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
         metrics["global-gradients/max"] = max(grads)
         metrics["global-gradients/hist"] = wandb.Histogram(grads)
+        self.model.zero_grad()
 
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):
-                metrics[name] = value.cpu().item()
+                metrics[name] = value.item()
 
         self.env.save_best_env("board.png")
         metrics["best-board"] = wandb.Image("board.png")

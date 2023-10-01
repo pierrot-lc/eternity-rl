@@ -3,8 +3,8 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 2000
-  episode_length: 80
+  batch_size: 1000
+  episode_length: 256
 
 model:
   embedding_dim: 32
@@ -28,16 +28,16 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
-  value_weight: 1.0e-0
-  entropy_weight: 1.0e-3
+  value_weight: 1.0e-1
+  entropy_weight: 1.0e-1
 
 trainer:
   clip_value: 1.0
   scramble_size: 0.00
 
 iterations:
-  rollouts: 80
-  epochs: 10000
+  rollouts: 256
+  epochs: 20000
   batch_size: 2000
 
 checkpoint:
