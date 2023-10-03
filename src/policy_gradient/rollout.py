@@ -27,47 +27,78 @@ def rollout(
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
     """
-    traces = defaultdict(list)
+    state_shape = env.render().shape
+    traces = {
+        "states": torch.zeros(
+            (env.batch_size, steps, *state_shape[1:]),
+            dtype=torch.long,
+            device=env.device,
+        ),
+        "conditionals": torch.zeros(
+            (env.batch_size, steps), dtype=torch.long, device=env.device
+        ),
+        "actions": torch.zeros(
+            (env.batch_size, steps, 4), dtype=torch.long, device=env.device
+        ),
+        "log-probs": torch.zeros(
+            (env.batch_size, steps, 4), dtype=torch.float, device=env.device
+        ),
+        "values": torch.zeros(
+            (env.batch_size, steps), dtype=torch.float, device=env.device
+        ),
+        "next-values": torch.zeros(
+            (env.batch_size, steps), dtype=torch.float, device=env.device
+        ),
+        "rewards": torch.zeros(
+            (env.batch_size, steps), dtype=torch.float, device=env.device
+        ),
+        "dones": torch.zeros(
+            (env.batch_size, steps), dtype=torch.bool, device=env.device
+        ),
+        "truncated": torch.zeros(
+            (env.batch_size, steps), dtype=torch.bool, device=env.device
+        ),
+    }
 
-    for _ in tqdm(range(steps), desc="Rollout", leave=False, disable=disable_logs):
-        sample = dict()
+    for step_id in tqdm(
+        range(steps), desc="Rollout", leave=False, disable=disable_logs
+    ):
+        traces["states"][:, step_id] = env.render()
+        traces["conditionals"][:, step_id] = env.n_steps
 
-        sample["states"] = env.render()
-        sample["conditionals"] = env.n_steps
-
-        sample["actions"], sample["log-probs"], _, sample["values"] = model(
-            sample["states"],
-            sample["conditionals"],
+        (
+            traces["actions"][:, step_id],
+            traces["log-probs"][:, step_id],
+            _,
+            traces["values"][:, step_id],
+        ) = model(
+            traces["states"][:, step_id],
+            traces["conditionals"][:, step_id],
             sampling_mode,
         )
 
-        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
-            sample["actions"]
-        )
+        (
+            _,
+            traces["rewards"][:, step_id],
+            traces["dones"][:, step_id],
+            traces["truncated"][:, step_id],
+            _,
+        ) = env.step(traces["actions"][:, step_id])
 
-        *_, sample["next-values"] = model(
+        *_, traces["next-values"][:, step_id] = model(
             env.render(),
             env.n_steps,
             sampling_mode,
         )
 
-        for name, tensor in sample.items():
-            traces[name].append(tensor)
-
-        if (sample["dones"] | sample["truncated"]).sum() > 0:
+        if (traces["dones"][:, step_id] | traces["truncated"][:, step_id]).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
-            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
+            reset_ids = reset_ids[
+                traces["dones"][:, step_id] | traces["truncated"][:, step_id]
+            ]
             env.reset(reset_ids)
 
-    # To [batch_size, steps, ...].
-    for name, tensors in traces.items():
-        # BUG: When steps >= 128 the stack creates anomalies in the tensor's values.
-        # This does not happen when stacking on CPU, hence we offload on CPU before stacking.
-        tensors = [samples.cpu() for samples in tensors]
-        tensors = torch.stack(tensors, dim=1)
-        traces[name] = tensors.to(env.device)
-
-    return TensorDict(tensors, batch_size=tensors["states"].shape[0], device=env.device)
+    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 
 
 def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
