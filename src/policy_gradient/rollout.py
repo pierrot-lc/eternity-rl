@@ -27,76 +27,43 @@ def rollout(
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
     """
-    state_shape = env.render().shape
-    traces = {
-        "states": torch.zeros(
-            (env.batch_size, steps, *state_shape[1:]),
-            dtype=torch.long,
-            device=env.device,
-        ),
-        "conditionals": torch.zeros(
-            (env.batch_size, steps), dtype=torch.long, device=env.device
-        ),
-        "actions": torch.zeros(
-            (env.batch_size, steps, 4), dtype=torch.long, device=env.device
-        ),
-        "log-probs": torch.zeros(
-            (env.batch_size, steps, 4), dtype=torch.float, device=env.device
-        ),
-        "values": torch.zeros(
-            (env.batch_size, steps), dtype=torch.float, device=env.device
-        ),
-        "next-values": torch.zeros(
-            (env.batch_size, steps), dtype=torch.float, device=env.device
-        ),
-        "rewards": torch.zeros(
-            (env.batch_size, steps), dtype=torch.float, device=env.device
-        ),
-        "dones": torch.zeros(
-            (env.batch_size, steps), dtype=torch.bool, device=env.device
-        ),
-        "truncated": torch.zeros(
-            (env.batch_size, steps), dtype=torch.bool, device=env.device
-        ),
-    }
+    traces = defaultdict(list)
 
     for step_id in tqdm(
         range(steps), desc="Rollout", leave=False, disable=disable_logs
     ):
-        traces["states"][:, step_id] = env.render()
-        traces["conditionals"][:, step_id] = env.n_steps
+        sample = dict()
+        sample["states"] = env.render()
+        sample["conditionals"] = env.n_steps
 
-        (
-            traces["actions"][:, step_id],
-            traces["log-probs"][:, step_id],
-            _,
-            traces["values"][:, step_id],
-        ) = model(
-            traces["states"][:, step_id],
-            traces["conditionals"][:, step_id],
-            sampling_mode,
+        sample["actions"], sample["log-probs"], _, sample["values"] = model(
+            sample["states"], sample["conditionals"], sampling_mode
         )
 
-        (
-            _,
-            traces["rewards"][:, step_id],
-            traces["dones"][:, step_id],
-            traces["truncated"][:, step_id],
-            _,
-        ) = env.step(traces["actions"][:, step_id])
+        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
+            sample["actions"]
+        )
 
-        *_, traces["next-values"][:, step_id] = model(
+        *_, sample["next-values"] = model(
             env.render(),
             env.n_steps,
             sampling_mode,
         )
 
-        if (traces["dones"][:, step_id] | traces["truncated"][:, step_id]).sum() > 0:
+        if (sample["dones"] | sample["truncated"]).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
-            reset_ids = reset_ids[
-                traces["dones"][:, step_id] | traces["truncated"][:, step_id]
-            ]
+            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
             env.reset(reset_ids)
+
+        # BUG: There's an issue with cuda that hallucinates values when stacking
+        # more than 128 tensors. To avoid this issue, we have to offload the tensors
+        # so that we can stack on CPU.
+        for name, tensor in sample.items():
+            traces[name].append(tensor.cpu())
+
+    for name, tensors in traces.items():
+        traces[name] = torch.stack(tensors, dim=1)  # Stack on CPU.
+        traces[name] = traces[name].to(env.device)  # Back to GPU.
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 

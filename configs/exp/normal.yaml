@@ -3,8 +3,8 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 1000
-  episode_length: 256
+  batch_size: 5000
+  episode_length: 80
 
 model:
   embedding_dim: 32
@@ -33,11 +33,11 @@ loss:
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.00
+  scramble_size: 0.50
 
 iterations:
-  rollouts: 256
+  rollouts: 80
   epochs: 20000
-  batch_size: 2000
+  batch_size: 10000
 
 checkpoint:

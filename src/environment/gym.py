@@ -199,6 +199,9 @@ class EternityEnv(gym.Env):
         self.game_sample[self.current_sample_step] = self.instances[0].cpu()
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
+        rewards = (matches - self.best_matches) / self.best_matches_possible
+        rewards = torch.relu(rewards)
+
         self.best_matches = (
             torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
         )
@@ -206,10 +209,11 @@ class EternityEnv(gym.Env):
             0.99 * self.rolling_matches + 0.01 * matches.float().mean()
         )
         infos["just-won"] = matches == self.best_matches_possible
-        dones = infos["just-won"] | (self.n_steps >= self.episode_length)
+        dones = infos["just-won"]
+        # dones |= self.n_steps >= self.episode_length
         self.total_won += infos["just-won"].sum().cpu().item()
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        rewards = (matches / self.best_matches_possible) * dones.float()
+        # rewards = (matches / self.best_matches_possible) * dones.float()
         # rewards = (matches - previous_matches) / self.best_matches_possible
 
         return self.render(), rewards, dones, truncated, infos

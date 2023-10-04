@@ -48,7 +48,9 @@ class ClassEncoding(nn.Module):
             The board with encoded classes.
                 Shape of [..., embedding_dim].
         """
-        assert board.max() < self.embedding_dim, "Not enough orthogonal vectors!"
+        assert (
+            board.max().item() < self.embedding_dim
+        ), f"Not enough orthogonal vectors {board.max().item()} vs {self.embedding_dim}."
 
         # Encode the classes of each tile.
         return self.class_enc(board)

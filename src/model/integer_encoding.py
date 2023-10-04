@@ -7,7 +7,7 @@ from positional_encodings.torch_encodings import PositionalEncoding1D
 
 
 class IntegerEncoding(nn.Module):
-    def __init__(self, embedding_dim: int, max_integer: int = 1000):
+    def __init__(self, embedding_dim: int, max_integer: int = 10000):
         super().__init__()
 
         pos_enc = PositionalEncoding1D(embedding_dim)
