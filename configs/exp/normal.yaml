@@ -4,7 +4,6 @@ group: Normal
 env:
   path: ./instances/eternity_A.txt
   batch_size: 5000
-  episode_length: 80
 
 model:
   embedding_dim: 32

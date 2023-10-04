@@ -4,7 +4,6 @@ group: Trivial B
 env:
   path: ./instances/eternity_trivial_B.txt
   batch_size: 5000
-  episode_length: 30
 
 model:
   embedding_dim: 24

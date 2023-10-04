@@ -38,7 +38,7 @@ def init_env(config: DictConfig) -> EternityEnv:
     env = config.exp.env
     return EternityEnv.from_file(
         env.path,
-        env.episode_length,
+        config.exp.iterations.rollouts,
         env.batch_size,
         config.device,
         config.seed,
