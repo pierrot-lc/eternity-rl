@@ -14,7 +14,7 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-5
   weight_decay: 1.0e-2
 
 scheduler:
@@ -27,7 +27,7 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
-  value_weight: 1.0e-0
+  value_weight: 0.0
   entropy_weight: 1.0e+1
 
 trainer:

@@ -74,6 +74,10 @@ class PPOLoss(nn.Module):
         traces["advantages"] = advantages.squeeze(-1)
         traces["value-targets"] = value_targets.squeeze(-1)
 
+        rewards = traces["rewards"].flip(dims=(1,))
+        returns = rewards.cumsum(dim=1)
+        traces["advantages"] = returns.flip(dims=(1,))
+
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
 

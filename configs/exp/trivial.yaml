@@ -27,7 +27,7 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.10
   ppo_clip_vf: 0.20
-  value_weight: 1.0e-1
+  value_weight: 0.0e-1
   entropy_weight: 1.0e-1
 
 trainer:
