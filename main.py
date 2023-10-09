@@ -241,6 +241,7 @@ def main(config: DictConfig):
         config.exp.checkpoint = Path(to_absolute_path(config.exp.checkpoint))
     world_size = len(config.distributed)
     if world_size > 1:
+        print(f"Training on {world_size} GPUs.")
         mp.spawn(run_trainer_ddp, nprocs=world_size, args=(world_size, config))
     else:
         run_trainer_single_gpu(config)
