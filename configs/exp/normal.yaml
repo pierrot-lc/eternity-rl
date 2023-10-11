@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 500
+  batch_size: 1000
 
 model:
   embedding_dim: 32
@@ -31,7 +31,7 @@ loss:
   entropy_weight: 1.0e-3
 
 trainer:
-  clip_value: 1.0
+  clip_value: 0.005
   scramble_size: 0.50
 
 iterations:

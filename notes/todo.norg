@@ -16,6 +16,7 @@ updated: 2023-09-23
   - Verify enhancements:
   -- ( ) ReLU entropy
   -- ( ) Action-specific weighted entropy
+  -- ( ) Critic network
   -- ( ) Multiple batches per epoch
   -- ( ) PPO loss (if multiple batches)
   -- ( ) Splitted actor/critic models
