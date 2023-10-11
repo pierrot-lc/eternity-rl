@@ -10,11 +10,17 @@ updated: 2023-09-23
   - Better reward that does not penalyze the model when degrading a solution.
   - Add an optionnal memory for the model, which should makes it easier for the critic
     to predict the reward.
-  - Properly test if a splitted actor and critic network is useful.
   - Add new wandb metrics to follow the model uncertainty over its actions.
-  - Do episode-only training.
-  -- Use a RNN-like model.
-  -- Get the reward at the end of the episode only.
+  -- Add the total returns
+  - Use a RNN-like model.
+  - Verify enhancements:
+  -- ( ) ReLU entropy
+  -- ( ) Action-specific weighted entropy
+  -- ( ) Multiple batches per epoch
+  -- ( ) PPO loss (if multiple batches)
+  -- ( ) Splitted actor/critic models
+  -- ( ) Mixed reward sources
+  -- ( ) Use the n_steps input
 
 * Questions
   - Is the model better with conv layers, transfo layers, or little bit of both?
