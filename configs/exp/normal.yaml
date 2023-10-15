@@ -14,7 +14,7 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-5
   weight_decay: 1.0e-2
 
 scheduler:
@@ -31,12 +31,12 @@ loss:
   entropy_weight: 1.0e-3
 
 trainer:
-  clip_value: 0.005
+  clip_value: 1.000
   scramble_size: 0.50
 
 iterations:
   rollouts: 80
   epochs: 20000
-  batch_size: 40000
+  batch_size: 2000
 
 checkpoint:
