@@ -1,0 +1,8 @@
+* Works
+  - No-vf:
+  -- Episodic mixed reward
+  -- 100 rollouts and 100 batches per epoch
+  -- No critic
+  -- 1.5-ReLU entropy loss
+  -- [1.0, 1.0, 0.1, 0.1] weighted entropy
+  -- Run: https://wandb.ai/pierrotlc/eternity-rl/runs/tco4w0rt?workspace=user-pierrotlc
