@@ -15,7 +15,7 @@ model:
 optimizer:
   learning_rate: 1.0e-4
   optimizer: adamw
-  weight_decay: 1.0e-2
+  weight_decay: 1.0e-4
 
 scheduler:
   warmup_steps: 0
@@ -23,12 +23,12 @@ scheduler:
   cosine_tmult: 0
 
 loss:
-  gamma: 0.99
-  gae_lambda: 0.95
+  gamma: 1.00
+  gae_lambda: 1.00
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 0.0
-  entropy_weight: 1.0e+1
+  entropy_weight: 0.0e+1
 
 trainer:
   clip_value: 1.0
@@ -36,7 +36,7 @@ trainer:
 
 iterations:
   rollouts: 30
-  epochs: 300
+  epochs: 3000
   batch_size: 30000
 
 checkpoint:
