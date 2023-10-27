@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 1000
+  batch_size: 500
 
 model:
   embedding_dim: 32
@@ -15,7 +15,7 @@ model:
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-4
+  weight_decay: 1.0e-3
 
 scheduler:
   warmup_steps: 0
@@ -28,7 +28,7 @@ loss:
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 0.0
-  entropy_weight: 0.0e-4
+  entropy_weight: 0.0e-3
 
 trainer:
   clip_value: 1.000
@@ -37,6 +37,6 @@ trainer:
 iterations:
   rollouts: 80
   epochs: 20000
-  batch_size: 2000
+  batch_size: 40000
 
 checkpoint:

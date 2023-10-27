@@ -50,6 +50,8 @@ def rollout(
             sampling_mode,
         )
 
+        sample["next-values"] *= (~sample["dones"]).float()
+
         if (sample["dones"] | sample["truncated"]).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
             reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
