@@ -74,10 +74,9 @@ class PPOLoss(nn.Module):
         traces["advantages"] = advantages.squeeze(-1)
         traces["value-targets"] = value_targets.squeeze(-1)
 
-        rewards = traces["rewards"].flip(dims=(1,))
-        returns = rewards.cumsum(dim=1)
-        traces["advantages"] = returns.flip(dims=(1,))
-        # traces["advantages"] = traces["rewards"].cumsum(dim=1)
+        # rewards = traces["rewards"].flip(dims=(1,))
+        # returns = rewards.cumsum(dim=1)
+        # traces["advantages"] = returns.flip(dims=(1,))
 
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
@@ -130,23 +129,23 @@ class PPOLoss(nn.Module):
         entropies = entropies.sum(dim=1)
 
         advantages = batch["advantages"]
-        # mean, var = advantages.mean(), advantages.var()
-        # advantages = (advantages - mean) * torch.rsqrt(var + 1e-8)
-        # advantages = advantages + mean
+        mean, var = advantages.mean(), advantages.var()
+        advantages = (advantages - mean) * torch.rsqrt(var + 1e-8)
+        advantages = advantages + mean
 
         prob_ratios = (logprobs - old_logprobs).exp()
-        # clipped_ratios = torch.clamp(
-        #     prob_ratios, 1 - self.ppo_clip_ac, 1 + self.ppo_clip_ac
-        # )
-        # gains = torch.stack(
-        #     (
-        #         prob_ratios * advantages,
-        #         clipped_ratios * advantages,
-        #     ),
-        #     dim=-1,
-        # )
-        # metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
-        metrics["loss/policy"] = -(logprobs * advantages).mean()
+        clipped_ratios = torch.clamp(
+            prob_ratios, 1 - self.ppo_clip_ac, 1 + self.ppo_clip_ac
+        )
+        gains = torch.stack(
+            (
+                prob_ratios * advantages,
+                clipped_ratios * advantages,
+            ),
+            dim=-1,
+        )
+        metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
+        # metrics["loss/policy"] = -(logprobs * advantages).mean()
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
         old_values = batch["values"]
