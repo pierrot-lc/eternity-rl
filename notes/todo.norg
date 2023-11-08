@@ -3,7 +3,7 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-10-17T10:22:01+0100
+updated: 2023-11-08T03:30:34+0100
 @end
 
 * TODO
@@ -23,6 +23,10 @@ updated: 2023-10-17T10:22:01+0100
   -- ( ) Mixed reward sources
   -- ( ) Use the n_steps input
 
+* Enhancements
+  - Rotation and symmetry invariant.
+  - 2D RoPE.
+
 * Questions
   - Is the model better with conv layers, transfo layers, or little bit of both?
   -- Should I use positional encoding or are the conv layers enough?
@@ -36,6 +40,8 @@ updated: 2023-10-17T10:22:01+0100
   - How to escape from the final plateau?
   - How to force the model to output different actions.
   -- Search strategies.
+  - Episodic vs never-ending episodes.
+  - CNN vs Transformer backbone.
 
 * Ideas
   - Do MCTS once the model is trained and see if it is better than the model alone.

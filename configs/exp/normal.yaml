@@ -6,15 +6,15 @@ env:
   batch_size: 1000
 
 model:
-  embedding_dim: 32
-  n_heads: 2
-  backbone_layers: 4
-  decoder_layers: 1
+  embedding_dim: 16
+  n_heads: 4
+  backbone_layers: 8
+  decoder_layers: 4
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 3.0e-4
   weight_decay: 1.0e-3
 
 scheduler:
@@ -24,11 +24,11 @@ scheduler:
 
 loss:
   gamma: 1.00
-  gae_lambda: 1.000
+  gae_lambda: 0.990
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 2.0
-  entropy_weight: 1.0e-2
+  entropy_weight: 5.0e-2
 
 trainer:
   clip_value: 1.000
@@ -36,7 +36,7 @@ trainer:
 
 iterations:
   rollouts: 80
-  epochs: 20000
+  epochs: -1
   batch_size: 8000
 
 checkpoint:

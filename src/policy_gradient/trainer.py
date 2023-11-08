@@ -100,7 +100,7 @@ class Trainer:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        save_every: int = 50,
+        save_every: int = 500,
     ):
         """Launches the training loop.
 

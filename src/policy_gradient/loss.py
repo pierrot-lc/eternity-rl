@@ -74,10 +74,6 @@ class PPOLoss(nn.Module):
         traces["advantages"] = advantages.squeeze(-1)
         traces["value-targets"] = value_targets.squeeze(-1)
 
-        # rewards = traces["rewards"].flip(dims=(1,))
-        # returns = rewards.cumsum(dim=1)
-        # traces["advantages"] = returns.flip(dims=(1,))
-
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
 
@@ -145,7 +141,6 @@ class PPOLoss(nn.Module):
             dim=-1,
         )
         metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
-        # metrics["loss/policy"] = -(logprobs * advantages).mean()
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
         old_values = batch["values"]
@@ -162,7 +157,6 @@ class PPOLoss(nn.Module):
         metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
         metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
-        # metrics["loss/entropy"] = torch.relu(1.5 - entropies).mean()
         metrics["loss/entropy"] = -entropies.mean()
         metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
 
