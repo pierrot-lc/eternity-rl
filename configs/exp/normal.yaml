@@ -14,8 +14,8 @@ model:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
-  weight_decay: 1.0e-3
+  learning_rate: 3.0e-4
+  weight_decay: 1.0e-2
 
 scheduler:
   warmup_steps: 0
@@ -28,7 +28,7 @@ loss:
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
   value_weight: 0.5
-  entropy_weight: 1.0e-2
+  entropy_weight: 1.0e-1
 
 trainer:
   clip_value: 1.000
