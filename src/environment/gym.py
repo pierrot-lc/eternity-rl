@@ -10,19 +10,9 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 
-from .constants import (
-    EAST,
-    ENV_DIR,
-    ENV_ORDERED,
-    N_SIDES,
-    NORTH,
-    ORIGIN_EAST,
-    ORIGIN_NORTH,
-    ORIGIN_SOUTH,
-    ORIGIN_WEST,
-    SOUTH,
-    WEST,
-)
+from .constants import (EAST, ENV_DIR, ENV_ORDERED, N_SIDES, NORTH,
+                        ORIGIN_EAST, ORIGIN_NORTH, ORIGIN_SOUTH, ORIGIN_WEST,
+                        SOUTH, WEST)
 from .draw import draw_gif, draw_instance
 from .generate import random_perfect_instances
 

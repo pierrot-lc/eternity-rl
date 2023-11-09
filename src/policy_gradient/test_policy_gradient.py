@@ -71,6 +71,32 @@ def test_cumulative_decay_return(
         ),
         (
             {
+                "dones": torch.BoolTensor([
+                    [False, False, True],
+                    [False, False, True],
+                ]),
+                "truncated": torch.BoolTensor([
+                    [False, False, False],
+                    [False, False, False],
+                ]),
+            },
+            {
+                "dones": torch.BoolTensor([
+                    [False, False, True],
+                    [False, False, True],
+                ]),
+                "truncated": torch.BoolTensor([
+                    [False, False, False],
+                    [False, False, False],
+                ]),
+                "masks": torch.BoolTensor([
+                    [True, True, True],
+                    [True, True, True],
+                ]),
+            },
+        ),
+        (
+            {
                 "dones": torch.BoolTensor([[False, False, True]]),
                 "truncated": torch.BoolTensor([[False, False, True]]),
             },
