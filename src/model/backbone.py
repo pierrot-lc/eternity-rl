@@ -54,6 +54,8 @@ class Backbone(nn.Module):
             num_layers=n_layers,
         )
 
+        self.flatten_padding = Rearrange("b h w -> (h w) b")
+
     def forward(
         self,
         tiles: torch.Tensor,

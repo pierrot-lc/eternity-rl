@@ -14,7 +14,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
-from src.environment import EternityEnv
+from src.environment import EternityEnv, random_perfect_instances
 from src.model import Policy
 from src.policy_gradient import PPOLoss, Trainer
 
@@ -43,6 +43,23 @@ def init_env(config: DictConfig) -> EternityEnv:
         config.device,
         config.seed,
     )
+
+
+def init_curriculum_env(env: EternityEnv) -> list[EternityEnv]:
+    """Return the multiple environments that are of size lower than the given env."""
+    envs = []
+    for size in range(2, env.board_size):
+        instances = random_perfect_instances(
+            size, env.n_classes, env.batch_size, env.rng
+        )
+        envs.append(
+            EternityEnv(
+                instances, random_instances=True, device=env.device, seed=env.seed
+            )
+        )
+
+    envs.append(env)
+    return envs
 
 
 def init_model(config: DictConfig, env: EternityEnv) -> Policy:
@@ -127,9 +144,9 @@ def init_scheduler(
     return optim.lr_scheduler.ChainedScheduler(schedulers)
 
 
-def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
+def init_replay_buffer(config: DictConfig, envs: list[EternityEnv]) -> ReplayBuffer:
     exp = config.exp
-    max_size = exp.env.batch_size * exp.iterations.rollouts
+    max_size = exp.env.batch_size * exp.iterations.rollouts * len(envs)
     return TensorDictReplayBuffer(
         storage=LazyTensorStorage(max_size=max_size, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
@@ -140,7 +157,7 @@ def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
 
 def init_trainer(
     config: DictConfig,
-    env: EternityEnv,
+    envs: list[EternityEnv],
     model: Policy | DDP,
     loss: PPOLoss,
     optimizer: optim.Optimizer,
@@ -151,7 +168,7 @@ def init_trainer(
     trainer = config.exp.trainer
     iterations = config.exp.iterations
     return Trainer(
-        env,
+        envs,
         model,
         loss,
         optimizer,
@@ -181,6 +198,7 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
 def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     """Run the trainer in distributed mode."""
     setup_distributed(rank, world_size)
+    config.seed += rank
 
     # Make sure we log training info only for the rank 0 process.
     if rank != 0:
@@ -194,12 +212,13 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     model = init_model(config, env)
     model = model.to(config.device)
     model = DDP(model, device_ids=[config.device], output_device=config.device)
+    envs = init_curriculum_env(env)
     loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, replay_buffer
+        config, envs, model, loss, optimizer, scheduler, replay_buffer
     )
     reload_checkpoint(config, trainer)
 
@@ -221,12 +240,13 @@ def run_trainer_single_gpu(config: DictConfig):
     env = init_env(config)
     model = init_model(config, env)
     model = model.to(config.device)
+    envs = init_curriculum_env(env)
     loss = init_loss(config)
     optimizer = init_optimizer(config, model)
     scheduler = init_scheduler(config, optimizer)
-    replay_buffer = init_replay_buffer(config)
+    replay_buffer = init_replay_buffer(config, envs)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, replay_buffer
+        config, envs, model, loss, optimizer, scheduler, replay_buffer
     )
     reload_checkpoint(config, trainer)
 
