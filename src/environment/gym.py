@@ -194,7 +194,11 @@ class EternityEnv(gym.Env):
         delta_rewards = (matches - previous_matches) / self.best_matches_possible
         best_delta_rewards = (matches - self.best_matches) / self.best_matches_possible
         best_delta_rewards[best_delta_rewards < 0] = 0
-        done_rewards = (matches / self.best_matches_possible) * dones.float()
+
+        self.best_matches = (
+            torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
+        )
+        done_rewards = (self.best_matches / self.best_matches_possible) * dones.float()
 
         rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
 
