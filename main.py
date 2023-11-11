@@ -68,6 +68,7 @@ def init_loss(config: DictConfig) -> PPOLoss:
         loss.gae_lambda,
         loss.ppo_clip_ac,
         loss.ppo_clip_vf,
+        loss.no_value_function,
     )
 
 

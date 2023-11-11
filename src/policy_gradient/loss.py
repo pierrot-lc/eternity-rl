@@ -35,6 +35,7 @@ class PPOLoss(nn.Module):
         gae_lambda: float,
         ppo_clip_ac: float,
         ppo_clip_vf: float,
+        no_value_function: bool,
     ):
         super().__init__()
 
@@ -44,6 +45,13 @@ class PPOLoss(nn.Module):
         self.gae_lambda = gae_lambda
         self.ppo_clip_ac = ppo_clip_ac
         self.ppo_clip_vf = ppo_clip_vf
+        self.no_value_function = no_value_function
+
+        if self.no_value_function:
+            self.value_weight = 0.0
+
+            # Deactivate GAE, use a pure MC estimation.
+            self.gae_lambda = 1.0
 
         self.value_loss_fn = nn.HuberLoss(reduction="none")
 
@@ -73,6 +81,10 @@ class PPOLoss(nn.Module):
         )
         traces["advantages"] = advantages.squeeze(-1)
         traces["value-targets"] = value_targets.squeeze(-1)
+
+        if self.no_value_function:
+            # `value-targets` contains the MCTS estimates.
+            traces["advantages"] = traces["value-targets"]
 
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
