@@ -3,19 +3,19 @@ group: Eternity B
 
 env:
   path: ./instances/eternity_B.txt
-  batch_size: 10000
+  batch_size: 1000
 
 model:
-  embedding_dim: 64
-  n_heads: 2
+  embedding_dim: 16
+  n_heads: 1
   backbone_layers: 6
   decoder_layers: 2
-  dropout: 0.05
+  dropout: 0.00
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
-  weight_decay: 1.0e-3
+  learning_rate: 3.0e-4
+  weight_decay: 1.0e-2
 
 scheduler:
   warmup_steps: 0
@@ -23,12 +23,13 @@ scheduler:
   cosine_tmult: 0
 
 loss:
-  gamma: 0.99
+  gamma: 1.00
   gae_lambda: 0.95
-  ppo_clip_ac: 0.30
-  ppo_clip_vf: 0.30
-  value_weight: 1.0e-3
-  entropy_weight: 1.0e-3
+  ppo_clip_ac: 0.20
+  ppo_clip_vf: 0.20
+  value_weight: 0.5
+  entropy_weight: 1.0e-1
+  no_value_function: true
 
 trainer:
   clip_value: 1.0
@@ -37,6 +38,6 @@ trainer:
 iterations:
   rollouts: 100
   epochs: -1
-  batch_size: 5000
+  batch_size: 10000
 
 checkpoint:

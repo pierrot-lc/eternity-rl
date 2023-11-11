@@ -4,7 +4,7 @@ description: Some random thoughts
 authors: pierrotlc
 categories: Notes
 created: 2023-06-04
-updated: 2023-09-23
+updated: 2023-11-11T23:07:14+0100
 version: 1.1.1
 @end
 
@@ -63,10 +63,23 @@ version: 1.1.1
   way more sample efficient.
 
   *The reward should be designed so that the model is not locked in a local minimum of
-  the puzzle.*
-  - $current_matches - previous_matches$: this makes it hard for the model to degrade a solution in order to improve it.
+  the puzzle.* When locked into a local minimum, the model tends to just to the same
+  actions in a loop.
+
+  *The reward should take into account that after a good reached state by the model
+  the following actions will degrade and eventually regress to the mean the value of
+  the state.* This means that actions should be rewarded by the best value reached
+  during rollout (at least for the following encountered states).
+
+  - $current_matches - previous_matches$: model will be easily locked into a local minimum.
   - $max(matches - previous_max_matches, 0)$: this is a good reward, as it promotes only new best solutions
     and does not penalize the model for degrading a solution.
+  - $max_matches$: the ending value is simply the max matches found. Could also be applied
+    at each step.
+
+  Do I need to help the critic in some way when the information about the max matches is used
+  for the reward computation ? It worked without helping the critic that much but it
+  maybe could help or lead to a mode collapse of the critic by overfitting to easy targets.
 
 * Replay buffer
   The replay buffer is primarily used to be more sample efficient by reusing past
@@ -163,3 +176,6 @@ version: 1.1.1
   Make sure the value agent does not know what actions are sampled. Since my actor needs
   to know which sub-action is sampled before outputting the rest of the sub-action distributions,
   the value network can also see them. In this case, training was collapsing at some point.
+
+  Always simulate results of the rollouts for the rewards and returns computations.
+  Avoid easy local minimas. Avoid regressions to the mean.
