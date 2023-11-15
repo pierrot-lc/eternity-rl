@@ -6,6 +6,7 @@ from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
 from .integer_encoding import IntegerEncoding
+from .transformer import TransformerEncoderLayer
 
 
 class Backbone(nn.Module):
@@ -43,12 +44,15 @@ class Backbone(nn.Module):
 
         self.conditional_encoding = IntegerEncoding(embedding_dim)
 
+        # The transformer is the same as the one used in LLaMa: https://arxiv.org/abs/2302.13971.
+        # TODO: Add rotary embeddings?
         self.transformer_layers = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
+            TransformerEncoderLayer(
                 d_model=embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=4 * embedding_dim,
+                dim_feedforward=4 * embedding_dim * 2 // 3,  # See SwiGLU paper.
                 dropout=dropout,
+                norm_first=True,  # Pre-norm.
                 batch_first=False,
             ),
             num_layers=n_layers,

@@ -1,5 +1,5 @@
 ---
-group: Normal - classic transformer
+group: Normal - SwiGLU transformer
 
 env:
   path: ./instances/eternity_A.txt
@@ -37,7 +37,7 @@ trainer:
 
 iterations:
   rollouts: 80
-  epochs: 20_000
+  epochs: 15_000
   batch_size: 8000
 
 checkpoint:
