@@ -179,3 +179,18 @@ version: 1.1.1
 
   Always simulate results of the rollouts for the rewards and returns computations.
   Avoid easy local minimas. Avoid regressions to the mean.
+
+* Transformer enhancements
+  When reading recent litterature about LLM, I saw that everyone is using a slightly
+  different version of the classical Transformer architecture.
+
+  Improvements:
+  - Pre-norm.
+  - SwiGLU activation function (https://arxiv.org/abs/2002.05202).
+  - RMSNorm (https://arxiv.org/abs/1910.07467).
+
+  They are either here to stabilize or speed up the training. I did not implemented
+  RMSNorm since it is only here to replace the LayerNorm which is not arguably what
+  slows me the most (my hidden dimensions are small).
+
+  I saw those enhancements in the LLaMa paper (https://arxiv.org/abs/2302.13971).

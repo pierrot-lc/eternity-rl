@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from ..environment import N_SIDES
+from .transformer import TransformerDecoderLayer
 
 
 class SelectTile(nn.Module):
@@ -9,12 +10,13 @@ class SelectTile(nn.Module):
         super().__init__()
 
         self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
+            TransformerDecoderLayer(
                 embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=4 * embedding_dim,
+                dim_feedforward=4 * embedding_dim * 2 // 3,
                 dropout=dropout,
                 batch_first=False,
+                norm_first=True,
             ),
             num_layers=n_layers,
         )
@@ -64,12 +66,13 @@ class SelectSide(nn.Module):
         super().__init__()
 
         self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
+            TransformerDecoderLayer(
                 embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=4 * embedding_dim,
+                dim_feedforward=4 * embedding_dim * 2 // 3,
                 dropout=dropout,
                 batch_first=False,
+                norm_first=True,
             ),
             num_layers=n_layers,
         )
@@ -111,12 +114,13 @@ class EstimateValue(nn.Module):
         super().__init__()
 
         self.decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(
+            TransformerDecoderLayer(
                 embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=2 * embedding_dim,
+                dim_feedforward=4 * embedding_dim * 2 // 3,
                 dropout=dropout,
                 batch_first=False,
+                norm_first=True,
             ),
             num_layers=n_layers,
         )

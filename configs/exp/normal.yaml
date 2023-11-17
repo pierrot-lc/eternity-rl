@@ -1,5 +1,5 @@
 ---
-group: Normal
+group: Normal - SwiGLU transformer
 
 env:
   path: ./instances/eternity_A.txt
@@ -27,7 +27,7 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 0.05
+  value_weight: 0.5
   entropy_weight: 1.0e-1
   no_value_function: true
 
@@ -37,7 +37,7 @@ trainer:
 
 iterations:
   rollouts: 80
-  epochs: -1
+  epochs: 15_000
   batch_size: 8000
 
 checkpoint:
