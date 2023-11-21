@@ -44,6 +44,7 @@ class Trainer:
 
         self.scramble_size = int(scramble_size * self.env.batch_size)
         self.device = env.device
+        self.best_matches_found = 0
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
@@ -118,6 +119,7 @@ class Trainer:
             eval_every: The number of rollouts between each evaluation.
         """
         disable_logs = mode == "disabled"
+        self.best_matches_found = 0  # Reset.
 
         with wandb.init(
             project="eternity-rl",
@@ -211,8 +213,11 @@ class Trainer:
             if isinstance(value, torch.Tensor):
                 metrics[name] = value.item()
 
-        self.env.save_best_env("board.png")
-        metrics["best-board"] = wandb.Image("board.png")
+        if self.best_matches_found < self.env.best_matches_ever:
+            self.best_matches_found = self.env.best_matches_ever
+
+            self.env.save_best_env("board.png")
+            metrics["best-board"] = wandb.Image("board.png")
 
         return metrics
 

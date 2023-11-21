@@ -10,9 +10,19 @@ import numpy as np
 import torch
 from einops import rearrange, repeat
 
-from .constants import (EAST, ENV_DIR, ENV_ORDERED, N_SIDES, NORTH,
-                        ORIGIN_EAST, ORIGIN_NORTH, ORIGIN_SOUTH, ORIGIN_WEST,
-                        SOUTH, WEST)
+from .constants import (
+    EAST,
+    ENV_DIR,
+    ENV_ORDERED,
+    N_SIDES,
+    NORTH,
+    ORIGIN_EAST,
+    ORIGIN_NORTH,
+    ORIGIN_SOUTH,
+    ORIGIN_WEST,
+    SOUTH,
+    WEST,
+)
 from .draw import draw_gif, draw_instance
 from .generate import random_perfect_instances
 
@@ -87,9 +97,10 @@ class EternityEnv(gym.Env):
         self.best_matches = torch.zeros(
             self.batch_size, dtype=torch.long, device=device
         )
+        self.best_boards = self.instances.clone()
         self.rolling_matches = torch.zeros(1, dtype=torch.float, device=device)
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
-        self.best_board = torch.zeros(
+        self.best_board_ever = torch.zeros(
             (N_SIDES, self.board_size, self.board_size), dtype=torch.long
         )
         self.best_matches_ever = 0
@@ -138,13 +149,21 @@ class EternityEnv(gym.Env):
         self.scramble_instances(scramble_ids)
 
         self.best_matches[scramble_ids] = self.matches[scramble_ids]
+        self.best_boards[scramble_ids] = self.instances[scramble_ids].clone()
         self.n_steps[scramble_ids] = 0
+        just_won = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
         # Do not reset the best env found, only updates it.
         # This best env is used for perpetual search purpose.
         self.update_best_env()
 
-        return self.render(), dict()
+        infos = {
+            "just-won": just_won,
+            "best-boards": self.best_boards,
+            "n-steps": self.n_steps,
+        }
+
+        return self.render(), infos
 
     @torch.no_grad()
     def step(
@@ -169,10 +188,10 @@ class EternityEnv(gym.Env):
             truncated: Whether the environments are truncated (max steps reached).
                 Shape of [batch_size,].
             infos: Additional infos.
-                - `just_won`: Whether the environments has just been won.
+                - `just-won`: Whether the environments has just been won.
+                - `n-steps`: Number of steps played.
+                - `best-boards`: Best boards seen since the beggining of the games.
         """
-        infos = dict()
-
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
 
@@ -186,33 +205,35 @@ class EternityEnv(gym.Env):
         matches = self.matches
 
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        infos["just-won"] = matches == self.best_matches_possible
-        dones = infos["just-won"].clone()
-        dones |= self.n_steps >= self.episode_length
+        just_won = matches == self.best_matches_possible
+        dones = just_won | (self.n_steps >= self.episode_length)
 
-        # Rewards.
-        delta_rewards = (matches - previous_matches) / self.best_matches_possible
-        best_delta_rewards = (matches - self.best_matches) / self.best_matches_possible
-        best_delta_rewards[best_delta_rewards < 0] = 0
+        # Internal metrics.
+        diff_matches = matches - self.best_matches
+        self.best_boards[diff_matches > 0] = self.instances[diff_matches > 0].clone()
+        self.best_matches[diff_matches > 0] = matches[diff_matches > 0]
 
-        self.best_matches = (
-            torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
-        )
-        done_rewards = (self.best_matches / self.best_matches_possible) * dones.float()
-
-        rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
-
-        self.best_matches = (
-            torch.stack((self.best_matches, matches), dim=1).max(dim=1).values
-        )
         self.rolling_matches = (
             0.99 * self.rolling_matches + 0.01 * matches.float().mean()
         )
-        self.total_won += infos["just-won"].sum().cpu().item()
+        self.total_won += just_won.sum().cpu().item()
 
         self.update_best_env()
         self.game_sample[self.current_sample_step] = self.instances[0].cpu()
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
+
+        # Rewards.
+        delta_rewards = (matches - previous_matches) / self.best_matches_possible
+        best_delta_rewards = diff_matches / self.best_matches_possible
+        best_delta_rewards[best_delta_rewards < 0] = 0
+        done_rewards = (self.best_matches / self.best_matches_possible) * dones.float()
+        rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
+
+        infos = {
+            "just-won": just_won,
+            "n-steps": self.n_steps,
+            "best-boards": self.best_boards,
+        }
 
         return self.render(), rewards, dones, truncated, infos
 
@@ -292,18 +313,7 @@ class EternityEnv(gym.Env):
             The number of matches for each instance.
                 Shape of [batch_size,].
         """
-        n_matches = torch.zeros(self.batch_size, device=self.device)
-
-        for conv in [HORIZONTAL_CONV, VERTICAL_CONV]:
-            res = torch.conv2d(self.instances.float(), conv.to(self.device))
-            n_matches += (res == 0).float().flatten(start_dim=1).sum(dim=1)
-
-        # Remove the 0-0 matches from the count.
-        for conv in [HORIZONTAL_ZERO_CONV, VERTICAL_ZERO_CONV]:
-            res = torch.conv2d(self.instances.float(), conv.to(self.device))
-            n_matches -= (res == 0).float().flatten(start_dim=1).sum(dim=1)
-
-        return n_matches.long()
+        return EternityEnv.count_matches(self.instances)
 
     def scramble_instances(self, instance_ids: torch.Tensor):
         """Scrambles the instances to start from a new valid configuration.
@@ -378,11 +388,11 @@ class EternityEnv(gym.Env):
 
         if self.best_matches_ever < best_matches_found:
             self.best_matches_ever = best_matches_found
-            self.best_board = self.instances[best_env_id].cpu()
+            self.best_board_ever = self.instances[best_env_id].cpu()
 
     def save_best_env(self, filepath: Path | str):
         """Render the best environment and save it on disk."""
-        draw_instance(self.best_board.numpy(), self.best_matches_ever, filepath)
+        draw_instance(self.best_board_ever.numpy(), self.best_matches_ever, filepath)
 
     def save_sample(self, filepath: Path | str):
         """Render the current game sample and save it as a GIF on disk."""

@@ -1,5 +1,5 @@
 ---
-group: Normal - SwiGLU transformer
+group: Normal
 
 env:
   path: ./instances/eternity_A.txt

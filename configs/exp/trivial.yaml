@@ -3,18 +3,18 @@ group: Trivial A
 
 env:
   path: ./instances/eternity_trivial_A.txt
-  batch_size: 500
+  batch_size: 1000
 
 model:
-  embedding_dim: 24
-  n_heads: 2
+  embedding_dim: 16
+  n_heads: 1
   backbone_layers: 4
   decoder_layers: 1
   dropout: 0.05
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 3.0e-4
   weight_decay: 1.0e-2
 
 scheduler:
@@ -37,7 +37,7 @@ trainer:
 
 iterations:
   rollouts: 10
-  epochs: 300
+  epochs: 600
   batch_size: 500
 
 checkpoint:

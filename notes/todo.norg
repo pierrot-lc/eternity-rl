@@ -3,7 +3,7 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2023-11-11T23:14:17+0100
+updated: 2023-11-21T22:27:28+0100
 @end
 
 * TODO
@@ -25,6 +25,10 @@ updated: 2023-11-11T23:14:17+0100
   -- ( ) Without help for reward computations.
   -- ( ) Critic learning rate. Is it possible to overfit?
   - ( ) Episodic rollouts with random resets between two rollouts.
+  - ( ) Add "best boards":
+  -- ( ) Encoding-decoding transformer.
+  -- ( ) Pytest for best-boards internal state.
+  - ( ) Reset from current best boards.
 
 * Why it does not work?
   - Is that possible that the model struggles at some point because the value function
