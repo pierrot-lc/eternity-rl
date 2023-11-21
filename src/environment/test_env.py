@@ -259,3 +259,42 @@ def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int
     assert torch.all(instances[:, NORTH, -1, :] == 0), "No walls around the instances!"
     assert torch.all(instances[:, WEST, :, 0] == 0), "No walls around the instances!"
     assert torch.all(instances[:, EAST, :, -1] == 0), "No walls around the instances!"
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_best_boards(instance_path: str):
+    env = EternityEnv.from_file(
+        ENV_DIR / instance_path,
+        episode_length=10,
+        batch_size=10,
+        device="cpu",
+    )
+    _, infos = env.reset()
+    best_boards = env.instances.clone()
+    best_scores = env.matches
+    assert torch.all(infos["best-boards"] == best_boards)
+    assert torch.all(infos["best-matches"] == best_scores)
+
+    for _ in range(10):
+        tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+        tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+        shifts_1 = torch.randint(low=0, high=4, size=(env.batch_size,))
+        shifts_2 = torch.randint(low=0, high=4, size=(env.batch_size,))
+
+        actions = torch.stack([tile_ids_1, shifts_1, tile_ids_2, shifts_2], dim=1)
+        *_, infos = env.step(actions)
+
+        for game_id in range(env.batch_size):
+            if env.matches[game_id] > best_scores[game_id]:
+                best_scores[game_id] = env.matches[game_id]
+                best_boards[game_id] = env.instances[game_id]
+
+        assert torch.all(infos["best-boards"] == best_boards)
+        assert torch.all(infos["best-matches"] == best_scores)

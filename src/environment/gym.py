@@ -159,8 +159,9 @@ class EternityEnv(gym.Env):
 
         infos = {
             "just-won": just_won,
-            "best-boards": self.best_boards,
             "n-steps": self.n_steps,
+            "best-boards": self.best_boards,
+            "best-matches": self.best_matches,
         }
 
         return self.render(), infos
@@ -191,6 +192,7 @@ class EternityEnv(gym.Env):
                 - `just-won`: Whether the environments has just been won.
                 - `n-steps`: Number of steps played.
                 - `best-boards`: Best boards seen since the beggining of the games.
+                - `best-matches`: Best scores since the beggining of the games.
         """
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
@@ -233,6 +235,7 @@ class EternityEnv(gym.Env):
             "just-won": just_won,
             "n-steps": self.n_steps,
             "best-boards": self.best_boards,
+            "best-matches": self.best_matches,
         }
 
         return self.render(), rewards, dones, truncated, infos
