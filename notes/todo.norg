@@ -98,3 +98,5 @@ updated: 2023-11-21T22:27:28+0100
   - Add tricks from {https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/}.
   - Construct artificial envs (so that we know the target state) and use this paper to
     learn a policy that solves it: {https://arxiv.org/abs/2310.06794v1}.
+  - Ideally the model needs an architectural bias that allows him
+    to play multiple rounds in its latent space.
