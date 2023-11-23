@@ -92,7 +92,7 @@ class EternityEnv(gym.Env):
         self.board_size = self.instances.shape[-1]
         self.n_pieces = self.board_size * self.board_size
         self.n_classes = int(self.instances.max().cpu().item() + 1)
-        self.best_matches_possible = 2 * self.board_size * (self.board_size - 1)
+        self.best_possible_matches = 2 * self.board_size * (self.board_size - 1)
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
@@ -151,7 +151,7 @@ class EternityEnv(gym.Env):
         self.scramble_instances(instance_ids)
 
         candidate_ids = instance_ids[
-            self.best_matches[instance_ids] != self.best_matches_possible
+            self.best_matches[instance_ids] != self.best_possible_matches
         ]
         best_boards_proportion = int((1 - self.scramble_size) * len(candidate_ids))
         best_board_ids = torch.randperm(
@@ -220,7 +220,7 @@ class EternityEnv(gym.Env):
         matches = self.matches
 
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        just_won = matches == self.best_matches_possible
+        just_won = matches == self.best_possible_matches
         dones = just_won | (self.n_steps >= self.episode_length)
 
         # Internal metrics.
@@ -238,10 +238,10 @@ class EternityEnv(gym.Env):
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
         # Rewards.
-        delta_rewards = (matches - previous_matches) / self.best_matches_possible
-        best_delta_rewards = diff_matches / self.best_matches_possible
+        delta_rewards = (matches - previous_matches) / self.best_possible_matches
+        best_delta_rewards = diff_matches / self.best_possible_matches
         best_delta_rewards[best_delta_rewards < 0] = 0
-        done_rewards = (self.best_matches / self.best_matches_possible) * dones.float()
+        done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
         rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
 
         infos = {

@@ -252,7 +252,7 @@ def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int
     instances = random_perfect_instances(size, n_classes, n_instances, generator)
     env = EternityEnv(instances, 10, device="cpu")
     assert torch.all(
-        env.matches == env.best_matches_possible
+        env.matches == env.best_possible_matches
     ), "The instance is not solved!"
 
     assert torch.all(instances[:, SOUTH, 0, :] == 0), "No walls around the instances!"

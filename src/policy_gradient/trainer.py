@@ -164,13 +164,13 @@ class Trainer:
         metrics = dict()
         self.model.eval()
 
-        matches = self.env.matches / self.env.best_matches_possible
+        matches = self.env.matches / self.env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
         metrics["matches/best"] = (
-            self.env.best_matches_ever / self.env.best_matches_possible
+            self.env.best_matches_ever / self.env.best_possible_matches
         )
         metrics["matches/rolling"] = (
-            self.env.rolling_matches / self.env.best_matches_possible
+            self.env.rolling_matches / self.env.best_possible_matches
         )
         metrics["matches/total-won"] = self.env.total_won
 
