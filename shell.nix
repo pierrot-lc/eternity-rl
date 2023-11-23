@@ -7,12 +7,13 @@
 (pkgs.buildFHSUserEnv {
   name = "pytorch";
   targetPkgs = pkgs: (with pkgs; [
-    python311
-    python311Packages.pip
-    python311Packages.virtualenv
     cudaPackages.cudatoolkit
     cudaPackages.cudnn
     # cudaPackages.nccl
+    just
+    python311
+    python311Packages.pip
+    python311Packages.virtualenv
   ]);
   runScript = "bash";
 }).env
