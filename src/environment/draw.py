@@ -1,6 +1,5 @@
 from itertools import product
 from pathlib import Path
-from typing import Optional
 
 import imageio
 import matplotlib.pyplot as plt
@@ -104,7 +103,7 @@ def draw_triangles(ax: plt.Axes, x: int, y: int, tile: np.ndarray):
 def draw_instance(
     instance: np.ndarray,
     score: float,
-    filename: Optional[Path | str] = None,
+    filename: Path | str | None = None,
 ) -> np.ndarray:
     _, height, width = instance.shape
 

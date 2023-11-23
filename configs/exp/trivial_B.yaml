@@ -4,12 +4,13 @@ group: Trivial B
 env:
   path: ./instances/eternity_trivial_B.txt
   batch_size: 1000
+  scramble_size: 1.00
 
 model:
   embedding_dim: 16
   n_heads: 1
   backbone_layers: 4
-  decoder_layers: 2
+  decoder_layers: 1
   dropout: 0.00
 
 optimizer:
@@ -28,16 +29,15 @@ loss:
   ppo_clip_ac: 0.30
   ppo_clip_vf: 0.30
   value_weight: 0.5
-  entropy_weight: 1.0e-1
+  entropy_weight: 1.0e-2
   no_value_function: true
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.50
 
 iterations:
   rollouts: 30
-  epochs: 1000
-  batch_size: 3000
+  epochs: 5000
+  batch_size: 2000
 
 checkpoint:

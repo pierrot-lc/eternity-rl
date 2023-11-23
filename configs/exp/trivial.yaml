@@ -4,6 +4,7 @@ group: Trivial A
 env:
   path: ./instances/eternity_trivial_A.txt
   batch_size: 1000
+  scramble_size: 0.50
 
 model:
   embedding_dim: 16
@@ -23,7 +24,7 @@ scheduler:
   cosine_tmult: 0
 
 loss:
-  gamma: 1.00
+  gamma: 0.99
   gae_lambda: 0.95
   ppo_clip_ac: 0.10
   ppo_clip_vf: 0.20
@@ -33,7 +34,6 @@ loss:
 
 trainer:
   clip_value: 1.000
-  scramble_size: 0.50
 
 iterations:
   rollouts: 10

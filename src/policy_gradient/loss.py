@@ -18,6 +18,7 @@ class PPOLoss(nn.Module):
         gae_lambda: The GAE lambda parameter.
         ppo_clip_ac: The PPO action clipping parameter.
         ppo_clip_vf: The PPO value clipping parameter.
+        no_value_function: Whether to deactivate the value function.
 
     ---
     Sources:
@@ -121,6 +122,7 @@ class PPOLoss(nn.Module):
 
         _, logprobs, entropies, values = model(
             batch["states"],
+            batch["best-boards"],
             batch["conditionals"],
             None,
             batch["actions"],
@@ -176,7 +178,7 @@ class PPOLoss(nn.Module):
 
         metrics["loss/total"] = (
             metrics["loss/weighted-policy"]
-            + metrics["loss/weighted-value"]
+            + metrics["loss/weighted-value"] if self.value_weight > 0.0 else 0.0
             + metrics["loss/weighted-entropy"]
         )
 

@@ -92,7 +92,7 @@ def test_matches_tiles():
         matches = matches // 2  # Sides have all been checked twice.
         return matches
 
-    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, 10, "cpu")
+    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, 10, device="cpu")
     assert torch.all(env.matches == 12)
     for _ in range(10):
         env.reset()
@@ -110,7 +110,7 @@ def test_matches_tiles():
     ],
 )
 def test_batch_scramble(instance_path: str):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     reference = env.instances[0].clone()
     instance_ids = torch.randperm(env.batch_size)[: env.batch_size // 2]
     env.scramble_instances(instance_ids)
@@ -166,7 +166,7 @@ def test_batch_roll():
     ],
 )
 def test_batch_roll_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     instance_reference = env.instances[0].clone()
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     shifts = torch.randint(low=0, high=N_SIDES, size=(env.batch_size,))
@@ -191,7 +191,7 @@ def test_batch_roll_action(instance_path):
     ],
 )
 def test_batch_swap_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     instance_reference = env.instances[0].clone()
     tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
@@ -250,7 +250,7 @@ def test_instance_upgrade(instance_1: str, instance_2: str):
 def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int):
     generator = torch.Generator()
     instances = random_perfect_instances(size, n_classes, n_instances, generator)
-    env = EternityEnv(instances, 10, "cpu")
+    env = EternityEnv(instances, 10, device="cpu")
     assert torch.all(
         env.matches == env.best_matches_possible
     ), "The instance is not solved!"

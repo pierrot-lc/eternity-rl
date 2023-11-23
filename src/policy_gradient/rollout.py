@@ -35,9 +35,13 @@ def rollout(
         sample = dict()
         sample["states"] = env.render()
         sample["conditionals"] = env.n_steps
+        sample["best-boards"] = env.best_boards
 
         sample["actions"], sample["log-probs"], _, sample["values"] = model(
-            sample["states"], sample["conditionals"], sampling_mode
+            sample["states"],
+            sample["best-boards"],
+            sample["conditionals"],
+            sampling_mode,
         )
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
@@ -46,6 +50,7 @@ def rollout(
 
         *_, sample["next-values"] = model(
             env.render(),
+            env.best_boards,
             env.n_steps,
             sampling_mode,
         )

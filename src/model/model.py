@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -56,8 +54,8 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        conditionals = torch.zeros(1, dtype=torch.long, device=device)
-        return (tiles, conditionals)
+        n_steps = torch.zeros(1, dtype=torch.long, device=device)
+        return (tiles, tiles, n_steps)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -72,9 +70,10 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        conditionals: torch.Tensor,
-        sampling_mode: Optional[str] = "softmax",
-        sampled_actions: Optional[torch.Tensor] = None,
+        best_tiles: torch.Tensor,
+        n_steps: torch.Tensor,
+        sampling_mode: str = "softmax",
+        sampled_actions: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
@@ -82,8 +81,9 @@ class Policy(nn.Module):
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            conditionals: Some contextual informations. Typically you can provide the
-                current number of steps of each game.
+            best_tiles: The game best state.
+                Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
+            n_steps: Number of steps of each game.
                 Long tensor of shape [batch_size,].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
@@ -106,7 +106,7 @@ class Policy(nn.Module):
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
-        tiles = self.backbone(tiles, conditionals)
+        tiles = self.backbone(tiles, best_tiles, n_steps)
 
         queries = repeat(self.value_query, "e -> b e", b=batch_size)
         values = self.estimate_value(tiles, queries)

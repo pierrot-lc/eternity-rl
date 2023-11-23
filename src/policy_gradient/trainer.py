@@ -28,7 +28,6 @@ class Trainer:
         scheduler: optim.lr_scheduler.LRScheduler,
         replay_buffer: ReplayBuffer,
         clip_value: float,
-        scramble_size: float,
         rollouts: int,
         epochs: int,
     ):
@@ -42,18 +41,12 @@ class Trainer:
         self.rollouts = rollouts
         self.epochs = epochs
 
-        self.scramble_size = int(scramble_size * self.env.batch_size)
         self.device = env.device
         self.best_matches_found = 0
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
-        if self.scramble_size > 0:
-            scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
-            scramble_ids = scramble_ids[: self.scramble_size]
-            self.env.reset(scramble_ids=scramble_ids)
-
         traces = rollout(
             self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
@@ -119,7 +112,6 @@ class Trainer:
             eval_every: The number of rollouts between each evaluation.
         """
         disable_logs = mode == "disabled"
-        self.best_matches_found = 0  # Reset.
 
         with wandb.init(
             project="eternity-rl",
@@ -130,6 +122,7 @@ class Trainer:
         ) as run:
             self.model.to(self.device)
             self.env.reset()
+            self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
                 if isinstance(self.model, DDP):

@@ -40,6 +40,7 @@ def init_env(config: DictConfig) -> EternityEnv:
         env.path,
         config.exp.iterations.rollouts,
         env.batch_size,
+        env.scramble_size,
         config.device,
         config.seed,
     )
@@ -158,7 +159,6 @@ def init_trainer(
         scheduler,
         replay_buffer,
         trainer.clip_value,
-        trainer.scramble_size,
         iterations.rollouts,
         iterations.epochs,
     )
