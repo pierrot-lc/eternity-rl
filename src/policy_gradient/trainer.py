@@ -42,7 +42,10 @@ class Trainer:
         self.epochs = epochs
 
         self.device = env.device
+
+        # Dynamic infos.
         self.best_matches_found = 0
+        self.last_mean_return = 0
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
@@ -61,6 +64,8 @@ class Trainer:
             == traces["masks"].sum().item()
             == self.env.batch_size * self.rollouts
         ), "Some samples are missing."
+
+        self.last_mean_return = traces["rewards"].sum(dim=1).mean().item()
 
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
@@ -181,6 +186,7 @@ class Trainer:
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        metrics["metrics/return"] = self.last_mean_return
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
