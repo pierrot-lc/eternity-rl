@@ -184,7 +184,8 @@ class Trainer:
         batch = batch.to(self.device)
         metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
-        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        if not self.loss.no_value_function:
+            metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         metrics["metrics/return"] = self.last_mean_return
 
