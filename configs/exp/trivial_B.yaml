@@ -7,7 +7,7 @@ env:
   scramble_size: 1.00
 
 model:
-  embedding_dim: 16
+  embedding_dim: 12
   n_heads: 1
   backbone_layers: 4
   decoder_layers: 1
