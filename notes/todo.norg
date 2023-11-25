@@ -7,7 +7,6 @@ updated: 2023-11-21T22:27:28+0100
 @end
 
 * TODO
-  - Add the total returns to WandB.
   - Verify enhancements:
   -- ( ) ReLU entropy
   -- ( ) Action-specific weighted entropy
@@ -31,6 +30,14 @@ updated: 2023-11-21T22:27:28+0100
   - (x) Reset from current best boards.
   - ( ) Use a CNN as a backbone encoder. Concat best tiles with tiles. Use as many
         groups are there are total sides (8) before merging sides. How to use `n_steps` ?
+  - ( ) Checker https://arxiv.org/abs/2110.00641
+
+** A faire maintenant
+
+   ~ Est-ce que le modèle plateaude ou pas quand on le teste sans critic ? Tester de longs entraînements.
+   ~ Si le modèle ne plateaude pas, tester plusieurs rewards (delta-max notamment).
+   ~ Si delta-max fonctionne, tester en never-ending episodes.
+   ~ Tester les resets sans scramble.
 
 * Why it does not work?
   - Is that possible that the model struggles at some point because the value function
@@ -100,3 +107,13 @@ updated: 2023-11-21T22:27:28+0100
     learn a policy that solves it: {https://arxiv.org/abs/2310.06794v1}.
   - Ideally the model needs an architectural bias that allows him
     to play multiple rounds in its latent space.
+
+** Batched MCTS
+   - If we know the number of simulations we're doing, let's say N.
+   - We can represent a tree by an array of shape [N, N].
+     The first dims are all the nodes, the second are the childs ids of the given node.
+   - We can have a null-node, the first one for example (id 0).
+     This means that when we see that a node has the child node 0, it means the null node (empty child).
+   - When iteratively visiting the nodes to find the node to select and expand,
+     it is possible to do it iteratively accross the batch of trees (shape of [B, N, N]).
+     Just iterate until everyone has reach the leaf.
