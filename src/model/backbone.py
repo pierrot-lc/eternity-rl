@@ -77,28 +77,23 @@ class Backbone(nn.Module):
         dropout: float,
     ):
         super().__init__()
-        Conv2d = partial(nn.Conv2d, kernel_size=3, stride=1, padding="same")
+        Conv2d = partial(nn.Conv2d, stride=1, padding="same")
 
         self.embed_board = nn.Sequential(
             # Encode the classes.
             ClassEncoding(embedding_dim),
             # Apply a CNN encoder to account for local same-class information.
             Rearrange("b t h w e -> b (t e) h w"),
-            Conv2d(embedding_dim * N_SIDES, embedding_dim),
-            nn.GELU(),
+            Conv2d(embedding_dim * N_SIDES * 2, embedding_dim, kernel_size=1),
+            Conv2d(embedding_dim, embedding_dim, kernel_size=3),
             nn.GroupNorm(num_groups=1, num_channels=embedding_dim),
         )
         self.embed_steps = EncodeSteps(embedding_dim)
-        self.merge_boards = nn.Sequential(
-            Conv2d(2 * embedding_dim, embedding_dim),
-            nn.GELU(),
-            nn.GroupNorm(num_groups=1, num_channels=embedding_dim),
-        )
 
         self.res_layers = nn.ModuleList(
             [
                 nn.Sequential(
-                    Conv2d(embedding_dim, embedding_dim),
+                    Conv2d(embedding_dim, embedding_dim, kernel_size=3),
                     nn.GELU(),
                     nn.GroupNorm(num_groups=1, num_channels=embedding_dim),
                 )
@@ -125,19 +120,17 @@ class Backbone(nn.Module):
 
         ---
         Returns:
-            The embedded game state.
+            The embedded game state as sequence of tiles.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
+        boards = torch.concat((boards, best_boards), dim=1)
+
         boards = self.embed_board(boards)
-        # TODO: add this latent representation to the final tiles? It may make things
-        # easier for the model to retrieve the original tiles.
+        initial_boards = boards
+
         boards = self.embed_steps(boards, n_steps)
-        best_boards = self.embed_board(best_boards)
-
-        boards = self.merge_boards(torch.concat((boards, best_boards), dim=1))
-
         for layer in self.res_layers:
-            boards = layer(boards) + boards
+            boards = layer(boards) + boards / 2 + initial_boards / 2
 
         tiles = rearrange(boards, "b e h w -> (h w) b e")
         return tiles
