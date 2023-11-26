@@ -84,7 +84,7 @@ class Backbone(nn.Module):
             ClassEncoding(embedding_dim),
             # Apply a CNN encoder to account for local same-class information.
             Rearrange("b t h w e -> b (t e) h w"),
-            Conv2d(embedding_dim * N_SIDES * 2, embedding_dim, kernel_size=1),
+            Conv2d(embedding_dim * N_SIDES, embedding_dim, kernel_size=1),
             Conv2d(embedding_dim, embedding_dim, kernel_size=3),
             nn.GroupNorm(num_groups=1, num_channels=embedding_dim),
         )
@@ -123,14 +123,9 @@ class Backbone(nn.Module):
             The embedded game state as sequence of tiles.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
-        boards = torch.concat((boards, best_boards), dim=1)
-
         boards = self.embed_board(boards)
-        initial_boards = boards
-
-        boards = self.embed_steps(boards, n_steps)
         for layer in self.res_layers:
-            boards = layer(boards) + boards / 2 + initial_boards / 2
+            boards = layer(boards) + boards
 
         tiles = rearrange(boards, "b e h w -> (h w) b e")
         return tiles
