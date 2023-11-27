@@ -7,10 +7,10 @@ env:
   scramble_size: 1.00
 
 model:
-  embedding_dim: 12
+  embedding_dim: 16
   n_heads: 1
   backbone_layers: 6
-  decoder_layers: 1
+  decoder_layers: 2
   dropout: 0.00
 
 optimizer:
@@ -36,8 +36,8 @@ trainer:
   clip_value: 1.000
 
 iterations:
-  rollouts: 60
-  epochs: 15_000
-  batch_size: 4000
+  rollouts: 80
+  epochs: -1
+  batch_size: 8000
 
 checkpoint:
