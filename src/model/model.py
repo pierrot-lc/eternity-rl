@@ -72,7 +72,7 @@ class Policy(nn.Module):
         tiles: torch.Tensor,
         best_tiles: torch.Tensor,
         n_steps: torch.Tensor,
-        sampling_mode: str = "softmax",
+        sampling_mode: str | None = "softmax",
         sampled_actions: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
@@ -155,6 +155,68 @@ class Policy(nn.Module):
         entropies = torch.stack(entropies, dim=1)
 
         return actions, logprobs, entropies, values
+
+    @torch.inference_mode()
+    def forward_multi_sample(
+        self,
+        tiles: torch.Tensor,
+        best_tiles: torch.Tensor,
+        n_steps: torch.Tensor,
+        n_samples: int,
+        sampling_mode: str = "softmax",
+    ) -> torch.Tensor:
+        """Do an inference and sample multiple actions predicted by the policy.
+        This is more efficient than calling 'n_samples' times the model since we
+        only call the head multiple times.
+
+        ---
+        Returns:
+            samples: The sampled actions.
+                Shape of [batch_size, n_samples, n_actions].
+        """
+        batch_size = tiles.shape[0]
+        tiles = self.backbone(tiles, best_tiles, n_steps)
+
+        samples = [[] for _ in range(n_samples)]
+
+        for sample_id in range(n_samples):
+            sample_tiles = tiles.clone()
+            actions = []
+
+            # Node selections.
+            for node_number in range(2):
+                queries = repeat(self.node_query, "e -> b e", b=batch_size)
+                probs = self.select_tile(sample_tiles, queries)
+                sampled_nodes = self.sample_actions(probs, sampling_mode)
+                actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_nodes)
+
+                actions.append(sampled_nodes)
+
+                selected_embedding = self.node_selected_embeddings[node_number]
+                selected_embedding = repeat(
+                    selected_embedding, "e -> b e", b=batch_size
+                )
+                sample_tiles = Policy.selective_add(sample_tiles, selected_embedding, sampled_nodes)
+
+            # Side selections.
+            for side_number in range(2):
+                queries = repeat(self.side_query, "e -> b e", b=batch_size)
+                probs = self.select_side(sample_tiles, queries)
+
+                sampled_sides = self.sample_actions(probs, sampling_mode)
+                actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_sides)
+
+                actions.append(sampled_sides)
+
+                side_embedding = self.side_embeddings[sampled_sides]
+                sample_tiles = Policy.selective_add(
+                    sample_tiles, side_embedding, actions[side_number]
+                )
+
+            samples.append(torch.stack(actions, dim=1))
+
+        samples = torch.stack(samples, dim=1)
+        return samples
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:

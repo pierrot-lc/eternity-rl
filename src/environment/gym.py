@@ -476,6 +476,27 @@ class EternityEnv(gym.Env):
         return rolled_tensor
 
     @classmethod
+    def from_env(
+        cls,
+        env: "EternityEnv",
+    ) -> "EternityEnv":
+        copy = cls(
+            env.instances,
+            env.episode_length,
+            env.scramble_size,
+            env.device,
+            env.rng.seed(),
+            env.sample_size,
+        )
+        copy.n_steps = env.n_steps.clone()
+        copy.best_matches = env.best_matches.clone()
+        copy.best_boards = env.best_boards.clone()
+        copy.best_board_ever = env.best_board_ever
+        copy.game_sample = env.game_sample.clone()
+        copy.current_sample_step = env.current_sample_step
+        return copy
+
+    @classmethod
     def from_file(
         cls,
         instance_path: Path,
@@ -484,7 +505,7 @@ class EternityEnv(gym.Env):
         scramble_size: float = 0,
         device: str = "cpu",
         seed: int = 0,
-    ):
+    ) -> "EternityEnv":
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
         return cls(instances, episode_length, scramble_size, device, seed)
