@@ -1,12 +1,16 @@
+from functools import partial
+from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
+
 import torch
 import torch.nn as nn
+from einops import rearrange
 from einops.layers.torch import Rearrange
-from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
 from .integer_encoding import IntegerEncoding
 from .transformer import TransformerEncoderLayer
+
 
 
 class Backbone(nn.Module):
@@ -16,9 +20,10 @@ class Backbone(nn.Module):
     The board is encoded as follows:
         - Embed the classes of each side of the tiles.
         - Merge the classes of each tile into a single embedding.
-        - Add 2D positional encoding.
-        - Flatten into 1D sequence of tokens.
-        - Transformer encoder to compute features.
+        - Same thing for the best boards.
+        - Add the encoding of the steps using cross-attention.
+        - Merge the two boards.
+        - Use a simple ResNet to compute latent representations.
     """
 
     def __init__(
@@ -41,12 +46,9 @@ class Backbone(nn.Module):
             # To transformer layout.
             Rearrange("b h w e -> (h w) b e"),
         )
+        self.steps_encoder = IntegerEncoding(embedding_dim)
 
-        self.conditional_encoding = IntegerEncoding(embedding_dim)
-
-        # The transformer is the same as the one used in LLaMa: https://arxiv.org/abs/2302.13971.
-        # TODO: Add rotary embeddings?
-        self.transformer_layers = nn.TransformerEncoder(
+        self.encoder = nn.TransformerEncoder(
             TransformerEncoderLayer(
                 d_model=embedding_dim,
                 nhead=n_heads,
@@ -56,12 +58,14 @@ class Backbone(nn.Module):
                 batch_first=False,
             ),
             num_layers=n_layers,
+            enable_nested_tensor=False,  # Pre-norm can't profit from this.
         )
 
     def forward(
         self,
-        tiles: torch.Tensor,
-        conditionals: torch.Tensor,
+        boards: torch.Tensor,
+        best_boards: torch.Tensor,
+        n_steps: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -69,21 +73,19 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            conditionals: Some contextual informations. Typically you can provide the
-                current number of steps of each game.
+            best_tiles: The game best state.
+                Tensor of shape [batch_size, N_SIDES, board_height, board_width].
+            n_steps: Number of steps of each game.
                 Long tensor of shape [batch_size,].
 
         ---
         Returns:
-            The embedded game state.
+            The embedded game state as sequence of tiles.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
-        conditionals = self.conditional_encoding(conditionals)
-        tiles = self.embed_board(tiles)
+        boards = self.embed_board(boards)
+        n_steps = self.steps_encoder(n_steps)
+        tokens = torch.concat((n_steps.unsqueeze(0), boards), dim=0)
+        tokens = self.encoder(tokens)
 
-        tokens = torch.cat(
-            (conditionals.unsqueeze(0), tiles),
-            dim=0,
-        )
-        tokens = self.transformer_layers(tokens)
         return tokens[1:]

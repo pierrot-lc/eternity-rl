@@ -28,7 +28,6 @@ class Trainer:
         scheduler: optim.lr_scheduler.LRScheduler,
         replay_buffer: ReplayBuffer,
         clip_value: float,
-        scramble_size: float,
         rollouts: int,
         epochs: int,
     ):
@@ -42,18 +41,15 @@ class Trainer:
         self.rollouts = rollouts
         self.epochs = epochs
 
-        self.scramble_size = int(scramble_size * self.env.batch_size)
         self.device = env.device
+
+        # Dynamic infos.
         self.best_matches_found = 0
+        self.mean_return = 0
 
     @torch.inference_mode()
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
-        if self.scramble_size > 0:
-            scramble_ids = torch.randperm(self.env.batch_size, device=self.device)
-            scramble_ids = scramble_ids[: self.scramble_size]
-            self.env.reset(scramble_ids=scramble_ids)
-
         traces = rollout(
             self.env, self.model, sampling_mode, self.rollouts, disable_logs
         )
@@ -68,6 +64,11 @@ class Trainer:
             == traces["masks"].sum().item()
             == self.env.batch_size * self.rollouts
         ), "Some samples are missing."
+
+        returns = (traces["rewards"] * traces["masks"]).sum(dim=1)
+        dones = traces["dones"].float().sum(dim=1)
+        returns *= dones  # Only count ended episodes.
+        self.mean_return = returns.sum() / dones.sum()
 
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
@@ -119,7 +120,6 @@ class Trainer:
             eval_every: The number of rollouts between each evaluation.
         """
         disable_logs = mode == "disabled"
-        self.best_matches_found = 0  # Reset.
 
         with wandb.init(
             project="eternity-rl",
@@ -130,6 +130,7 @@ class Trainer:
         ) as run:
             self.model.to(self.device)
             self.env.reset()
+            self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
                 if isinstance(self.model, DDP):
@@ -171,13 +172,13 @@ class Trainer:
         metrics = dict()
         self.model.eval()
 
-        matches = self.env.matches / self.env.best_matches_possible
+        matches = self.env.matches / self.env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
         metrics["matches/best"] = (
-            self.env.best_matches_ever / self.env.best_matches_possible
+            self.env.best_matches_ever / self.env.best_possible_matches
         )
         metrics["matches/rolling"] = (
-            self.env.rolling_matches / self.env.best_matches_possible
+            self.env.rolling_matches / self.env.best_possible_matches
         )
         metrics["matches/total-won"] = self.env.total_won
 
@@ -186,8 +187,10 @@ class Trainer:
         batch = batch.to(self.device)
         metrics |= self.loss(batch, self.model)
         metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
-        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        if not self.loss.no_value_function:
+            metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        metrics["metrics/return"] = self.mean_return
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.

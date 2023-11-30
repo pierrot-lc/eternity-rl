@@ -92,7 +92,7 @@ def test_matches_tiles():
         matches = matches // 2  # Sides have all been checked twice.
         return matches
 
-    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, 10, "cpu")
+    env = EternityEnv.from_file(Path("./instances/eternity_A.txt"), 10, 10, device="cpu")
     assert torch.all(env.matches == 12)
     for _ in range(10):
         env.reset()
@@ -110,7 +110,7 @@ def test_matches_tiles():
     ],
 )
 def test_batch_scramble(instance_path: str):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     reference = env.instances[0].clone()
     instance_ids = torch.randperm(env.batch_size)[: env.batch_size // 2]
     env.scramble_instances(instance_ids)
@@ -166,7 +166,7 @@ def test_batch_roll():
     ],
 )
 def test_batch_roll_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     instance_reference = env.instances[0].clone()
     tile_ids = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     shifts = torch.randint(low=0, high=N_SIDES, size=(env.batch_size,))
@@ -191,7 +191,7 @@ def test_batch_roll_action(instance_path):
     ],
 )
 def test_batch_swap_action(instance_path):
-    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, "cpu")
+    env = EternityEnv.from_file(ENV_DIR / instance_path, 10, 10, device="cpu")
     instance_reference = env.instances[0].clone()
     tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
     tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
@@ -250,12 +250,51 @@ def test_instance_upgrade(instance_1: str, instance_2: str):
 def test_perfect_instance_generation(size: int, n_classes: int, n_instances: int):
     generator = torch.Generator()
     instances = random_perfect_instances(size, n_classes, n_instances, generator)
-    env = EternityEnv(instances, 10, "cpu")
+    env = EternityEnv(instances, 10, device="cpu")
     assert torch.all(
-        env.matches == env.best_matches_possible
+        env.matches == env.best_possible_matches
     ), "The instance is not solved!"
 
     assert torch.all(instances[:, SOUTH, 0, :] == 0), "No walls around the instances!"
     assert torch.all(instances[:, NORTH, -1, :] == 0), "No walls around the instances!"
     assert torch.all(instances[:, WEST, :, 0] == 0), "No walls around the instances!"
     assert torch.all(instances[:, EAST, :, -1] == 0), "No walls around the instances!"
+
+
+@pytest.mark.parametrize(
+    "instance_path",
+    [
+        "eternity_trivial_A.txt",
+        "eternity_trivial_B.txt",
+        "eternity_A.txt",
+    ],
+)
+def test_best_boards(instance_path: str):
+    env = EternityEnv.from_file(
+        ENV_DIR / instance_path,
+        episode_length=10,
+        batch_size=10,
+        device="cpu",
+    )
+    _, infos = env.reset()
+    best_boards = env.instances.clone()
+    best_scores = env.matches
+    assert torch.all(infos["best-boards"] == best_boards)
+    assert torch.all(infos["best-matches"] == best_scores)
+
+    for _ in range(10):
+        tile_ids_1 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+        tile_ids_2 = torch.randint(low=0, high=env.n_pieces, size=(env.batch_size,))
+        shifts_1 = torch.randint(low=0, high=4, size=(env.batch_size,))
+        shifts_2 = torch.randint(low=0, high=4, size=(env.batch_size,))
+
+        actions = torch.stack([tile_ids_1, shifts_1, tile_ids_2, shifts_2], dim=1)
+        *_, infos = env.step(actions)
+
+        for game_id in range(env.batch_size):
+            if env.matches[game_id] > best_scores[game_id]:
+                best_scores[game_id] = env.matches[game_id]
+                best_boards[game_id] = env.instances[game_id]
+
+        assert torch.all(infos["best-boards"] == best_boards)
+        assert torch.all(infos["best-matches"] == best_scores)

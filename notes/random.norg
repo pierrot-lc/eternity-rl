@@ -53,6 +53,17 @@ version: 1.1.1
   I did not really spend a lot of time experimenting this. It may be worth to have
   two small models that are faster than a single big shared model for both actor and critic.
 
+  It is important that the critic does not overfit the actor actions. At some point, the
+  critic gets use to the mean actor performance. When that happen, the critic is not
+  guiding the actor anymore. The only way for the actor to improve is to randomly
+  find good moves that the critic did not predict.
+
+  The issue is:
+  - Either the actor just cannot randomly find the good moves. The probability is too
+    low (need long-term planning).
+  - Either the critic has so much penalised the actor on the potential good moves that
+    the actor just won't do the unknown good moves.
+
 * Reward modeling
   The `win` reward is good because it does not optimize for the number of
   steps to win, nor for intermediate easy rewards. But it has a problem:
@@ -135,7 +146,7 @@ version: 1.1.1
 
   To avoid local minimas, the model should build the board from scratch everytime
   and only be given the reward at the end of the episode (like I used to to at the
-  beginning.
+  beginning).
 
 * About on-policy learning and exploration
   It's harder to implement a forced exploration or exploitation when using an on-policy
@@ -144,6 +155,25 @@ version: 1.1.1
 
   It could be interesting to sample the tile selection with a tempered softmax and
   the tile rotation with epsilon-greedy.
+
+* Planning with on-policy methods
+  Turns out it is very hard (if not impossible) to train a policy with policy gradient
+  methods to solve planning problems. Solving a puzzle is a planning problem, and as
+  such I think you should incorporate a planning strategy in your training.
+  But you can't just use MCTS to collect your rollouts, as it becomes an off-policy rollout!
+
+  But it also turns out it is not really possible to train an off-policy on the eterniy
+  puzzle, because it has too many actions! When the action is a simple swap, this leads
+  to more than 1000s possible actions (the number of action grows polynomially).
+  This means that to be able to use planning training such as AlphaZero,
+  you need to find a new set of actions that is much lighter.
+
+  So what to do? An idea would be to train an on-policy actor/critic model, but with a
+  critic that is trained based on MCTS rollouts. You can keep training the policy as usual,
+  based on the values predicted by the critic, in an on-policy manner. But you train the
+  critic only on the MCTS rollouts, using the policy to explore the trees.
+  Since the number of actions is huge, you can sample the most probable actions and
+  expand the nodes using those actions.
 
 * Resetting an environment during rollout collection
   I met some instabilities when training on small puzzles, and I couldn't find where
@@ -188,6 +218,7 @@ version: 1.1.1
   - Pre-norm.
   - SwiGLU activation function (https://arxiv.org/abs/2002.05202).
   - RMSNorm (https://arxiv.org/abs/1910.07467).
+  - Rotary positional encoding (https://arxiv.org/abs/2104.09864).
 
   They are either here to stabilize or speed up the training. I did not implemented
   RMSNorm since it is only here to replace the LayerNorm which is not arguably what

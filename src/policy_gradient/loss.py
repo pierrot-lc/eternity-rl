@@ -4,6 +4,7 @@ from tensordict import TensorDictBase
 from torchrl.objectives.value.functional import vec_generalized_advantage_estimate
 
 from ..model import Policy
+from .rollout import cumulative_decay_return
 
 
 class PPOLoss(nn.Module):
@@ -18,6 +19,7 @@ class PPOLoss(nn.Module):
         gae_lambda: The GAE lambda parameter.
         ppo_clip_ac: The PPO action clipping parameter.
         ppo_clip_vf: The PPO value clipping parameter.
+        no_value_function: Whether to deactivate the value function.
 
     ---
     Sources:
@@ -47,12 +49,6 @@ class PPOLoss(nn.Module):
         self.ppo_clip_vf = ppo_clip_vf
         self.no_value_function = no_value_function
 
-        if self.no_value_function:
-            self.value_weight = 0.0
-
-            # Deactivate GAE, use a pure MC estimation.
-            self.gae_lambda = 1.0
-
         self.value_loss_fn = nn.HuberLoss(reduction="none")
 
     def advantages(self, traces: TensorDictBase):
@@ -71,20 +67,21 @@ class PPOLoss(nn.Module):
                 dones: The rollout dones of the given states.
                     Shape of [batch_size, steps].
         """
-        advantages, value_targets = vec_generalized_advantage_estimate(
-            self.gamma,
-            self.gae_lambda,
-            traces["values"].unsqueeze(-1),
-            traces["next-values"].unsqueeze(-1),
-            traces["rewards"].unsqueeze(-1),
-            traces["dones"].unsqueeze(-1),
-        )
-        traces["advantages"] = advantages.squeeze(-1)
-        traces["value-targets"] = value_targets.squeeze(-1)
-
         if self.no_value_function:
-            # `value-targets` contains the MCTS estimates.
-            traces["advantages"] = traces["value-targets"]
+            traces["advantages"] = cumulative_decay_return(
+                traces["rewards"], traces["masks"], self.gamma
+            )
+        else:
+            advantages, value_targets = vec_generalized_advantage_estimate(
+                self.gamma,
+                self.gae_lambda,
+                traces["values"].unsqueeze(-1),
+                traces["next-values"].unsqueeze(-1),
+                traces["rewards"].unsqueeze(-1),
+                traces["dones"].unsqueeze(-1),
+            )
+            traces["advantages"] = advantages.squeeze(-1)
+            traces["value-targets"] = value_targets.squeeze(-1)
 
     def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
@@ -121,6 +118,7 @@ class PPOLoss(nn.Module):
 
         _, logprobs, entropies, values = model(
             batch["states"],
+            batch["best-boards"],
             batch["conditionals"],
             None,
             batch["actions"],
@@ -129,12 +127,6 @@ class PPOLoss(nn.Module):
         # Compute the joint log probability of the actions.
         logprobs = logprobs.sum(dim=1)
         old_logprobs = batch["log-probs"].sum(dim=1)
-
-        # entropies[:, 0] *= 1.0
-        # entropies[:, 1] *= 1.0
-        # entropies[:, 2] *= 0.10
-        # entropies[:, 3] *= 0.10
-        entropies = entropies.sum(dim=1)
 
         advantages = batch["advantages"]
         mean, var = advantages.mean(), advantages.var()
@@ -155,30 +147,38 @@ class PPOLoss(nn.Module):
         metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
-        old_values = batch["values"]
-        clipped_values = torch.clamp(
-            values, old_values - self.ppo_clip_vf, old_values + self.ppo_clip_vf
-        )
-        value_losses = torch.stack(
-            (
-                self.value_loss_fn(values, batch["value-targets"]),
-                self.value_loss_fn(clipped_values, batch["value-targets"]),
-            ),
-            dim=-1,
-        )
-        metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
-        metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
+        if not self.no_value_function:
+            old_values = batch["values"]
+            clipped_values = torch.clamp(
+                values, old_values - self.ppo_clip_vf, old_values + self.ppo_clip_vf
+            )
+            value_losses = torch.stack(
+                (
+                    self.value_loss_fn(values, batch["value-targets"]),
+                    self.value_loss_fn(clipped_values, batch["value-targets"]),
+                ),
+                dim=-1,
+            )
+            metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
+            metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
+        # entropies[:, 0] *= 1.0
+        # entropies[:, 1] *= 1.0
+        # entropies[:, 2] *= 0.10
+        # entropies[:, 3] *= 0.10
+        entropies = entropies.sum(dim=1)
         metrics["loss/entropy"] = -entropies.mean()
         metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
         # metrics["loss/entropy"] = torch.relu(3.0 - entropies).mean()
         # metrics["loss/weighted-entropy"] = metrics["loss/entropy"]
 
         metrics["loss/total"] = (
-            metrics["loss/weighted-policy"]
-            + metrics["loss/weighted-value"]
-            + metrics["loss/weighted-entropy"]
+            metrics["loss/weighted-policy"] + metrics["loss/weighted-entropy"]
         )
+        if not self.no_value_function:
+            metrics["loss/total"] = (
+                metrics["loss/total"] + metrics["loss/weighted-value"]
+            )
 
         # Some metrics to track, but it does not contribute to the loss.
         with torch.no_grad():
@@ -187,9 +187,10 @@ class PPOLoss(nn.Module):
             metrics["metrics/policy-clip-frac"] = (
                 ((prob_ratios - 1.0).abs() > self.ppo_clip_ac).float().mean()
             )
-            metrics["metrics/value-clip-frac"] = (
-                ((values - old_values).abs() > self.ppo_clip_vf).float().mean()
-            )
+            if not self.no_value_function:
+                metrics["metrics/value-clip-frac"] = (
+                    ((values - old_values).abs() > self.ppo_clip_vf).float().mean()
+                )
             metrics["metrics/entropy"] = entropies.mean()
 
         return metrics

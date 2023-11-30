@@ -2,7 +2,7 @@
 All actions are made on the batch.
 """
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import gymnasium as gym
 import gymnasium.spaces as spaces
@@ -60,7 +60,8 @@ class EternityEnv(gym.Env):
         self,
         instances: torch.Tensor,
         episode_length: int,
-        device: str,
+        scramble_size: float = 0,
+        device: str = "cpu",
         seed: int = 0,
         sample_size: int = 40,
     ):
@@ -83,6 +84,7 @@ class EternityEnv(gym.Env):
         super().__init__()
         self.instances = instances.to(device)
         self.episode_length = episode_length
+        self.scramble_size = scramble_size
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -90,7 +92,7 @@ class EternityEnv(gym.Env):
         self.board_size = self.instances.shape[-1]
         self.n_pieces = self.board_size * self.board_size
         self.n_classes = int(self.instances.max().cpu().item() + 1)
-        self.best_matches_possible = 2 * self.board_size * (self.board_size - 1)
+        self.best_possible_matches = 2 * self.board_size * (self.board_size - 1)
         self.batch_size = self.instances.shape[0]
 
         # Dynamic infos.
@@ -130,14 +132,14 @@ class EternityEnv(gym.Env):
 
     def reset(
         self,
-        scramble_ids: Optional[torch.Tensor] = None,
+        instance_ids: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         Scrambles the instances and reset their infos.
         """
-        if scramble_ids is None:
-            scramble_ids = torch.arange(
+        if instance_ids is None:
+            instance_ids = torch.arange(
                 start=0, end=self.batch_size, device=self.device
             )
 
@@ -146,11 +148,22 @@ class EternityEnv(gym.Env):
         #     self.board_size, self.n_classes, len(scramble_ids), self.rng
         # )
 
-        self.scramble_instances(scramble_ids)
+        self.scramble_instances(instance_ids)
 
-        self.best_matches[scramble_ids] = self.matches[scramble_ids]
-        self.best_boards[scramble_ids] = self.instances[scramble_ids].clone()
-        self.n_steps[scramble_ids] = 0
+        candidate_ids = instance_ids[
+            self.best_matches[instance_ids] != self.best_possible_matches
+        ]
+        best_boards_proportion = int((1 - self.scramble_size) * len(candidate_ids))
+        best_board_ids = torch.randperm(
+            len(candidate_ids), generator=self.rng, device=self.device
+        )
+        best_board_ids = best_board_ids[:best_boards_proportion]
+        best_board_ids = candidate_ids[best_board_ids]
+        self.instances[best_board_ids] = self.best_boards[best_board_ids]
+
+        self.best_matches[instance_ids] = self.matches[instance_ids]
+        self.best_boards[instance_ids] = self.instances[instance_ids].clone()
+        self.n_steps[instance_ids] = 0
         just_won = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
         # Do not reset the best env found, only updates it.
@@ -159,8 +172,9 @@ class EternityEnv(gym.Env):
 
         infos = {
             "just-won": just_won,
-            "best-boards": self.best_boards,
             "n-steps": self.n_steps,
+            "best-boards": self.best_boards,
+            "best-matches": self.best_matches,
         }
 
         return self.render(), infos
@@ -191,6 +205,7 @@ class EternityEnv(gym.Env):
                 - `just-won`: Whether the environments has just been won.
                 - `n-steps`: Number of steps played.
                 - `best-boards`: Best boards seen since the beggining of the games.
+                - `best-matches`: Best scores since the beggining of the games.
         """
         tiles_id_1, tiles_id_2 = actions[:, 0], actions[:, 1]
         shifts_1, shifts_2 = actions[:, 2], actions[:, 3]
@@ -205,7 +220,7 @@ class EternityEnv(gym.Env):
         matches = self.matches
 
         truncated = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-        just_won = matches == self.best_matches_possible
+        just_won = matches == self.best_possible_matches
         dones = just_won | (self.n_steps >= self.episode_length)
 
         # Internal metrics.
@@ -223,16 +238,17 @@ class EternityEnv(gym.Env):
         self.current_sample_step = (self.current_sample_step + 1) % self.sample_size
 
         # Rewards.
-        delta_rewards = (matches - previous_matches) / self.best_matches_possible
-        best_delta_rewards = diff_matches / self.best_matches_possible
+        delta_rewards = (matches - previous_matches) / self.best_possible_matches
+        best_delta_rewards = diff_matches / self.best_possible_matches
         best_delta_rewards[best_delta_rewards < 0] = 0
-        done_rewards = (self.best_matches / self.best_matches_possible) * dones.float()
+        done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
         rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
 
         infos = {
             "just-won": just_won,
             "n-steps": self.n_steps,
             "best-boards": self.best_boards,
+            "best-matches": self.best_matches,
         }
 
         return self.render(), rewards, dones, truncated, infos
@@ -465,12 +481,13 @@ class EternityEnv(gym.Env):
         instance_path: Path,
         episode_length: int,
         batch_size: int,
-        device: str,
+        scramble_size: float = 0,
+        device: str = "cpu",
         seed: int = 0,
     ):
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, episode_length, device, seed)
+        return cls(instances, episode_length, scramble_size, device, seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:
