@@ -31,6 +31,14 @@ updated: 2023-11-21T22:27:28+0100
   - ( ) Use a CNN as a backbone encoder. Concat best tiles with tiles. Use as many
         groups are there are total sides (8) before merging sides. How to use `n_steps` ?
   - ( ) Checker https://arxiv.org/abs/2110.00641
+  - ( ) Regarder s'il est possible d'optimiser l'env batché
+
+** MCTS
+   - ( ) Renommer "select_leafs"
+   - ( ) Ajouter un réel "select_leafs"
+   - ( ) Simuler un rollout
+   - ( ) Backprop les résultats des rollouts
+   - ( ) Gérer la valeur des nouveaux fils à l'aide du value network.
 
 ** A faire maintenant
 

@@ -148,10 +148,8 @@ class MCTSTree:
         arange = repeat(arange, "c -> b c", b=self.batch_size)
         childs_node_id = self.tree_nodes.unsqueeze(1) + arange
         # Shape of [batch_size, n_childs].
-        print(childs_node_id)
 
         # Add the childs to their parent childs.
-        print(self.childs[self.batch_range, nodes].shape)
         self.childs[self.batch_range, nodes] = childs_node_id
 
         # Add the parents.
