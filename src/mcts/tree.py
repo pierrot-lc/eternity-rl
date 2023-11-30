@@ -1,4 +1,5 @@
 import torch
+from einops import repeat
 
 from ..environment import EternityEnv
 from ..model import Policy
@@ -21,11 +22,6 @@ class MCTSTree:
         self.current_node_envs = EternityEnv.from_env(self.envs)
         self.batch_range = torch.arange(self.batch_size, device=self.device)
 
-        self.nodes = torch.zeros(
-            (self.batch_size, self.n_nodes),
-            dtype=torch.long,
-            device=self.device,
-        )
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
             dtype=torch.long,
@@ -102,21 +98,78 @@ class MCTSTree:
 
         # If a node has no child, it remains unchanged.
         no_child = (childs != 0).sum(dim=1) == 0
-        best_childs[no_child] = nodes
+        best_childs[no_child] = nodes[no_child]
 
         return best_childs
 
-    def expand_nodes(self, nodes: torch.Tensor, envs: EternityEnv):
+    def sample_actions(self, envs: EternityEnv) -> torch.Tensor:
+        """Use the policy to sample new actions from the given environments.
+
+        ---
+        Args:
+            envs: The environments to use to sample the childs.
+
+        ---
+        Returns:
+            The sampled actions.
+                Shape of [batch_size, n_childs, n_actions].
+        """
+        return self.model.forward_multi_sample(
+            envs.render(), envs.best_boards, envs.n_steps, self.n_childs
+        )
+
+    def expand_nodes(self, nodes: torch.Tensor, actions: torch.Tensor):
         """Sample childs from the current nodes and add them
         to the trees.
+
+        To be added to a tree, a child needs to:
+        - Be added to the list of childs of its father.
+        - Have its parent set.
+        - Have its actions set.
+        - Add one to the number of nodes in the tree.
 
         ---
         Args:
             nodes: Id of the node for each batch sample.
                 Shape of [batch_size,].
-            envs: The environments to use to sample the childs.
-                They correspond to the state represented by the nodes.
+            actions: The actions to add to the tree.
+                Shape of [batch_size, n_childs, n_actions].
         """
-        actions = self.model.forward_multi_sample(
-            envs.render(), envs.best_boards, envs.n_steps, self.n_childs
-        )
+        assert torch.all(
+            self.tree_nodes + self.n_childs <= self.n_nodes
+        ), "A tree has run out of nodes!"
+
+        assert torch.all(
+            self.childs[self.batch_range, nodes] == 0
+        ), "A node already has childs!"
+
+        # Compute the node id of each child.
+        arange = torch.arange(self.n_childs, device=self.device)
+        arange = repeat(arange, "c -> b c", b=self.batch_size)
+        childs_node_id = self.tree_nodes.unsqueeze(1) + arange
+        # Shape of [batch_size, n_childs].
+        print(childs_node_id)
+
+        # Add the childs to their parent childs.
+        print(self.childs[self.batch_range, nodes].shape)
+        self.childs[self.batch_range, nodes] = childs_node_id
+
+        # Add the parents.
+        parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
+        self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
+
+        # Add the actions.
+        childs_node_id = repeat(childs_node_id, "b c -> b c a", a=actions.shape[2])
+        self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
+
+
+    @property
+    def tree_nodes(self) -> torch.Tensor:
+        """Count the total number of nodes in each tree.
+
+        ---
+        Returns:
+            The number of nodes in each tree.
+                Shape of [batch_size,].
+        """
+        return (self.childs != 0).sum(dim=(1, 2)) + 1

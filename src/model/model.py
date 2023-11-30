@@ -177,7 +177,7 @@ class Policy(nn.Module):
         batch_size = tiles.shape[0]
         tiles = self.backbone(tiles, best_tiles, n_steps)
 
-        samples = [[] for _ in range(n_samples)]
+        samples = []
 
         for sample_id in range(n_samples):
             sample_tiles = tiles.clone()
