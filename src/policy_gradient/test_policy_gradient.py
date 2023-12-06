@@ -2,7 +2,7 @@ import pytest
 import torch
 from tensordict import TensorDict
 
-from .rollout import cumulative_decay_return, split_reset_rollouts
+from .rollout import cumulative_decay_return, mask_reset_rollouts, split_reset_rollouts
 
 
 @pytest.mark.parametrize(
@@ -56,7 +56,7 @@ def test_cumulative_decay_return(
 
 
 @pytest.mark.parametrize(
-    "traces,split_traces",
+    "traces, split_traces",
     [
         (
             {
@@ -71,28 +71,38 @@ def test_cumulative_decay_return(
         ),
         (
             {
-                "dones": torch.BoolTensor([
-                    [False, False, True],
-                    [False, False, True],
-                ]),
-                "truncated": torch.BoolTensor([
-                    [False, False, False],
-                    [False, False, False],
-                ]),
+                "dones": torch.BoolTensor(
+                    [
+                        [False, False, True],
+                        [False, False, True],
+                    ]
+                ),
+                "truncated": torch.BoolTensor(
+                    [
+                        [False, False, False],
+                        [False, False, False],
+                    ]
+                ),
             },
             {
-                "dones": torch.BoolTensor([
-                    [False, False, True],
-                    [False, False, True],
-                ]),
-                "truncated": torch.BoolTensor([
-                    [False, False, False],
-                    [False, False, False],
-                ]),
-                "masks": torch.BoolTensor([
-                    [True, True, True],
-                    [True, True, True],
-                ]),
+                "dones": torch.BoolTensor(
+                    [
+                        [False, False, True],
+                        [False, False, True],
+                    ]
+                ),
+                "truncated": torch.BoolTensor(
+                    [
+                        [False, False, False],
+                        [False, False, False],
+                    ]
+                ),
+                "masks": torch.BoolTensor(
+                    [
+                        [True, True, True],
+                        [True, True, True],
+                    ]
+                ),
             },
         ),
         (
@@ -177,6 +187,107 @@ def test_cumulative_decay_return(
 def test_split_reset_rollouts(traces: dict, split_traces: dict):
     traces = TensorDict(traces, batch_size=traces["dones"].shape[0], device="cpu")
     traces = split_reset_rollouts(traces)
+
+    for name in split_traces.keys():
+        assert torch.all(split_traces[name] == traces[name])
+
+    split_traces_keys = set(split_traces.keys())
+    traces_keys = set(traces.keys())
+    assert split_traces_keys == traces_keys
+
+
+@pytest.mark.parametrize(
+    "traces, split_traces",
+    [
+        (
+            {
+                "dones": torch.BoolTensor([[False, False, True]]),
+                "truncated": torch.BoolTensor([[False, False, False]]),
+            },
+            {
+                "dones": torch.BoolTensor([[False, False, True]]),
+                "truncated": torch.BoolTensor([[False, False, False]]),
+                "masks": torch.BoolTensor([[True, True, True]]),
+            },
+        ),
+        (
+            {
+                "dones": torch.BoolTensor(
+                    [
+                        [False, False, True],
+                        [False, False, True],
+                    ]
+                ),
+                "truncated": torch.BoolTensor(
+                    [
+                        [False, False, False],
+                        [False, False, False],
+                    ]
+                ),
+            },
+            {
+                "dones": torch.BoolTensor(
+                    [
+                        [False, False, True],
+                        [False, False, True],
+                    ]
+                ),
+                "truncated": torch.BoolTensor(
+                    [
+                        [False, False, False],
+                        [False, False, False],
+                    ]
+                ),
+                "masks": torch.BoolTensor(
+                    [
+                        [True, True, True],
+                        [True, True, True],
+                    ]
+                ),
+            },
+        ),
+        (
+            {
+                "dones": torch.BoolTensor([[False, False, True]]),
+                "truncated": torch.BoolTensor([[False, False, True]]),
+            },
+            {
+                "dones": torch.BoolTensor([[False, False, True]]),
+                "truncated": torch.BoolTensor([[False, False, True]]),
+                "masks": torch.BoolTensor([[True, True, True]]),
+            },
+        ),
+        (
+            {
+                "dones": torch.BoolTensor([[False, False, False]]),
+                "truncated": torch.BoolTensor([[True, False, False]]),
+            },
+            {
+                "dones": torch.BoolTensor([[False, False, False]]),
+                "truncated": torch.BoolTensor([[True, False, False]]),
+                "masks": torch.BoolTensor([[True, False, False]]),
+            },
+        ),
+        (
+            {
+                "dones": torch.BoolTensor([[False, False, False]]),
+                "truncated": torch.BoolTensor([[True, False, False]]),
+                "rewards": torch.FloatTensor([[1.0, 3.0, 2.0]]),
+                "actions": torch.LongTensor([[[0, 1], [3, 4], [1, 4]]]),
+            },
+            {
+                "dones": torch.BoolTensor([[False, False, False]]),
+                "truncated": torch.BoolTensor([[True, False, False]]),
+                "rewards": torch.FloatTensor([[1.0, 3.0, 2.0]]),
+                "actions": torch.LongTensor([[[0, 1], [3, 4], [1, 4]]]),
+                "masks": torch.BoolTensor([[True, False, False]]),
+            },
+        ),
+    ],
+)
+def test_mask_reset_rollouts(traces: dict, split_traces: dict):
+    traces = TensorDict(traces, batch_size=traces["dones"].shape[0], device="cpu")
+    mask_reset_rollouts(traces)
 
     for name in split_traces.keys():
         assert torch.all(split_traces[name] == traces[name])

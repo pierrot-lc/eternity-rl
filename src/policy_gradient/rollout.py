@@ -26,6 +26,10 @@ def rollout(
         sampling_mode: The sampling mode to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
+
+    ---
+    Returns:
+        The traces of the played steps.
     """
     traces = defaultdict(list)
 
@@ -143,6 +147,35 @@ def split_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
     return TensorDict(
         split_traces, batch_size=split_traces["dones"].shape[0], device=device
     )
+
+
+def mask_reset_rollouts(traces: TensorDictBase) -> TensorDictBase:
+    """Mask the samples that have been reset during the rollouts.
+    This make sure the samples are only about the original envs when rollout has been
+    collected.
+
+    ---
+    Args:
+        traces: A dict containing at least the following entries:
+            dones: The rollout dones of the given states.
+                Shape of [batch_size, steps].
+            truncated: The rollout truncated of the given states.
+                Shape of [batch_size, steps].
+
+            The other entries must be of shape [batch_size, steps, ...].
+
+    ---
+    Returns:
+        The masked traces. A new entry "masks" is added to the traces.
+        A mask is True if the sample is not a padding.
+    """
+    masks = traces["dones"] | traces["truncated"]
+    masks = torch.cummax(masks, dim=1).values
+    masks = torch.roll(masks, shifts=1, dims=(1,))
+    masks = ~masks
+    masks[:, 0] = True
+
+    traces["masks"] = masks
 
 
 def cumulative_decay_return(

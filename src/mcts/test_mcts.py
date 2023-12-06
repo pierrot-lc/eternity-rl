@@ -219,7 +219,7 @@ def test_ucb(nodes: torch.Tensor):
         torch.LongTensor([6, 1]),
     ],
 )
-def test_select_leaf(nodes: torch.Tensor):
+def test_select_childs(nodes: torch.Tensor):
     tree = tree_mockup()
 
     childs = []
@@ -228,7 +228,15 @@ def test_select_leaf(nodes: torch.Tensor):
     childs = torch.stack(childs, dim=0)
 
     ucb = tree.ucb_scores(childs)
-    best_childs = torch.argmax(ucb, dim=1)
+    ucb[childs == 0] = -torch.inf
+    best_childs_ids = torch.argmax(ucb, dim=1)
+    best_childs = torch.stack(
+        [
+            childs[batch_id, best_childs_id]
+            for batch_id, best_childs_id in enumerate(best_childs_ids)
+        ],
+        dim=0,
+    )
 
     # Make sure we do not change the value of a leaf node.
     for batch_id, child_ids in enumerate(childs):
@@ -236,7 +244,60 @@ def test_select_leaf(nodes: torch.Tensor):
             # No childs !
             best_childs[batch_id] = nodes[batch_id]
 
-    assert torch.all(best_childs == tree.select_leafs(nodes))
+    assert torch.all(best_childs == tree.select_childs(nodes))
+
+
+@pytest.mark.parametrize(
+    "tree",
+    [
+        tree_mockup(),
+        tree_mockup_small(),
+    ],
+)
+def test_select_leafs(tree: MCTSTree):
+    leafs, envs = tree.select_leafs()
+
+    assert torch.all(
+        tree.childs[tree.batch_range, leafs] == 0
+    ), "Some leafs have a child"
+
+    assert torch.any(
+        envs.instances != tree.envs.instances
+    ), "Tree instances have changed"
+
+    for batch_id in range(tree.batch_size):
+        actions = []
+        copy_envs = EternityEnv.from_env(tree.envs)
+
+        current_node = leafs[batch_id]
+        while current_node != 0:
+            actions.append(tree.actions[batch_id, current_node])
+            current_node = tree.parents[batch_id, current_node]
+
+        if len(actions) == 0:
+            assert torch.all(
+                copy_envs.instances[batch_id] == envs.instances[batch_id]
+            ), "Replayed instances differ"
+            continue
+
+        # Shape of [n_actions, action_shape].
+        actions = torch.stack(list(reversed(actions)))
+
+        # Build the fictive actions for the other envs.
+        all_actions = torch.zeros(
+            (copy_envs.batch_size, actions.shape[0], actions.shape[1]),
+            dtype=torch.long,
+            device=copy_envs.device,
+        )
+        all_actions[batch_id] = actions
+
+        # Simulate all actions and compare the final env with the given envs.
+        for step_id in range(all_actions.shape[1]):
+            copy_envs.step(all_actions[:, step_id])
+
+        assert torch.all(
+            copy_envs.instances[batch_id] == envs.instances[batch_id]
+        ), "Replayed instances differ"
 
 
 @pytest.mark.parametrize(
@@ -272,3 +333,55 @@ def test_expand_nodes(nodes: torch.Tensor):
             ), "Wrong child actions"
 
     assert torch.all(tree.tree_nodes == original_tree_nodes + tree.n_childs)
+
+
+@pytest.mark.parametrize(
+    "nodes, values, updated_visits, updated_sum_scores",
+    [
+        (
+            torch.LongTensor([0, 1]),
+            torch.FloatTensor([0.5, 0.3]),
+            torch.LongTensor(
+                [
+                    [5, 2, 1, 1, 1, 1, 0],
+                    [3, 2, 1, 0, 0, 0, 0],
+                ]
+            ),
+            torch.FloatTensor(
+                [
+                    [3.5, 2.0, 0.6, 0.4, 1.0, 1.0, 0.0],
+                    [2.3, 1.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+                ]
+            ),
+        ),
+        (
+            torch.LongTensor([5, 1]),
+            torch.FloatTensor([0.6, 0.4]),
+            torch.LongTensor(
+                [
+                    [5, 3, 1, 1, 1, 2, 0],
+                    [3, 2, 1, 0, 0, 0, 0],
+                ]
+            ),
+            torch.FloatTensor(
+                [
+                    [3.6, 2.6, 0.6, 0.4, 1.0, 1.6, 0.0],
+                    [2.4, 1.5, 0.9, 0.0, 0.0, 0.0, 0.0],
+                ]
+            ),
+        ),
+    ],
+)
+def test_backpropagate(
+    nodes: torch.Tensor,
+    values: torch.Tensor,
+    updated_visits: torch.Tensor,
+    updated_sum_scores: torch.Tensor,
+):
+    tree = tree_mockup()
+    tree.backpropagate(nodes, values)
+
+    assert torch.all(tree.visits == updated_visits), "Wrong visits number"
+    assert torch.allclose(
+        tree.sum_scores, updated_sum_scores
+    ), "Wrong sum scores number"

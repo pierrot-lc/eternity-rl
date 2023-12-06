@@ -34,11 +34,15 @@ updated: 2023-12-06T14:23:14+0100
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
 ** MCTS
-   - ( ) Renommer "select_leafs"
-   - ( ) Ajouter un réel "select_leafs"
-   - ( ) Simuler un rollout
-   - ( ) Backprop les résultats des rollouts
-   - ( ) Gérer la valeur des nouveaux fils à l'aide du value network.
+   - (x) Renommer "select_leafs"
+   - (x) Ajouter un réel "select_leafs"
+   - (x) Simuler un rollout
+   - (x) Backprop les résultats des rollouts
+   - ( ) Gérer les noeuds des envs terminés
+   - ( ) Gérer les rewards (évaluation du plateau à la fin du rollout?)
+   - ( ) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
+         finir le rollout de chaque env
+   - ( ) Gérer la valeur des nouveaux fils à l'aide du value network
    - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
          en compte la probabilité de chaque node.
 
