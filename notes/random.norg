@@ -225,3 +225,21 @@ version: 1.1.1
   slows me the most (my hidden dimensions are small).
 
   I saw those enhancements in the LLaMa paper (https://arxiv.org/abs/2302.13971).
+
+* Dynamic MCTS
+  The problem I have with the original MCTS is that it needs to expand all children
+  when expanding a new node. Since I have a terrible amount of actions in my action space,
+  I can't afford it.
+
+  The way to counter this is to use the policy to sample actions that will be used
+  to create new nodes. The question becomes:
+
+  How do I decide how many new nodes do I sample each time I expand a node ?
+
+  We could think about a sampling strategy that makes sure we sample the n-most probable
+  candidates. Others ideas could be taken from the LLM sampling litterature (p-sampling).
+
+  Another idea would be to always sample one action (randomly) and to have a mecanism
+  to sample to childs for each node of the tree (not only at the leafs!). For example,
+  we could have a fictious child node which, when selected, means that the father should
+  sample a new child because others are too explored.
