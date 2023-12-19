@@ -36,22 +36,21 @@ updated: 2023-12-06T14:23:14+0100
 ** MCTS
    - (x) Renommer "select_leafs"
    - (x) Ajouter un réel "select_leafs"
-   - (x) Simuler un rollout
+   - (_) Simuler un rollout
+   -- ( ) Utiliser le value network pour évaluer un node.
    - (x) Backprop les résultats des rollouts
    - ( ) Gérer les noeuds des envs terminés
    - ( ) Gérer les rewards (évaluation du plateau à la fin du rollout?)
-   - ( ) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
+   - (_) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
          finir le rollout de chaque env
    - ( ) Gérer la valeur des nouveaux fils à l'aide du value network
    - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
          en compte la probabilité de chaque node.
+   - ( ) Updater le meilleur puzzle trouvé pendant le tree search.
 
-** A faire maintenant
-
-   ~ Est-ce que le modèle plateaude ou pas quand on le teste sans critic ? Tester de longs entraînements.
-   ~ Si le modèle ne plateaude pas, tester plusieurs rewards (delta-max notamment).
-   ~ Si delta-max fonctionne, tester en never-ending episodes.
-   ~ Tester les resets sans scramble.
+   - Comment backprop les résultats d'un rollout ?
+   -- La somme pour commencer.
+   -- On pourrait aussi prendre le max des childs.
 
 * Why it does not work?
   - Is that possible that the model struggles at some point because the value function
