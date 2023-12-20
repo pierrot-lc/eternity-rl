@@ -30,6 +30,21 @@ def policy_mockup(env: EternityEnv) -> Policy:
 
 
 def tree_mockup() -> MCTSTree:
+    """A fake tree to make some test on it.
+
+    Tree 1:
+        0
+        ├── 1
+        │   ├── 4
+        │   └── 5
+        ├── 2
+        └── 3
+
+    Tree 2:
+        0
+        ├── 1
+        └── 2
+    """
     env = env_mockup()
     policy = policy_mockup(env)
     tree = MCTSTree(env, policy, n_simulations=2, n_childs=3)
@@ -102,6 +117,19 @@ def tree_mockup() -> MCTSTree:
 
 
 def tree_mockup_small() -> MCTSTree:
+    """A fake tree to make some test on it.
+    Here's its schema with node ids:
+
+    Tree 1:
+        0
+        ├── 1
+        ├── 2
+        └── 3
+
+    Tree 2:
+        0
+        └
+    """
     env = env_mockup()
     policy = policy_mockup(env)
     tree = MCTSTree(env, policy, n_simulations=2, n_childs=3)
