@@ -53,6 +53,11 @@ class MCTSTree:
             dtype=torch.float,
             device=self.device,
         )
+        self.terminated = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.bool,
+            device=self.device,
+        )
 
     @torch.inference_mode()
     def step(self):
@@ -60,20 +65,13 @@ class MCTSTree:
         leafs, envs = self.select_leafs()
 
         # 2. Sample new nodes to add to the tree.
-        actions = self.sample_actions(envs)
-        self.expand_nodes(leafs, actions)
+        actions, values, terminated = self.sample_nodes(envs)
+        self.expand_nodes(leafs, actions, values, terminated)
 
-        # 3. Simulate a rollout from the best new childs.
+        # 3. Backpropagate child values.
         childs = self.select_childs(leafs)
-        actions = self.actions[self.batch_range, childs]
-        envs.step(actions)
-
-        traces = rollout(envs, self.policy, "softmax", envs.episode_length)
-        mask_reset_rollouts(traces)
-        returns = (traces["rewards"] * traces["masks"]).sum(dim=1)
-
-        # 4. Backpropagate the returns.
-        self.backpropagate(childs, returns)
+        values = self.values[self.batch_range, childs]
+        self.backpropagate(childs, values)
 
     def best_actions(self) -> torch.Tensor:
         roots = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
@@ -126,7 +124,10 @@ class MCTSTree:
         # Shape of [batch_size, n_childs].
         childs = self.childs[self.batch_range, nodes]
         ucb = self.ucb_scores(childs)
-        ucb[childs == 0] = -torch.inf  # Ignore fictive childs.
+
+        # Ignore terminated or fictive childs.
+        terminated = torch.gather(self.terminated, dim=1, index=childs)
+        ucb[terminated | (childs == 0)] = -torch.inf
 
         best_childs = childs[self.batch_range, torch.argmax(ucb, dim=1)]
 
@@ -165,8 +166,10 @@ class MCTSTree:
 
         return nodes, envs
 
-    def sample_actions(self, envs: EternityEnv) -> torch.Tensor:
+    def sample_nodes(self, envs: EternityEnv) -> torch.Tensor:
         """Use the policy to sample new actions from the given environments.
+        Also evaluate the new childs directly using the critic.
+
         Duplicate the envs for each child and sample independently all of them.
         This means that some actions could be sampled multiple times.
 
@@ -176,23 +179,36 @@ class MCTSTree:
 
         ---
         Returns:
-            The sampled actions.
+            actions: The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
+            values: The estimated values of the corresponding childs.
+                Shape of [batch_size, n_childs].
+            terminated: The terminated childs.
+                Shape of [batch_size, n_childs].
         """
-        # Repeat interleave of the inputs.
-        boards = repeat(envs.render(), "b ... -> b c ...", c=self.n_childs)
-        best_boards = repeat(envs.best_boards, "b ... -> b c ...", c=self.n_childs)
-        n_steps = repeat(envs.n_steps, "b ... -> b c ...", c=self.n_childs)
+        envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
+        actions, *_ = self.policy(
+            envs.render(), envs.best_boards, envs.n_steps, sampling_mode="softmax"
+        )
+        boards, _, dones, truncated, _ = envs.step(actions)
+        values = self.critic(boards, envs.best_boards, envs.n_steps)
 
-        boards = rearrange(boards, "b c ... -> (b c) ...")
-        best_boards = rearrange(best_boards, "b c ... -> (b c) ...")
-        n_steps = rearrange(n_steps, "b c ... -> (b c) ...")
+        # If an env is done, we take the value of the final board instead of
+        # the prediction of the critic.
+        values = dones * envs.matches / envs.best_possible_matches + ~dones * values
 
-        actions, *_ = self.policy(boards, best_boards, n_steps, sampling_mode="softmax")
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
-        return actions
+        values = rearrange(values, "(b c) -> b c", c=self.n_childs)
+        terminated = rearrange(dones | truncated, "(b c) -> b c", c=self.n_childs)
+        return actions, values, terminated
 
-    def expand_nodes(self, nodes: torch.Tensor, actions: torch.Tensor):
+    def expand_nodes(
+        self,
+        nodes: torch.Tensor,
+        actions: torch.Tensor,
+        values: torch.Tensor,
+        terminated: torch.Tensor,
+    ):
         """Sample childs from the current nodes and add them
         to the trees.
 
@@ -208,6 +224,10 @@ class MCTSTree:
                 Shape of [batch_size,].
             actions: The actions to add to the tree.
                 Shape of [batch_size, n_childs, n_actions].
+            values: Initial values of the childs.
+                Shape of [batch_size, n_childs].
+            terminated: Whether the childs are terminated.
+                Shape of [batch_size, n_childs].
         """
         assert torch.all(
             self.tree_nodes + self.n_childs <= self.n_nodes
@@ -230,6 +250,12 @@ class MCTSTree:
         parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
         self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
 
+        # Add the values, initial visits and terminated states.
+        self.sum_scores.scatter_(dim=1, index=childs_node_id, src=values)
+        ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
+        self.visits.scatter_(dim=1, index=childs_node_id, src=ones)
+        self.terminated.scatter_(dim=1, index=childs_node_id, src=terminated)
+
         # Add the actions.
         childs_node_id = repeat(childs_node_id, "b c -> b c a", a=actions.shape[2])
         self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
@@ -244,6 +270,13 @@ class MCTSTree:
         ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
         self.visits[self.batch_range, nodes] += ones * masks
         self.sum_scores[self.batch_range, nodes] += values * masks
+
+        # A parent is terminated if all its childs are terminated.
+        childs = self.childs[self.batch_range, nodes]
+        terminated = torch.gather(self.terminated, dim=1, index=childs)
+        terminated[childs == 0] = False  # Ignore fictive childs.
+        terminated = terminated.sum(dim=1) == (childs != 0).sum(dim=1)
+        self.terminated[self.batch_range, nodes] = terminated
 
     def backpropagate(self, nodes: torch.Tensor, values: torch.Tensor):
         """Backpropagate the given values to the given nodes and their parents."""

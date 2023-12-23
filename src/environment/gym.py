@@ -480,6 +480,9 @@ class EternityEnv(gym.Env):
         cls,
         env: "EternityEnv",
     ) -> "EternityEnv":
+        """Make a copy of the given env. You can modify the copy without altering
+        the original env.
+        """
         copy = cls(
             env.instances,
             env.episode_length,
@@ -491,6 +494,40 @@ class EternityEnv(gym.Env):
         copy.n_steps = env.n_steps.clone()
         copy.best_matches = env.best_matches.clone()
         copy.best_boards = env.best_boards.clone()
+        copy.best_board_ever = env.best_board_ever
+        copy.game_sample = env.game_sample.clone()
+        copy.current_sample_step = env.current_sample_step
+        return copy
+
+    @classmethod
+    def duplicate_interleave(
+        cls, env: "EternityEnv", n_duplicates: int
+    ) -> "EternityEnv":
+        """Make a copy of the given env with instances duplicated. Useful to play
+        multiple games in parallel from the same initial instance state.
+        """
+        instances = repeat(env.instances, "b ... -> b c ...", c=n_duplicates)
+        best_matches = repeat(env.best_matches, "b ... -> b c ...", c=n_duplicates)
+        best_boards = repeat(env.best_boards, "b ... -> b c ...", c=n_duplicates)
+        n_steps = repeat(env.n_steps, "b ... -> b c ...", c=n_duplicates)
+
+        instances = rearrange(instances, "b c ... -> (b c) ...")
+        best_matches = rearrange(best_matches, "b c ... -> (b c) ...")
+        best_boards = rearrange(best_boards, "b c ... -> (b c) ...")
+        n_steps = rearrange(n_steps, "b c ... -> (b c) ...")
+
+        copy = cls(
+            instances,
+            env.episode_length,
+            env.scramble_size,
+            env.device,
+            env.rng.seed(),
+            env.sample_size,
+        )
+        copy.n_steps = n_steps
+        copy.best_matches = best_matches
+        copy.best_boards = best_boards
+
         copy.best_board_ever = env.best_board_ever
         copy.game_sample = env.game_sample.clone()
         copy.current_sample_step = env.current_sample_step

@@ -1,8 +1,9 @@
 import pytest
 import torch
+from einops import rearrange, repeat
 
 from ..environment import EternityEnv
-from ..model import Policy, Critic
+from ..model import Critic, Policy
 from .tree import MCTSTree
 
 
@@ -208,6 +209,12 @@ def tree_mockup_small() -> MCTSTree:
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ]
     )
+    tree.terminated = torch.BoolTensor(
+        [
+            [False, False, False, False, False, False, False],
+            [False, False, False, False, False, False, False],
+        ]
+    )
     return tree
 
 
@@ -348,14 +355,17 @@ def test_select_leafs(tree: MCTSTree):
 def test_expand_nodes(nodes: torch.Tensor):
     tree = tree_mockup_small()
 
-    actions = tree.sample_actions(tree.envs)
+    actions, values, terminated = tree.sample_nodes(tree.envs)
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
     ), "Wrong actions shape"
+    assert values.shape == torch.Size(
+        (tree.batch_size, tree.n_childs)
+    ), "Wrong values shape"
 
     original_tree_nodes = tree.tree_nodes.clone()
 
-    tree.expand_nodes(nodes, actions)
+    tree.expand_nodes(nodes, actions, values, terminated)
 
     for batch_id, node_id in enumerate(nodes):
         childs = tree.childs[batch_id, node_id]
@@ -369,8 +379,34 @@ def test_expand_nodes(nodes: torch.Tensor):
             assert torch.all(
                 tree.actions[batch_id, child_id] == actions[batch_id, child_number]
             ), "Wrong child actions"
+            assert torch.all(
+                tree.sum_scores[batch_id, child_id] == values[batch_id, child_number]
+            ), "Wrong child values"
+            assert torch.all(tree.visits[batch_id, child_id] == 1), "Wrong child visits"
+            assert torch.all(
+                tree.terminated[batch_id, child_id]
+                == terminated[batch_id, child_number]
+            ), "Wrong child terminated"
 
     assert torch.all(tree.tree_nodes == original_tree_nodes + tree.n_childs)
+
+
+def test_repeat_interleave():
+    """Mimic the way the inputs are duplicated in the `MCTSTree.sample_actions`."""
+    n_repeats = 3
+    batch_size = 10
+    tensor = torch.randn((batch_size, 5, 5))
+    tensor_interleave = repeat(tensor, "b ... -> b c ...", c=n_repeats)
+    tensor_interleave = rearrange(tensor_interleave, "b c ... -> (b c) ...")
+    tensor_interleave = rearrange(
+        tensor_interleave, "(b c) ... -> b c ...", c=n_repeats
+    )
+
+    for b in range(batch_size):
+        for i in range(n_repeats):
+            assert torch.all(
+                tensor[b] == tensor_interleave[b, i]
+            ), "Tensor interleave not working!"
 
 
 @pytest.mark.parametrize(
