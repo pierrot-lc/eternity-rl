@@ -1,8 +1,8 @@
 import torch
-from einops import repeat
+from einops import rearrange, repeat
 
 from ..environment import EternityEnv
-from ..model import Policy, Critic
+from ..model import Critic, Policy
 from ..policy_gradient.rollout import mask_reset_rollouts, rollout
 
 
@@ -54,6 +54,7 @@ class MCTSTree:
             device=self.device,
         )
 
+    @torch.inference_mode()
     def step(self):
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
@@ -166,6 +167,8 @@ class MCTSTree:
 
     def sample_actions(self, envs: EternityEnv) -> torch.Tensor:
         """Use the policy to sample new actions from the given environments.
+        Duplicate the envs for each child and sample independently all of them.
+        This means that some actions could be sampled multiple times.
 
         ---
         Args:
@@ -176,9 +179,18 @@ class MCTSTree:
             The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
         """
-        return self.policy.forward_multi_sample(
-            envs.render(), envs.best_boards, envs.n_steps, self.n_childs
-        )
+        # Repeat interleave of the inputs.
+        boards = repeat(envs.render(), "b ... -> b c ...", c=self.n_childs)
+        best_boards = repeat(envs.best_boards, "b ... -> b c ...", c=self.n_childs)
+        n_steps = repeat(envs.n_steps, "b ... -> b c ...", c=self.n_childs)
+
+        boards = rearrange(boards, "b c ... -> (b c) ...")
+        best_boards = rearrange(best_boards, "b c ... -> (b c) ...")
+        n_steps = rearrange(n_steps, "b c ... -> (b c) ...")
+
+        actions, *_ = self.policy(boards, best_boards, n_steps, sampling_mode="softmax")
+        actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
+        return actions
 
     def expand_nodes(self, nodes: torch.Tensor, actions: torch.Tensor):
         """Sample childs from the current nodes and add them

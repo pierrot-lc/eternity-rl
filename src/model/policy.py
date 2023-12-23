@@ -150,69 +150,6 @@ class Policy(nn.Module):
 
         return actions, logprobs, entropies
 
-    @torch.inference_mode()
-    def forward_multi_sample(
-        self,
-        tiles: torch.Tensor,
-        best_tiles: torch.Tensor,
-        n_steps: torch.Tensor,
-        n_samples: int,
-        sampling_mode: str = "softmax",
-    ) -> torch.Tensor:
-        """Do an inference and sample multiple actions predicted by the policy.
-        This is more efficient than calling 'n_samples' times the model since we
-        only call the head multiple times.
-
-        ---
-        Returns:
-            samples: The sampled actions.
-                Shape of [batch_size, n_samples, n_actions].
-        """
-        batch_size = tiles.shape[0]
-        tiles = self.backbone(tiles, best_tiles, n_steps)
-
-        samples = []
-
-        # TODO: Do a copy of the tiles and stack them so that the sample is done only
-        # once?
-        for sample_id in range(n_samples):
-            tiles_copy = tiles.clone()
-            actions = []
-
-            # Node selections.
-            for node_number in range(2):
-                queries = repeat(self.tile_query, "e -> b e", b=batch_size)
-                probs = self.select_tile(tiles_copy, queries)
-                sampled_tiles = self.sample_actions(probs, sampling_mode)
-
-                actions.append(sampled_tiles)
-
-                selected_embedding = self.tiles_embeddings[node_number]
-                selected_embedding = repeat(
-                    selected_embedding, "e -> b e", b=batch_size
-                )
-                tiles_copy = Policy.selective_add(
-                    tiles_copy, selected_embedding, sampled_tiles
-                )
-
-            # Side selections.
-            for side_number in range(2):
-                queries = repeat(self.side_query, "e -> b e", b=batch_size)
-                probs = self.select_side(tiles_copy, queries)
-                sampled_sides = self.sample_actions(probs, sampling_mode)
-
-                actions.append(sampled_sides)
-
-                side_embedding = self.sides_embeddings[sampled_sides]
-                tiles_copy = Policy.selective_add(
-                    tiles_copy, side_embedding, actions[side_number]
-                )
-
-            samples.append(torch.stack(actions, dim=1))
-
-        samples = torch.stack(samples, dim=1)
-        return samples
-
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:
         match mode:
