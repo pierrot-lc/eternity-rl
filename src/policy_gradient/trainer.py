@@ -194,7 +194,7 @@ class Trainer:
         # Compute losses.
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
-        metrics |= self.loss(batch, self.policy)
+        metrics |= self.loss(batch, self.policy, self.critic)
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         metrics["metrics/return"] = self.mean_return

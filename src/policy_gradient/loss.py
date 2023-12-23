@@ -3,8 +3,7 @@ import torch.nn as nn
 from tensordict import TensorDictBase
 from torchrl.objectives.value.functional import vec_generalized_advantage_estimate
 
-from ..model import Policy
-from .rollout import cumulative_decay_return
+from ..model import Policy, Critic
 
 
 class PPOLoss(nn.Module):
@@ -76,7 +75,7 @@ class PPOLoss(nn.Module):
         traces["advantages"] = advantages.squeeze(-1)
         traces["value-targets"] = value_targets.squeeze(-1)
 
-    def forward(self, batch: TensorDictBase, model: Policy) -> dict[str, torch.Tensor]:
+    def forward(self, batch: TensorDictBase, policy: Policy, critic: Critic) -> dict[str, torch.Tensor]:
         """Computes the PPO loss for both actor and critic models.
 
         ---
@@ -94,7 +93,8 @@ class PPOLoss(nn.Module):
                     Shape of [batch_size,].
                 value-targets: The rollout value targets of the given states.
                     Shape of [batch_size,].
-            model: The model to evaluate.
+            policy: The policy to evaluate.
+            critic: The critic to evaluate.
 
         ---
         Returns:
@@ -109,12 +109,17 @@ class PPOLoss(nn.Module):
         """
         metrics = dict()
 
-        _, logprobs, entropies, values = model(
+        _, logprobs, entropies = policy(
             batch["states"],
             batch["best-boards"],
             batch["conditionals"],
             None,
             batch["actions"],
+        )
+        values = critic(
+            batch["states"],
+            batch["best-boards"],
+            batch["conditionals"],
         )
 
         # Compute the joint log probability of the actions.
