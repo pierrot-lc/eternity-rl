@@ -7,12 +7,13 @@ from tensordict import TensorDict, TensorDictBase
 from tqdm import tqdm
 
 from ..environment import EternityEnv
-from ..model import Policy
+from ..model import Policy, Critic
 
 
 def rollout(
     env: EternityEnv,
-    model: Policy,
+    policy: Policy,
+    critic: Critic,
     sampling_mode: str,
     steps: int,
     disable_logs: bool,
@@ -22,7 +23,8 @@ def rollout(
     ---
     Args:
         env: The environments to play in.
-        model: The model to use to play.
+        policy: The policy to use.
+        critic: The critic to use.
         sampling_mode: The sampling mode to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
@@ -41,22 +43,26 @@ def rollout(
         sample["conditionals"] = env.n_steps
         sample["best-boards"] = env.best_boards
 
-        sample["actions"], sample["log-probs"], _, sample["values"] = model(
+        sample["actions"], sample["log-probs"], _ = policy(
             sample["states"],
             sample["best-boards"],
             sample["conditionals"],
             sampling_mode,
+        )
+        sample["values"] = critic(
+            sample["states"],
+            sample["best-boards"],
+            sample["conditionals"],
         )
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
             sample["actions"]
         )
 
-        *_, sample["next-values"] = model(
+        sample["next-values"] = critic(
             env.render(),
             env.best_boards,
             env.n_steps,
-            sampling_mode,
         )
 
         sample["next-values"] *= (~sample["dones"]).float()

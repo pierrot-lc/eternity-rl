@@ -13,7 +13,7 @@ from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
 from ..environment import EternityEnv
-from ..model import Policy
+from ..model import Policy, Critic
 from .loss import PPOLoss
 from .rollout import rollout, split_reset_rollouts
 
@@ -22,20 +22,22 @@ class Trainer:
     def __init__(
         self,
         env: EternityEnv,
-        model: Policy | DDP,
+        policy: Policy | DDP,
+        critic: Critic | DDP,
         loss: PPOLoss,
-        optimizer: optim.Optimizer,
-        scheduler: optim.lr_scheduler.LRScheduler,
+        policy_optimizer: optim.Optimizer,
+        critic_optimizer: optim.Optimizer,
         replay_buffer: ReplayBuffer,
         clip_value: float,
         rollouts: int,
         epochs: int,
     ):
         self.env = env
-        self.model = model
+        self.policy = policy
+        self.critic = critic
         self.loss = loss
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.policy_optimizer = policy_optimizer
+        self.critic_optimizer = critic_optimizer
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
         self.rollouts = rollouts
@@ -51,7 +53,12 @@ class Trainer:
     def do_rollouts(self, sampling_mode: str, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
         traces = rollout(
-            self.env, self.model, sampling_mode, self.rollouts, disable_logs
+            self.env,
+            self.policy,
+            self.critic,
+            sampling_mode,
+            self.rollouts,
+            disable_logs,
         )
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
@@ -87,15 +94,19 @@ class Trainer:
 
     def do_batch_update(self, batch: TensorDict):
         """Performs a batch update on the model."""
-        self.model.train()
-        self.optimizer.zero_grad()
+        self.policy.train()
+        self.critic.train()
+        self.policy_optimizer.zero_grad()
+        self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
-        metrics = self.loss(batch, self.model)
+        metrics = self.loss(batch, self.policy, self.critic)
         metrics["loss/total"].backward()
 
-        clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
-        self.optimizer.step()
+        clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)
+        clip_grad.clip_grad_norm_(self.critic.parameters(), self.clip_value)
+        self.policy_optimizer.step()
+        self.critic_optimizer.step()
 
     def launch_training(
         self,
@@ -128,25 +139,25 @@ class Trainer:
             config=config,
             mode=mode,
         ) as run:
-            self.model.to(self.device)
+            self.policy.to(self.device)
             self.env.reset()
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
-                if isinstance(self.model, DDP):
-                    self.model.module.summary(self.device)
+                if isinstance(self.policy, DDP):
+                    self.policy.module.summary(self.device)
                 else:
-                    self.model.summary(self.device)
+                    self.policy.summary(self.device)
                 print(f"Launching training on device {self.device}.")
 
             # Log gradients and model parameters.
-            run.watch(self.model)
+            run.watch(self.policy)
 
             # Infinite loop if n_batches is -1.
             iter = count(0) if self.epochs == -1 else range(self.epochs)
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
-                self.model.train()
+                self.policy.train()
                 self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
 
                 for batch in tqdm(
@@ -158,19 +169,17 @@ class Trainer:
                 ):
                     self.do_batch_update(batch)
 
-                self.scheduler.step()
-
                 metrics = self.evaluate()
                 run.log(metrics)
 
                 if i % save_every == 0 and not disable_logs:
-                    self.save_model("model.pt")
+                    self.save_checkpoint("model.pt")
                     self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
-        self.model.eval()
+        self.policy.eval()
 
         matches = self.env.matches / self.env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
@@ -185,19 +194,17 @@ class Trainer:
         # Compute losses.
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
-        metrics |= self.loss(batch, self.model)
-        metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
-        if not self.loss.no_value_function:
-            metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        metrics |= self.loss(batch, self.policy)
+        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         metrics["metrics/return"] = self.mean_return
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
-        self.model.zero_grad()
+        self.policy.zero_grad()
         metrics["loss/total"].backward()
         weights, grads = [], []
-        for p in self.model.parameters():
+        for p in self.policy.parameters():
             weights.append(p.data.abs().mean().item())
 
             if p.grad is not None:
@@ -210,7 +217,7 @@ class Trainer:
         metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
         metrics["global-gradients/max"] = max(grads)
         metrics["global-gradients/hist"] = wandb.Histogram(grads)
-        self.model.zero_grad()
+        self.policy.zero_grad()
 
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):
@@ -224,15 +231,13 @@ class Trainer:
 
         return metrics
 
-    def save_model(self, filepath: Path | str):
-        model_state = self.model.state_dict()
-        optimizer_state = self.optimizer.state_dict()
-        scheduler_state = self.scheduler.state_dict()
+    def save_checkpoint(self, filepath: Path | str):
         torch.save(
             {
-                "model": model_state,
-                "optimizer": optimizer_state,
-                "scheduler": scheduler_state,
+                "policy": self.policy.state_dict(),
+                "critic": self.critic.state_dict(),
+                "policy-optimizer": self.policy_optimizer.state_dict(),
+                "critic-optimizer": self.critic_optimizer.state_dict(),
             },
             filepath,
         )

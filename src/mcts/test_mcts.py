@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from ..environment import EternityEnv
-from ..model import Policy
+from ..model import Policy, Critic
 from .tree import MCTSTree
 
 
@@ -17,8 +17,8 @@ def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv
     )
 
 
-def policy_mockup(env: EternityEnv) -> Policy:
-    return Policy(
+def models_mockup(env: EternityEnv) -> tuple[Policy, Critic]:
+    policy = Policy(
         board_width=env.board_size,
         board_height=env.board_size,
         embedding_dim=20,
@@ -27,6 +27,16 @@ def policy_mockup(env: EternityEnv) -> Policy:
         decoder_layers=1,
         dropout=0.0,
     )
+    critic = Critic(
+        board_width=env.board_size,
+        board_height=env.board_size,
+        embedding_dim=20,
+        n_heads=1,
+        backbone_layers=1,
+        decoder_layers=1,
+        dropout=0.0,
+    )
+    return policy, critic
 
 
 def tree_mockup() -> MCTSTree:
@@ -46,8 +56,8 @@ def tree_mockup() -> MCTSTree:
         └── 2
     """
     env = env_mockup()
-    policy = policy_mockup(env)
-    tree = MCTSTree(env, policy, n_simulations=2, n_childs=3)
+    policy, critic = models_mockup(env)
+    tree = MCTSTree(env, policy, critic, n_simulations=2, n_childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -131,8 +141,8 @@ def tree_mockup_small() -> MCTSTree:
         └
     """
     env = env_mockup()
-    policy = policy_mockup(env)
-    tree = MCTSTree(env, policy, n_simulations=2, n_childs=3)
+    policy, critic = models_mockup(env)
+    tree = MCTSTree(env, policy, critic, n_simulations=2, n_childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [

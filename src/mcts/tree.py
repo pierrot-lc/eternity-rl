@@ -2,16 +2,22 @@ import torch
 from einops import repeat
 
 from ..environment import EternityEnv
-from ..model import Policy
+from ..model import Policy, Critic
 from ..policy_gradient.rollout import mask_reset_rollouts, rollout
 
 
 class MCTSTree:
     def __init__(
-        self, envs: EternityEnv, model: Policy, n_simulations: int, n_childs: int
+        self,
+        envs: EternityEnv,
+        policy: Policy,
+        critic: Critic,
+        n_simulations: int,
+        n_childs: int,
     ):
         self.envs = envs
-        self.model = model
+        self.policy = policy
+        self.critic = critic
         self.n_simulations = n_simulations
         self.n_childs = n_childs
         self.n_nodes = (
@@ -61,7 +67,7 @@ class MCTSTree:
         actions = self.actions[self.batch_range, childs]
         envs.step(actions)
 
-        traces = rollout(envs, self.model, "softmax", envs.episode_length)
+        traces = rollout(envs, self.policy, "softmax", envs.episode_length)
         mask_reset_rollouts(traces)
         returns = (traces["rewards"] * traces["masks"]).sum(dim=1)
 
@@ -170,7 +176,7 @@ class MCTSTree:
             The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
         """
-        return self.model.forward_multi_sample(
+        return self.policy.forward_multi_sample(
             envs.render(), envs.best_boards, envs.n_steps, self.n_childs
         )
 
