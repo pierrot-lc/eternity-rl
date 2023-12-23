@@ -4,6 +4,7 @@ group: Eternity B
 env:
   path: ./instances/eternity_B.txt
   batch_size: 1000
+  scramble_size: 1.00
 
 model:
   embedding_dim: 16
@@ -17,11 +18,6 @@ optimizer:
   learning_rate: 3.0e-4
   weight_decay: 1.0e-2
 
-scheduler:
-  warmup_steps: 0
-  cosine_t0: 0
-  cosine_tmult: 0
-
 loss:
   gamma: 1.00
   gae_lambda: 0.95
@@ -29,11 +25,9 @@ loss:
   ppo_clip_vf: 0.20
   value_weight: 0.5
   entropy_weight: 1.0e-1
-  no_value_function: true
 
 trainer:
   clip_value: 1.0
-  scramble_size: 0.50
 
 iterations:
   rollouts: 100
