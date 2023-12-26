@@ -3,7 +3,6 @@ from einops import rearrange, repeat
 
 from ..environment import EternityEnv
 from ..model import Critic, Policy
-from ..policy_gradient.rollout import mask_reset_rollouts, rollout
 
 
 class MCTSTree:
@@ -69,6 +68,9 @@ class MCTSTree:
         self.expand_nodes(leafs, actions, values, terminated)
 
         # 3. Backpropagate child values.
+        # NOTE: The new child is upadated here as well.
+        # Hence it will be visited two times already and have its score
+        # doubled.
         childs = self.select_childs(leafs)
         values = self.values[self.batch_range, childs]
         self.backpropagate(childs, values)
@@ -102,7 +104,7 @@ class MCTSTree:
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
         ucb = sum_scores / node_visits + c * torch.sqrt(
-            torch.log(parent_visits) / node_visits
+            torch.log(parent_visits) / corrected_node_visits
         )
         ucb[node_visits == 0] = torch.inf
         return ucb
@@ -158,6 +160,7 @@ class MCTSTree:
 
             # Some of the actions may come from leafs.
             # Those actions have to be ignored so that its env is unchanged.
+            # WARNING: This should be modified appropriately with the env.
             actions[leafs] = 0  # If actions are null, the puzzle will not change.
             envs.n_steps[leafs] -= 1
             envs.step(actions)
@@ -229,11 +232,11 @@ class MCTSTree:
             terminated: Whether the childs are terminated.
                 Shape of [batch_size, n_childs].
         """
-        assert torch.all(
+        assert torch.any(
             self.tree_nodes + self.n_childs <= self.n_nodes
         ), "A tree has run out of nodes!"
 
-        assert torch.all(
+        assert torch.any(
             self.childs[self.batch_range, nodes] == 0
         ), "A node already has childs!"
 
@@ -261,15 +264,15 @@ class MCTSTree:
         self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
 
     def update_nodes_info(
-        self, nodes: torch.Tensor, values: torch.Tensor, masks: torch.Tensor
+        self, nodes: torch.Tensor, values: torch.Tensor, filters: torch.Tensor
     ):
         """Update the information of the given nodes.
 
-        If a node is masked (mask is False), its value is not updated.
+        If a node is masked (filter is False), its value is not updated.
         """
         ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        self.visits[self.batch_range, nodes] += ones * masks
-        self.sum_scores[self.batch_range, nodes] += values * masks
+        self.visits[self.batch_range, nodes] += ones * filters
+        self.sum_scores[self.batch_range, nodes] += values * filters
 
         # A parent is terminated if all its childs are terminated.
         childs = self.childs[self.batch_range, nodes]
@@ -280,20 +283,20 @@ class MCTSTree:
 
     def backpropagate(self, nodes: torch.Tensor, values: torch.Tensor):
         """Backpropagate the given values to the given nodes and their parents."""
-        masks = torch.ones(self.batch_size, dtype=torch.bool, device=self.device)
-        self.update_nodes_info(nodes, values, masks)
+        filters = torch.ones(self.batch_size, dtype=torch.bool, device=self.device)
+        self.update_nodes_info(nodes, values, filters)
 
         # Do not update twice a root node.
-        masks = nodes != 0
+        filters = nodes != 0
 
         # While we did not update all root nodes.
-        while not torch.all(~masks):
+        while not torch.all(~filters):
             # Root nodes are their own parents.
             nodes = self.parents[self.batch_range, nodes]
-            self.update_nodes_info(nodes, values, masks)
+            self.update_nodes_info(nodes, values, filters)
 
             # Do not update twice a root node.
-            masks = nodes != 0
+            filters = nodes != 0
 
     @property
     def tree_nodes(self) -> torch.Tensor:
