@@ -39,11 +39,11 @@ updated: 2023-12-06T14:23:14+0100
    - (x) Simuler un rollout
    -- (x) Utiliser le value network pour évaluer un node.
    - (x) Backprop les résultats des rollouts
-   - (-) Gérer les noeuds des envs terminés
+   - (x) Gérer les noeuds des envs terminés
    -- (x) Implem
-   -- ( ) Comment faire quand tous les noeuds sont terminés?
+   -- (x) Comment faire quand tous les noeuds sont terminés?
    -- (x) Tests (select childs, update node infos)
-   - ( ) Gérer les rewards (évaluation du plateau à la fin du rollout?)
+   - (x) Gérer les rewards (évaluation du plateau à la fin du rollout?)
    - (_) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
          finir le rollout de chaque env
    - (x) Gérer la valeur des nouveaux fils à l'aide du value network
