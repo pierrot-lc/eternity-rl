@@ -42,7 +42,7 @@ updated: 2023-12-06T14:23:14+0100
    - (-) Gérer les noeuds des envs terminés
    -- (x) Implem
    -- ( ) Comment faire quand tous les noeuds sont terminés?
-   -- ( ) Tests (select childs, update node infos)
+   -- (x) Tests (select childs, update node infos)
    - ( ) Gérer les rewards (évaluation du plateau à la fin du rollout?)
    - (_) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
          finir le rollout de chaque env

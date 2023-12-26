@@ -124,6 +124,12 @@ def tree_mockup() -> MCTSTree:
             [2.0, 1.1, 0.9, 0.0, 0.0, 0.0, 0.0],
         ]
     )
+    tree.terminated = torch.BoolTensor(
+        [
+            [False, False, False, False, True, False, False],
+            [False, True, True, False, False, False, False],
+        ]
+    )
     return tree
 
 
@@ -268,12 +274,21 @@ def test_select_childs(nodes: torch.Tensor):
     tree = tree_mockup()
 
     childs = []
+    terminated = []
     for batch_id, node_id in enumerate(nodes):
         childs.append(tree.childs[batch_id, node_id])
+
+        terminated.append([])
+        for child_id in childs[-1]:
+            terminated[-1].append(tree.terminated[batch_id, child_id])
+        terminated[-1] = torch.BoolTensor(terminated[-1])
+
     childs = torch.stack(childs, dim=0)
+    terminated = torch.stack(terminated, dim=0)
 
     ucb = tree.ucb_scores(childs)
     ucb[childs == 0] = -torch.inf
+    ucb[terminated] = -torch.inf
     best_childs_ids = torch.argmax(ucb, dim=1)
     best_childs = torch.stack(
         [
@@ -410,7 +425,7 @@ def test_repeat_interleave():
 
 
 @pytest.mark.parametrize(
-    "nodes, values, updated_visits, updated_sum_scores",
+    "nodes, values, updated_visits, updated_sum_scores, updated_terminated",
     [
         (
             torch.LongTensor([0, 1]),
@@ -425,6 +440,12 @@ def test_repeat_interleave():
                 [
                     [3.5, 2.0, 0.6, 0.4, 1.0, 1.0, 0.0],
                     [2.3, 1.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+                ]
+            ),
+            torch.BoolTensor(
+                [
+                    [False, False, False, False, True, False, False],
+                    [True, True, True, False, False, False, False],
                 ]
             ),
         ),
@@ -443,6 +464,12 @@ def test_repeat_interleave():
                     [2.4, 1.5, 0.9, 0.0, 0.0, 0.0, 0.0],
                 ]
             ),
+            torch.BoolTensor(
+                [
+                    [False, False, False, False, True, False, False],
+                    [True, True, True, False, False, False, False],
+                ]
+            ),
         ),
     ],
 )
@@ -451,6 +478,7 @@ def test_backpropagate(
     values: torch.Tensor,
     updated_visits: torch.Tensor,
     updated_sum_scores: torch.Tensor,
+    updated_terminated: torch.Tensor,
 ):
     tree = tree_mockup()
     tree.backpropagate(nodes, values)
@@ -459,3 +487,21 @@ def test_backpropagate(
     assert torch.allclose(
         tree.sum_scores, updated_sum_scores
     ), "Wrong sum scores number"
+
+
+def test_all_terminated():
+    """When all the tree is terminated, the tree should not be modified at all."""
+    tree = tree_mockup()
+    tree.terminated = torch.ones_like(
+        tree.terminated, dtype=torch.bool, device=tree.device
+    )
+
+    leafs, _ = tree.select_leafs()
+    assert torch.all(
+        leafs == torch.zeros_like(leafs, dtype=torch.long, device=leafs.device)
+    ), "Terminated envs should select the root nodes as leafs."
+
+    childs = tree.select_childs(leafs)
+    assert torch.all(
+        childs == torch.zeros_like(childs, dtype=torch.long, device=childs.device)
+    ), "Terminated envs should select the root nodes as childs."
