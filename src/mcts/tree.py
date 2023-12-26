@@ -72,7 +72,7 @@ class MCTSTree:
         # Hence it will be visited two times already and have its score
         # doubled.
         childs = self.select_childs(leafs)
-        values = self.values[self.batch_range, childs]
+        values = self.sum_scores[self.batch_range, childs]
         self.backpropagate(childs, values)
 
     def best_actions(self) -> torch.Tensor:

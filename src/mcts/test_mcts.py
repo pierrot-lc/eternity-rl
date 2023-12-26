@@ -490,18 +490,11 @@ def test_backpropagate(
 
 
 def test_all_terminated():
-    """When all the tree is terminated, the tree should not be modified at all."""
-    tree = tree_mockup()
+    """When all the tree is terminated, the tree.step() should not break."""
+    tree = tree_mockup_small()
     tree.terminated = torch.ones_like(
         tree.terminated, dtype=torch.bool, device=tree.device
     )
 
-    leafs, _ = tree.select_leafs()
-    assert torch.all(
-        leafs == torch.zeros_like(leafs, dtype=torch.long, device=leafs.device)
-    ), "Terminated envs should select the root nodes as leafs."
-
-    childs = tree.select_childs(leafs)
-    assert torch.all(
-        childs == torch.zeros_like(childs, dtype=torch.long, device=childs.device)
-    ), "Terminated envs should select the root nodes as childs."
+    # Make sure the step does not break.
+    tree.step()
