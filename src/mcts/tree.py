@@ -134,7 +134,7 @@ class MCTSTree:
             terminated_envs = self.terminated[:, 0]
 
         # Save the actions of the remaining envs.
-        best_actions = self.best_actions()[~terminated_envs]
+        best_actions[~terminated_envs] = self.best_actions()[~terminated_envs]
 
         return best_actions
 
