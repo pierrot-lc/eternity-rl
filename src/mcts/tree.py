@@ -152,7 +152,7 @@ class MCTSTree:
             been visited, its score is '+inf'.
                 Shape of [batch_size, n_nodes].
         """
-        c = torch.sqrt(torch.Tensor([2]))
+        c = torch.sqrt(torch.FloatTensor([2])).to(self.device)
         node_visits = torch.gather(self.visits, dim=1, index=nodes)
         parent_nodes = torch.gather(self.parents, dim=1, index=nodes)
         parent_visits = torch.gather(self.visits, dim=1, index=parent_nodes)
