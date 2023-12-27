@@ -1,5 +1,6 @@
 import torch
 from einops import rearrange, repeat
+from tqdm import tqdm
 
 from ..environment import EternityEnv
 from ..model import Critic, Policy
@@ -11,14 +12,14 @@ class MCTSTree:
         envs: EternityEnv,
         policy: Policy,
         critic: Critic,
-        n_simulations: int,
-        n_childs: int,
+        simulations: int,
+        childs: int,
     ):
         self.envs = envs
         self.policy = policy
         self.critic = critic
-        self.n_simulations = n_simulations
-        self.n_childs = n_childs
+        self.n_simulations = simulations
+        self.n_childs = childs
         self.n_nodes = (
             self.n_simulations * self.n_childs
         ) + 1  # Add the root node (id '0').
@@ -60,6 +61,7 @@ class MCTSTree:
 
     @torch.inference_mode()
     def step(self):
+        """Do a one step of the MCTS algorithm."""
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
 
@@ -76,12 +78,68 @@ class MCTSTree:
         self.backpropagate(childs, values)
 
     def best_actions(self) -> torch.Tensor:
+        """Return the actions corresponding to the best child
+        of the root node.
+
+        ---
+        Returns:
+            The best actions to take from the root node based on the MCTS
+            simulations.
+                Shape of [batch_size, n_actions].
+        """
         roots = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
-        childs = self.select_childs(roots)
-        return self.actions[self.batch_range, childs]
+        childs = self.childs[self.batch_range, roots]
+        scores = self.scores(childs)
+        best_childs = torch.argmax(scores, dim=1)
+        return self.actions[self.batch_range, best_childs]
+
+    @torch.inference_mode()
+    def evaluate(self, disable_logs: bool) -> torch.Tensor:
+        """Do all the simulation steps of the MCTS algorithm.
+
+        ---
+        Returns:
+            The best actions to take from the root node based on the MCTS
+            simulations.
+                Shape of [batch_size, n_actions].
+        """
+        assert torch.all(
+            self.tree_nodes == 1
+        ), "All trees should have the root node only."
+
+        # An env is terminated if its root node is marked as terminated.
+        terminated_envs = torch.zeros(
+            self.batch_size, dtype=torch.bool, device=self.device
+        )
+        best_actions = torch.zeros(
+            (self.batch_size, self.actions.shape[2]),
+            dtype=torch.long,
+            device=self.device,
+        )
+
+        for _ in tqdm(
+            range(self.n_simulations),
+            desc="MCTS simulations",
+            leave=False,
+            disable=disable_logs,
+        ):
+            self.step()
+
+            # Save the actions of the new terminated envs if there are some.
+            newly_terminated_envs = (~terminated_envs) & self.terminated[:, 0]
+            best_actions[newly_terminated_envs] = self.best_actions()[
+                newly_terminated_envs
+            ]
+
+            terminated_envs = self.terminated[:, 0]
+
+        # Save the actions of the remaining envs.
+        best_actions = self.best_actions()[~terminated_envs]
+
+        return best_actions
 
     def ucb_scores(self, nodes: torch.Tensor) -> torch.Tensor:
-        """Compute the UCB score. of the given nodes.
+        """Compute the UCB score of the given nodes.
 
         ---
         Args:
@@ -103,11 +161,23 @@ class MCTSTree:
         corrected_node_visits = node_visits.clone()
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
-        ucb = sum_scores / node_visits + c * torch.sqrt(
+        ucb = sum_scores / corrected_node_visits + c * torch.sqrt(
             torch.log(parent_visits) / corrected_node_visits
         )
         ucb[node_visits == 0] = torch.inf
         return ucb
+
+    def scores(self, nodes: torch.Tensor) -> torch.Tensor:
+        """Compute the mean score of the given nodes."""
+        node_visits = torch.gather(self.visits, dim=1, index=nodes)
+        sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
+
+        corrected_node_visits = node_visits.clone()
+        corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
+
+        scores = sum_scores / corrected_node_visits
+        scores[node_visits == 0] = torch.inf
+        return scores
 
     def select_childs(self, nodes: torch.Tensor) -> torch.Tensor:
         """Dive one step into the tree following the UCB score.
@@ -203,6 +273,12 @@ class MCTSTree:
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
         values = rearrange(values, "(b c) -> b c", c=self.n_childs)
         terminated = rearrange(dones | truncated, "(b c) -> b c", c=self.n_childs)
+
+        # Save the best board if necessary.
+        if self.envs.best_matches_ever < envs.best_matches_ever:
+            self.envs.best_matches_ever = envs.best_matches_ever
+            self.envs.best_board_ever = envs.best_board_ever
+
         return actions, values, terminated
 
     def expand_nodes(

@@ -49,7 +49,7 @@ updated: 2023-12-06T14:23:14+0100
    - (x) Gérer la valeur des nouveaux fils à l'aide du value network
    - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
          en compte la probabilité de chaque node.
-   - ( ) Updater le meilleur puzzle trouvé pendant le tree search.
+   - (x) Updater le meilleur puzzle trouvé pendant le tree search.
 
    - Comment backprop les résultats d'un rollout ?
    -- La somme pour commencer.

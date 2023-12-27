@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from ..environment import EternityEnv
 from ..model import Policy, Critic
+from ..mcts import MCTSTree
 
 
 def rollout(
@@ -48,6 +49,87 @@ def rollout(
             sample["best-boards"],
             sample["conditionals"],
             sampling_mode,
+        )
+        sample["values"] = critic(
+            sample["states"],
+            sample["best-boards"],
+            sample["conditionals"],
+        )
+
+        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
+            sample["actions"]
+        )
+
+        sample["next-values"] = critic(
+            env.render(),
+            env.best_boards,
+            env.n_steps,
+        )
+
+        sample["next-values"] *= (~sample["dones"]).float()
+
+        if (sample["dones"] | sample["truncated"]).sum() > 0:
+            reset_ids = torch.arange(0, env.batch_size, device=env.device)
+            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
+            env.reset(reset_ids)
+
+        # BUG: There's an issue with cuda that hallucinates values when stacking
+        # more than 128 tensors. To avoid this issue, we have to offload the tensors
+        # so that we can stack on CPU.
+        for name, tensor in sample.items():
+            traces[name].append(tensor.cpu())
+
+    for name, tensors in traces.items():
+        traces[name] = torch.stack(tensors, dim=1)  # Stack on CPU.
+        traces[name] = traces[name].to(env.device)  # Back to GPU.
+
+    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+
+
+def mcts_rollout(
+    env: EternityEnv,
+    policy: Policy,
+    critic: Critic,
+    simulations: int,
+    childs: int,
+    steps: int,
+    disable_logs: bool,
+) -> TensorDictBase:
+    """Play some steps using a MCTS tree to look for the best
+    move at each step.
+
+    ---
+    Args:
+        env: The environments to play in.
+        policy: The policy to use.
+        critic: The critic to use.
+        simulations: The number of simulations to run for each step.
+        childs: The number of childs to expand for each node of the tree.
+        steps: The number of steps to play.
+        disable_logs: Whether to disable the logs.
+
+    ---
+    Returns:
+        The traces of the played steps.
+    """
+    traces = defaultdict(list)
+
+    for step_id in tqdm(
+        range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
+    ):
+        sample = dict()
+        mcts = MCTSTree(env, policy, critic, simulations, childs)
+
+        sample["actions"] = mcts.evaluate(disable_logs)
+        sample["states"] = env.render()
+        sample["conditionals"] = env.n_steps
+        sample["best-boards"] = env.best_boards
+
+        _, sample["log-probs"], _ = policy(
+            sample["states"],
+            sample["best-boards"],
+            sample["conditionals"],
+            sampled_actions=sample["actions"],
         )
         sample["values"] = critic(
             sample["states"],

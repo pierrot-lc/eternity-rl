@@ -58,7 +58,7 @@ def tree_mockup() -> MCTSTree:
     """
     env = env_mockup()
     policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, n_simulations=2, n_childs=3)
+    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -149,7 +149,7 @@ def tree_mockup_small() -> MCTSTree:
     """
     env = env_mockup()
     policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, n_simulations=2, n_childs=3)
+    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
