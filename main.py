@@ -161,6 +161,7 @@ def init_trainer(
     """Initialize the trainer."""
     trainer = config.exp.trainer
     iterations = config.exp.iterations
+    mcts = config.exp.mcts
     return Trainer(
         env,
         policy,
@@ -170,6 +171,8 @@ def init_trainer(
         critic_optimizer,
         replay_buffer,
         trainer.clip_value,
+        mcts.simulations,
+        mcts.childs,
         iterations.rollouts,
         iterations.epochs,
     )

@@ -15,7 +15,6 @@ def rollout(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
-    sampling_mode: str,
     steps: int,
     disable_logs: bool,
 ) -> TensorDictBase:
@@ -26,7 +25,6 @@ def rollout(
         env: The environments to play in.
         policy: The policy to use.
         critic: The critic to use.
-        sampling_mode: The sampling mode to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
 
@@ -48,7 +46,7 @@ def rollout(
             sample["states"],
             sample["best-boards"],
             sample["conditionals"],
-            sampling_mode,
+            sampling_mode="softmax",
         )
         sample["values"] = critic(
             sample["states"],

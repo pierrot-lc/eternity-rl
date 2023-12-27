@@ -5,17 +5,18 @@ from typing import Any
 import einops
 import torch
 import torch.optim as optim
-import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
+import wandb
+
 from ..environment import EternityEnv
-from ..model import Policy, Critic
+from ..model import Critic, Policy
 from .loss import PPOLoss
-from .rollout import rollout, split_reset_rollouts
+from .rollout import mcts_rollout, rollout, split_reset_rollouts
 
 
 class Trainer:
@@ -29,6 +30,8 @@ class Trainer:
         critic_optimizer: optim.Optimizer,
         replay_buffer: ReplayBuffer,
         clip_value: float,
+        mcts_simulations: int,
+        mcts_childs: int,
         rollouts: int,
         epochs: int,
     ):
@@ -40,6 +43,8 @@ class Trainer:
         self.critic_optimizer = critic_optimizer
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
+        self.mcts_simulations = mcts_simulations
+        self.mcts_childs = mcts_childs
         self.rollouts = rollouts
         self.epochs = epochs
 
@@ -50,16 +55,27 @@ class Trainer:
         self.mean_return = 0
 
     @torch.inference_mode()
-    def do_rollouts(self, sampling_mode: str, disable_logs: bool):
+    def do_rollouts(self, mcts: bool, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
-        traces = rollout(
-            self.env,
-            self.policy,
-            self.critic,
-            sampling_mode,
-            self.rollouts,
-            disable_logs,
-        )
+        if mcts:
+            traces = mcts_rollout(
+                self.env,
+                self.policy,
+                self.critic,
+                self.mcts_simulations,
+                self.mcts_childs,
+                self.rollouts,
+                disable_logs,
+            )
+        else:
+            traces = rollout(
+                self.env,
+                self.policy,
+                self.critic,
+                self.rollouts,
+                disable_logs,
+            )
+
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
@@ -92,21 +108,29 @@ class Trainer:
         )
         self.replay_buffer.extend(samples)
 
-    def do_batch_update(self, batch: TensorDict):
+    def do_batch_update(
+        self, batch: TensorDict, train_policy: bool, train_critic: bool
+    ):
         """Performs a batch update on the model."""
-        self.policy.train()
-        self.critic.train()
-        self.policy_optimizer.zero_grad()
-        self.critic_optimizer.zero_grad()
+        if train_policy:
+            self.policy.train()
+            self.policy_optimizer.zero_grad()
+
+        if train_critic:
+            self.critic.train()
+            self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
         metrics = self.loss(batch, self.policy, self.critic)
         metrics["loss/total"].backward()
 
-        clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)
-        clip_grad.clip_grad_norm_(self.critic.parameters(), self.clip_value)
-        self.policy_optimizer.step()
-        self.critic_optimizer.step()
+        if train_policy:
+            clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)
+            self.policy_optimizer.step()
+
+        if train_critic:
+            clip_grad.clip_grad_norm_(self.critic.parameters(), self.clip_value)
+            self.critic_optimizer.step()
 
     def launch_training(
         self,
@@ -146,8 +170,11 @@ class Trainer:
             if not disable_logs:
                 if isinstance(self.policy, DDP):
                     self.policy.module.summary(self.device)
+                    self.critic.module.summary(self.device)
                 else:
                     self.policy.summary(self.device)
+                    self.critic.summary(self.device)
+
                 print(f"Launching training on device {self.device}.")
 
             # Log gradients and model parameters.
@@ -157,8 +184,8 @@ class Trainer:
             iter = count(0) if self.epochs == -1 else range(self.epochs)
 
             for i in tqdm(iter, desc="Epoch", disable=disable_logs):
-                self.policy.train()
-                self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
+                # Train critic using MCTS rollouts.
+                self.do_rollouts(mcts=True, disable_logs=disable_logs)
 
                 for batch in tqdm(
                     self.replay_buffer,
@@ -167,7 +194,19 @@ class Trainer:
                     leave=False,
                     disable=disable_logs,
                 ):
-                    self.do_batch_update(batch)
+                    self.do_batch_update(batch, train_policy=False, train_critic=True)
+
+                # Train policy using standard PPO.
+                self.do_rollouts(mcts=False, disable_logs=disable_logs)
+
+                for batch in tqdm(
+                    self.replay_buffer,
+                    total=len(self.replay_buffer) // self.replay_buffer._batch_size,
+                    desc="Batch",
+                    leave=False,
+                    disable=disable_logs,
+                ):
+                    self.do_batch_update(batch, train_policy=True, train_critic=False)
 
                 metrics = self.evaluate()
                 run.log(metrics)
@@ -179,7 +218,9 @@ class Trainer:
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
+
         self.policy.eval()
+        self.critic.eval()
 
         matches = self.env.matches / self.env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
@@ -202,6 +243,8 @@ class Trainer:
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
         self.policy.zero_grad()
+        self.critic.zero_grad()
+
         metrics["loss/total"].backward()
         weights, grads = [], []
         for p in self.policy.parameters():
@@ -217,7 +260,9 @@ class Trainer:
         metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
         metrics["global-gradients/max"] = max(grads)
         metrics["global-gradients/hist"] = wandb.Histogram(grads)
+
         self.policy.zero_grad()
+        self.critic.zero_grad()
 
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):

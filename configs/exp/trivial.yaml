@@ -29,6 +29,10 @@ loss:
 trainer:
   clip_value: 1.000
 
+mcts:
+  simulations: 10
+  childs: 5
+
 iterations:
   rollouts: 10
   epochs: 600

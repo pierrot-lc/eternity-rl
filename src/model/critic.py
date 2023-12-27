@@ -51,6 +51,7 @@ class Critic(nn.Module):
     def summary(self, device: str):
         """Torchinfo summary."""
         dummy_input = self.dummy_input(device)
+        print("\nCritic summary:")
         summary(
             self,
             input_data=[*dummy_input],
