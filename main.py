@@ -38,7 +38,7 @@ def init_env(config: DictConfig) -> EternityEnv:
     env = config.exp.env
     return EternityEnv.from_file(
         env.path,
-        config.exp.iterations.rollouts,
+        config.exp.trainer.rollouts,
         env.batch_size,
         env.scramble_size,
         config.device,
@@ -139,11 +139,11 @@ def init_scheduler(
 
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
     exp = config.exp
-    max_size = exp.env.batch_size * exp.iterations.rollouts
+    max_size = exp.env.batch_size * exp.trainer.rollouts
     return TensorDictReplayBuffer(
         storage=LazyTensorStorage(max_size=max_size, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
-        batch_size=exp.iterations.batch_size,
+        batch_size=exp.trainer.batch_size,
         pin_memory=True,
     )
 
@@ -160,7 +160,6 @@ def init_trainer(
 ) -> Trainer:
     """Initialize the trainer."""
     trainer = config.exp.trainer
-    iterations = config.exp.iterations
     mcts = config.exp.mcts
     return Trainer(
         env,
@@ -173,8 +172,9 @@ def init_trainer(
         trainer.clip_value,
         mcts.simulations,
         mcts.childs,
-        iterations.rollouts,
-        iterations.epochs,
+        trainer.episodes,
+        trainer.epochs,
+        trainer.rollouts,
     )
 
 

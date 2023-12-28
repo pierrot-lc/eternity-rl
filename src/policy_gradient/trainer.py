@@ -5,13 +5,12 @@ from typing import Any
 import einops
 import torch
 import torch.optim as optim
+import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
-
-import wandb
 
 from ..environment import EternityEnv
 from ..model import Critic, Policy
@@ -32,8 +31,9 @@ class Trainer:
         clip_value: float,
         mcts_simulations: int,
         mcts_childs: int,
-        rollouts: int,
+        episodes: int,
         epochs: int,
+        rollouts: int,
     ):
         self.env = env
         self.policy = policy
@@ -45,8 +45,9 @@ class Trainer:
         self.clip_value = clip_value
         self.mcts_simulations = mcts_simulations
         self.mcts_childs = mcts_childs
-        self.rollouts = rollouts
+        self.episodes = episodes
         self.epochs = epochs
+        self.rollouts = rollouts
 
         self.device = env.device
 
@@ -175,38 +176,54 @@ class Trainer:
                     self.policy.summary(self.device)
                     self.critic.summary(self.device)
 
-                print(f"Launching training on device {self.device}.")
+                print(f"\nLaunching training on device {self.device}.\n")
 
             # Log gradients and model parameters.
             run.watch(self.policy)
 
             # Infinite loop if n_batches is -1.
-            iter = count(0) if self.epochs == -1 else range(self.epochs)
+            iter = count(0) if self.episodes == -1 else range(self.episodes)
 
-            for i in tqdm(iter, desc="Epoch", disable=disable_logs):
+            for i in tqdm(iter, desc="Episode", disable=disable_logs):
                 # Train critic using MCTS rollouts.
                 self.do_rollouts(mcts=True, disable_logs=disable_logs)
 
-                for batch in tqdm(
-                    self.replay_buffer,
-                    total=len(self.replay_buffer) // self.replay_buffer._batch_size,
-                    desc="Batch",
+                for _ in tqdm(
+                    range(self.epochs),
+                    desc="Epoch (critic training)",
                     leave=False,
                     disable=disable_logs,
                 ):
-                    self.do_batch_update(batch, train_policy=False, train_critic=True)
+                    for batch in tqdm(
+                        self.replay_buffer,
+                        total=len(self.replay_buffer) // self.replay_buffer._batch_size,
+                        desc="Batch",
+                        leave=False,
+                        disable=disable_logs,
+                    ):
+                        self.do_batch_update(
+                            batch, train_policy=False, train_critic=True
+                        )
 
                 # Train policy using standard PPO.
                 self.do_rollouts(mcts=False, disable_logs=disable_logs)
 
-                for batch in tqdm(
-                    self.replay_buffer,
-                    total=len(self.replay_buffer) // self.replay_buffer._batch_size,
-                    desc="Batch",
+                for _ in tqdm(
+                    range(self.epochs),
+                    desc="Epoch (actor training)",
                     leave=False,
                     disable=disable_logs,
                 ):
-                    self.do_batch_update(batch, train_policy=True, train_critic=False)
+                    for batch in tqdm(
+                        self.replay_buffer,
+                        total=len(self.replay_buffer) // self.replay_buffer._batch_size,
+                        desc="Batch",
+                        leave=False,
+                        disable=disable_logs,
+                    ):
+                        self.do_batch_update(
+                            batch, train_policy=True, train_critic=False
+                        )
 
                 metrics = self.evaluate()
                 run.log(metrics)

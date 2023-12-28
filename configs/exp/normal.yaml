@@ -3,7 +3,7 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 1000
+  batch_size: 128
   scramble_size: 1.00
 
 model:
@@ -20,18 +20,21 @@ optimizer:
 
 loss:
   gamma: 1.00
-  gae_lambda: 1.00
+  gae_lambda: 0.95
   ppo_clip_ac: 0.20
-  ppo_clip_vf: 0.20
-  value_weight: 0.005
+  ppo_clip_vf: 1.00
+  value_weight: 1.000
   entropy_weight: 1.0e-1
 
 trainer:
-  clip_value: 1.000
+  episodes: -1
+  epochs: 3
+  batch_size: 128
+  rollouts: 40
+  clip_value: 1.0
 
-iterations:
-  rollouts: 80
-  epochs: -1
-  batch_size: 8000
+mcts:
+  simulations: 20
+  childs: 5
 
 checkpoint:
