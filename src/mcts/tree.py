@@ -168,7 +168,12 @@ class MCTSTree:
         return ucb
 
     def scores(self, nodes: torch.Tensor) -> torch.Tensor:
-        """Compute the mean score of the given nodes."""
+        """Compute the mean score of the given nodes.
+
+        This is used to evaluate the best node.
+        Do not use it to explore the tree.
+        Unexplored nodes will be evaluated to '-inf'.
+        """
         node_visits = torch.gather(self.visits, dim=1, index=nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
 
@@ -176,7 +181,7 @@ class MCTSTree:
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
         scores = sum_scores / corrected_node_visits
-        scores[node_visits == 0] = torch.inf
+        scores[node_visits == 0] = -torch.inf
         return scores
 
     def select_childs(self, nodes: torch.Tensor) -> torch.Tensor:
