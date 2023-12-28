@@ -34,22 +34,13 @@ updated: 2023-12-06T14:23:14+0100
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
 ** MCTS
-   - (x) Renommer "select_leafs"
-   - (x) Ajouter un réel "select_leafs"
-   - (x) Simuler un rollout
-   -- (x) Utiliser le value network pour évaluer un node.
-   - (x) Backprop les résultats des rollouts
-   - (x) Gérer les noeuds des envs terminés
-   -- (x) Implem
-   -- (x) Comment faire quand tous les noeuds sont terminés?
-   -- (x) Tests (select childs, update node infos)
-   - (x) Gérer les rewards (évaluation du plateau à la fin du rollout?)
-   - (_) Faire des steps dans le rollout qui sont le nombre maximum de steps pour
-         finir le rollout de chaque env
-   - (x) Gérer la valeur des nouveaux fils à l'aide du value network
    - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
          en compte la probabilité de chaque node.
-   - (x) Updater le meilleur puzzle trouvé pendant le tree search.
+   - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
+         un moyen de voir la quantité d'exploration et d'exploitation.
+   -- ( ) Tree depth
+   -- ( ) Visit count distribution
+   -- ( ) Average node value vs average node ucb score
 
    - Comment backprop les résultats d'un rollout ?
    -- La somme pour commencer.

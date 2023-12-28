@@ -5,16 +5,18 @@ from typing import Any
 import einops
 import torch
 import torch.optim as optim
-import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
+import wandb
+
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
+from ..mcts import MCTSTree
 from .rollout import mcts_rollout, rollout, split_reset_rollouts
 
 
@@ -24,13 +26,12 @@ class Trainer:
         env: EternityEnv,
         policy: Policy | DDP,
         critic: Critic | DDP,
+        mcts: MCTSTree,
         loss: PPOLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
         replay_buffer: ReplayBuffer,
         clip_value: float,
-        mcts_simulations: int,
-        mcts_childs: int,
         episodes: int,
         epochs: int,
         rollouts: int,
@@ -38,13 +39,12 @@ class Trainer:
         self.env = env
         self.policy = policy
         self.critic = critic
+        self.mcts = mcts
         self.loss = loss
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
-        self.mcts_simulations = mcts_simulations
-        self.mcts_childs = mcts_childs
         self.episodes = episodes
         self.epochs = epochs
         self.rollouts = rollouts
@@ -63,8 +63,7 @@ class Trainer:
                 self.env,
                 self.policy,
                 self.critic,
-                self.mcts_simulations,
-                self.mcts_childs,
+                self.mcts,
                 self.rollouts,
                 disable_logs,
             )

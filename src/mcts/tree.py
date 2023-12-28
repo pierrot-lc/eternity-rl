@@ -27,6 +27,7 @@ class MCTSTree:
         self.device = self.envs.device
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
+        self.c_ucb = torch.sqrt(torch.FloatTensor([2])).to(self.device)
 
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
@@ -59,39 +60,25 @@ class MCTSTree:
             device=self.device,
         )
 
-    @torch.inference_mode()
-    def step(self):
-        """Do a one step of the MCTS algorithm."""
-        # 1. Dive until we find a leaf.
-        leafs, envs = self.select_leafs()
+    def reset(self, envs: EternityEnv, policy: Policy, critic: Critic):
+        """Reset the overall object state.
+        The MCTSTree can then be used again.
 
-        # 2. Sample new nodes to add to the tree.
-        actions, values, terminated = self.sample_nodes(envs)
-        self.expand_nodes(leafs, actions, values, terminated)
-
-        # 3. Backpropagate child values.
-        # NOTE: The new child is upadated here as well.
-        # Hence it will be visited two times already and have its score
-        # doubled.
-        childs = self.select_childs(leafs)
-        values = self.sum_scores[self.batch_range, childs]
-        self.backpropagate(childs, values)
-
-    def best_actions(self) -> torch.Tensor:
-        """Return the actions corresponding to the best child
-        of the root node.
-
-        ---
-        Returns:
-            The best actions to take from the root node based on the MCTS
-            simulations.
-                Shape of [batch_size, n_actions].
+        The given envs should be of the same batch size as the initial envs.
         """
-        roots = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
-        childs = self.childs[self.batch_range, roots]
-        scores = self.scores(childs)
-        best_childs = torch.argmax(scores, dim=1)
-        return self.actions[self.batch_range, best_childs]
+        assert envs.batch_size == self.batch_size
+        assert envs.device == self.device
+
+        self.envs = envs
+        self.policy = policy
+        self.critic = critic
+
+        self.childs.zero_()
+        self.parents.zero_()
+        self.actions.zero_()
+        self.visits.zero_()
+        self.sum_scores.zero_()
+        self.terminated.zero_()
 
     @torch.inference_mode()
     def evaluate(self, disable_logs: bool) -> torch.Tensor:
@@ -138,6 +125,40 @@ class MCTSTree:
 
         return best_actions
 
+    @torch.inference_mode()
+    def step(self):
+        """Do a one step of the MCTS algorithm."""
+        # 1. Dive until we find a leaf.
+        leafs, envs = self.select_leafs()
+
+        # 2. Sample new nodes to add to the tree.
+        actions, values, terminated = self.sample_nodes(envs)
+        self.expand_nodes(leafs, actions, values, terminated)
+
+        # 3. Backpropagate child values.
+        # NOTE: The new child is upadated here as well.
+        # Hence it will be visited two times already and have its score
+        # doubled.
+        childs = self.select_childs(leafs)
+        values = self.sum_scores[self.batch_range, childs]
+        self.backpropagate(childs, values)
+
+    def best_actions(self) -> torch.Tensor:
+        """Return the actions corresponding to the best child
+        of the root node.
+
+        ---
+        Returns:
+            The best actions to take from the root node based on the MCTS
+            simulations.
+                Shape of [batch_size, n_actions].
+        """
+        roots = torch.zeros(self.batch_size, dtype=torch.long, device=self.device)
+        childs = self.childs[self.batch_range, roots]
+        scores = self.scores(childs)
+        best_childs = torch.argmax(scores, dim=1)
+        return self.actions[self.batch_range, best_childs]
+
     def ucb_scores(self, nodes: torch.Tensor) -> torch.Tensor:
         """Compute the UCB score of the given nodes.
 
@@ -152,7 +173,6 @@ class MCTSTree:
             been visited, its score is '+inf'.
                 Shape of [batch_size, n_nodes].
         """
-        c = torch.sqrt(torch.FloatTensor([2])).to(self.device)
         node_visits = torch.gather(self.visits, dim=1, index=nodes)
         parent_nodes = torch.gather(self.parents, dim=1, index=nodes)
         parent_visits = torch.gather(self.visits, dim=1, index=parent_nodes)
@@ -161,7 +181,7 @@ class MCTSTree:
         corrected_node_visits = node_visits.clone()
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
-        ucb = sum_scores / corrected_node_visits + c * torch.sqrt(
+        ucb = sum_scores / corrected_node_visits + self.c_ucb * torch.sqrt(
             torch.log(parent_visits) / corrected_node_visits
         )
         ucb[node_visits == 0] = torch.inf

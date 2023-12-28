@@ -88,8 +88,7 @@ def mcts_rollout(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
-    simulations: int,
-    childs: int,
+    mcts: MCTSTree,
     steps: int,
     disable_logs: bool,
 ) -> TensorDictBase:
@@ -101,8 +100,7 @@ def mcts_rollout(
         env: The environments to play in.
         policy: The policy to use.
         critic: The critic to use.
-        simulations: The number of simulations to run for each step.
-        childs: The number of childs to expand for each node of the tree.
+        mcts: The MCTS tree to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
 
@@ -116,7 +114,7 @@ def mcts_rollout(
         range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
     ):
         sample = dict()
-        mcts = MCTSTree(env, policy, critic, simulations, childs)
+        mcts.reset(env, policy, critic)
 
         sample["actions"] = mcts.evaluate(disable_logs)
         sample["states"] = env.render()

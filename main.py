@@ -15,7 +15,8 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
 from src.environment import EternityEnv
-from src.model import Policy, Critic
+from src.mcts import MCTSTree
+from src.model import Critic, Policy
 from src.policy_gradient import PPOLoss, Trainer
 
 
@@ -68,6 +69,13 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         dropout=model.dropout,
     )
     return policy, critic
+
+
+def init_mcts(
+    config: DictConfig, env: EternityEnv, policy: Policy, critic: Critic
+) -> MCTSTree:
+    mcts = config.exp.mcts
+    return MCTSTree(env, policy, critic, mcts.simulations, mcts.childs)
 
 
 def init_loss(config: DictConfig) -> PPOLoss:
@@ -153,6 +161,7 @@ def init_trainer(
     env: EternityEnv,
     policy: Policy | DDP,
     critic: Critic | DDP,
+    mcts: MCTSTree,
     loss: PPOLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
@@ -160,18 +169,16 @@ def init_trainer(
 ) -> Trainer:
     """Initialize the trainer."""
     trainer = config.exp.trainer
-    mcts = config.exp.mcts
     return Trainer(
         env,
         policy,
         critic,
+        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,
         replay_buffer,
         trainer.clip_value,
-        mcts.simulations,
-        mcts.childs,
         trainer.episodes,
         trainer.epochs,
         trainer.rollouts,
@@ -213,6 +220,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     policy, critic = policy.to(config.device), critic.to(config.device)
     policy = DDP(policy, device_ids=[config.device], output_device=config.device)
     critic = DDP(critic, device_ids=[config.device], output_device=config.device)
+    mcts = init_mcts(config, env, policy, critic)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
@@ -222,6 +230,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         env,
         policy,
         critic,
+        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,
@@ -247,6 +256,7 @@ def run_trainer_single_gpu(config: DictConfig):
     env = init_env(config)
     policy, critic = init_models(config, env)
     policy, critic = policy.to(config.device), critic.to(config.device)
+    mcts = init_mcts(config, env, policy, critic)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
@@ -256,6 +266,7 @@ def run_trainer_single_gpu(config: DictConfig):
         env,
         policy,
         critic,
+        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,
