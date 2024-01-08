@@ -9,3 +9,6 @@ trivial_B:
 
 normal:
   python3 main.py exp=normal mode=offline
+
+cuda:
+  python3 -c "import torch; print(torch.cuda.is_available())"

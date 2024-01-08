@@ -1,19 +1,25 @@
-{pkgs ? import <nixpkgs> {
-  config = {
-    allowUnfree = true;
-    cudaSupport = true;
-  };
-} }:
-(pkgs.buildFHSUserEnv {
-  name = "pytorch";
-  targetPkgs = pkgs: (with pkgs; [
-    cudaPackages.cudatoolkit
-    cudaPackages.cudnn
-    # cudaPackages.nccl
-    just
-    python311
-    python311Packages.pip
-    python311Packages.virtualenv
-  ]);
-  runScript = "bash";
-}).env
+{
+  pkgs ? import <nixpkgs> {
+    config = {
+      allowUnfree = true;
+      CudaSupport = true;
+    };
+  }
+}:
+let
+  python-packages = ps: with ps; [
+    pip
+    setuptools
+    virtualenv
+  ];
+in
+  (pkgs.buildFHSUserEnv {
+    name = "pytorch";
+    targetPkgs = pkgs: (with pkgs; [
+      (python311.withPackages python-packages)
+      cudaPackages.cudatoolkit
+      cudaPackages.cudnn
+      just
+    ]);
+    runScript = "bash";
+  }).env
