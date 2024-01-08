@@ -1,1 +1,2 @@
-from .model import Policy
+from .policy import Policy
+from .critic import Critic

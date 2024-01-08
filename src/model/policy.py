@@ -8,7 +8,7 @@ from torchinfo import summary
 from ..environment import N_SIDES
 from ..sampling import epsilon_greedy_sampling, epsilon_sampling
 from .backbone import Backbone
-from .heads import EstimateValue, SelectSide, SelectTile
+from .heads import SelectSide, SelectTile
 
 
 class Policy(nn.Module):
@@ -36,14 +36,12 @@ class Policy(nn.Module):
 
         self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
         self.select_side = SelectSide(embedding_dim, n_heads, decoder_layers, dropout)
-        self.estimate_value = EstimateValue(
-            embedding_dim, n_heads, decoder_layers, dropout
-        )
-        self.node_query = nn.Parameter(torch.randn(embedding_dim))
+
+        self.tile_query = nn.Parameter(torch.randn(embedding_dim))
         self.side_query = nn.Parameter(torch.randn(embedding_dim))
-        self.value_query = nn.Parameter(torch.randn(embedding_dim))
-        self.node_selected_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
-        self.side_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
+
+        self.tiles_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
+        self.sides_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
     def dummy_input(self, device: str) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
@@ -60,6 +58,7 @@ class Policy(nn.Module):
     def summary(self, device: str):
         """Torchinfo summary."""
         dummy_input = self.dummy_input(device)
+        print("\nPolicy summary:")
         summary(
             self,
             input_data=[*dummy_input],
@@ -72,9 +71,9 @@ class Policy(nn.Module):
         tiles: torch.Tensor,
         best_tiles: torch.Tensor,
         n_steps: torch.Tensor,
-        sampling_mode: str = "softmax",
+        sampling_mode: str | None = "softmax",
         sampled_actions: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
@@ -107,30 +106,26 @@ class Policy(nn.Module):
         batch_size = tiles.shape[0]
 
         tiles = self.backbone(tiles, best_tiles, n_steps)
-
-        queries = repeat(self.value_query, "e -> b e", b=batch_size)
-        values = self.estimate_value(tiles, queries)
-
         actions, logprobs, entropies = [], [], []
 
         # Node selections.
         for node_number in range(2):
-            queries = repeat(self.node_query, "e -> b e", b=batch_size)
+            queries = repeat(self.tile_query, "e -> b e", b=batch_size)
             probs = self.select_tile(tiles, queries)
 
             if sampled_actions is None:
-                sampled_nodes = self.sample_actions(probs, sampling_mode)
+                sampled_tiles = self.sample_actions(probs, sampling_mode)
             else:
-                sampled_nodes = sampled_actions[:, node_number]
-            actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_nodes)
+                sampled_tiles = sampled_actions[:, node_number]
+            actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_tiles)
 
-            actions.append(sampled_nodes)
+            actions.append(sampled_tiles)
             logprobs.append(actions_logprob)
             entropies.append(actions_entropy)
 
-            selected_embedding = self.node_selected_embeddings[node_number]
+            selected_embedding = self.tiles_embeddings[node_number]
             selected_embedding = repeat(selected_embedding, "e -> b e", b=batch_size)
-            tiles = Policy.selective_add(tiles, selected_embedding, sampled_nodes)
+            tiles = Policy.selective_add(tiles, selected_embedding, sampled_tiles)
 
         # Side selections.
         for side_number in range(2):
@@ -147,14 +142,14 @@ class Policy(nn.Module):
             logprobs.append(actions_logprob)
             entropies.append(actions_entropy)
 
-            side_embedding = self.side_embeddings[sampled_sides]
+            side_embedding = self.sides_embeddings[sampled_sides]
             tiles = Policy.selective_add(tiles, side_embedding, actions[side_number])
 
         actions = torch.stack(actions, dim=1)
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies, values
+        return actions, logprobs, entropies
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:

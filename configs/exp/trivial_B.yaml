@@ -3,7 +3,7 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  batch_size: 1000
+  batch_size: 128
   scramble_size: 1.00
 
 model:
@@ -18,26 +18,19 @@ optimizer:
   optimizer: adamw
   weight_decay: 1.0e-2
 
-scheduler:
-  warmup_steps: 0
-  cosine_t0: 0
-  cosine_tmult: 0
-
 loss:
   gamma: 1.00
   gae_lambda: 0.95
   ppo_clip_ac: 0.30
-  ppo_clip_vf: 0.30
-  value_weight: 0.5
+  ppo_clip_vf: 1.00
+  value_weight: 1.0
   entropy_weight: 1.0e-2
-  no_value_function: true
 
 trainer:
-  clip_value: 1.0
-
-iterations:
+  episodes: 250
+  epochs: 3
+  batch_size: 128
   rollouts: 30
-  epochs: 5000
-  batch_size: 2000
+  clip_value: 1.0
 
 checkpoint:

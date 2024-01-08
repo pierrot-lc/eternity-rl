@@ -13,7 +13,7 @@ from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
 from ..environment import EternityEnv
-from ..model import Policy
+from ..model import Critic, Policy
 from .loss import PPOLoss
 from .rollout import rollout, split_reset_rollouts
 
@@ -22,24 +22,28 @@ class Trainer:
     def __init__(
         self,
         env: EternityEnv,
-        model: Policy | DDP,
+        policy: Policy | DDP,
+        critic: Critic | DDP,
         loss: PPOLoss,
-        optimizer: optim.Optimizer,
-        scheduler: optim.lr_scheduler.LRScheduler,
+        policy_optimizer: optim.Optimizer,
+        critic_optimizer: optim.Optimizer,
         replay_buffer: ReplayBuffer,
         clip_value: float,
-        rollouts: int,
+        episodes: int,
         epochs: int,
+        rollouts: int,
     ):
         self.env = env
-        self.model = model
+        self.policy = policy
+        self.critic = critic
         self.loss = loss
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.policy_optimizer = policy_optimizer
+        self.critic_optimizer = critic_optimizer
         self.replay_buffer = replay_buffer
         self.clip_value = clip_value
-        self.rollouts = rollouts
+        self.episodes = episodes
         self.epochs = epochs
+        self.rollouts = rollouts
 
         self.device = env.device
 
@@ -48,11 +52,16 @@ class Trainer:
         self.mean_return = 0
 
     @torch.inference_mode()
-    def do_rollouts(self, sampling_mode: str, disable_logs: bool):
+    def do_rollouts(self, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
         traces = rollout(
-            self.env, self.model, sampling_mode, self.rollouts, disable_logs
+            self.env,
+            self.policy,
+            self.critic,
+            self.rollouts,
+            disable_logs,
         )
+
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
@@ -85,17 +94,29 @@ class Trainer:
         )
         self.replay_buffer.extend(samples)
 
-    def do_batch_update(self, batch: TensorDict):
+    def do_batch_update(
+        self, batch: TensorDict, train_policy: bool, train_critic: bool
+    ):
         """Performs a batch update on the model."""
-        self.model.train()
-        self.optimizer.zero_grad()
+        if train_policy:
+            self.policy.train()
+            self.policy_optimizer.zero_grad()
+
+        if train_critic:
+            self.critic.train()
+            self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
-        metrics = self.loss(batch, self.model)
+        metrics = self.loss(batch, self.policy, self.critic)
         metrics["loss/total"].backward()
 
-        clip_grad.clip_grad_norm_(self.model.parameters(), self.clip_value)
-        self.optimizer.step()
+        if train_policy:
+            clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)
+            self.policy_optimizer.step()
+
+        if train_critic:
+            clip_grad.clip_grad_norm_(self.critic.parameters(), self.clip_value)
+            self.critic_optimizer.step()
 
     def launch_training(
         self,
@@ -128,49 +149,57 @@ class Trainer:
             config=config,
             mode=mode,
         ) as run:
-            self.model.to(self.device)
+            self.policy.to(self.device)
             self.env.reset()
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
-                if isinstance(self.model, DDP):
-                    self.model.module.summary(self.device)
+                if isinstance(self.policy, DDP):
+                    self.policy.module.summary(self.device)
+                    self.critic.module.summary(self.device)
                 else:
-                    self.model.summary(self.device)
-                print(f"Launching training on device {self.device}.")
+                    self.policy.summary(self.device)
+                    self.critic.summary(self.device)
+
+                print(f"\nLaunching training on device {self.device}.\n")
 
             # Log gradients and model parameters.
-            run.watch(self.model)
+            run.watch(self.policy)
+            run.watch(self.critic)
 
             # Infinite loop if n_batches is -1.
-            iter = count(0) if self.epochs == -1 else range(self.epochs)
+            iter = count(0) if self.episodes == -1 else range(self.episodes)
 
-            for i in tqdm(iter, desc="Epoch", disable=disable_logs):
-                self.model.train()
-                self.do_rollouts(sampling_mode="softmax", disable_logs=disable_logs)
+            for i in tqdm(iter, desc="Episode", disable=disable_logs):
+                self.do_rollouts(disable_logs=disable_logs)
 
-                for batch in tqdm(
-                    self.replay_buffer,
-                    total=len(self.replay_buffer) // self.replay_buffer._batch_size,
-                    desc="Batch",
-                    leave=False,
-                    disable=disable_logs,
+                for _ in tqdm(
+                    range(self.epochs), desc="Epoch", leave=False, disable=disable_logs
                 ):
-                    self.do_batch_update(batch)
-
-                self.scheduler.step()
+                    for batch in tqdm(
+                        self.replay_buffer,
+                        total=len(self.replay_buffer) // self.replay_buffer._batch_size,
+                        desc="Batch",
+                        leave=False,
+                        disable=disable_logs,
+                    ):
+                        self.do_batch_update(
+                            batch, train_policy=True, train_critic=True
+                        )
 
                 metrics = self.evaluate()
                 run.log(metrics)
 
                 if i % save_every == 0 and not disable_logs:
-                    self.save_model("model.pt")
+                    self.save_checkpoint("checkpoint.pt")
                     self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
         metrics = dict()
-        self.model.eval()
+
+        self.policy.eval()
+        self.critic.eval()
 
         matches = self.env.matches / self.env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
@@ -185,19 +214,19 @@ class Trainer:
         # Compute losses.
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
-        metrics |= self.loss(batch, self.model)
-        metrics["loss/learning-rate"] = self.scheduler.get_last_lr()[0]
-        if not self.loss.no_value_function:
-            metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        metrics |= self.loss(batch, self.policy, self.critic)
+        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         metrics["metrics/return"] = self.mean_return
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
-        self.model.zero_grad()
+        self.policy.zero_grad()
+        self.critic.zero_grad()
+
         metrics["loss/total"].backward()
         weights, grads = [], []
-        for p in self.model.parameters():
+        for p in self.policy.parameters():
             weights.append(p.data.abs().mean().item())
 
             if p.grad is not None:
@@ -210,7 +239,9 @@ class Trainer:
         metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
         metrics["global-gradients/max"] = max(grads)
         metrics["global-gradients/hist"] = wandb.Histogram(grads)
-        self.model.zero_grad()
+
+        self.policy.zero_grad()
+        self.critic.zero_grad()
 
         for name, value in metrics.items():
             if isinstance(value, torch.Tensor):
@@ -224,15 +255,13 @@ class Trainer:
 
         return metrics
 
-    def save_model(self, filepath: Path | str):
-        model_state = self.model.state_dict()
-        optimizer_state = self.optimizer.state_dict()
-        scheduler_state = self.scheduler.state_dict()
+    def save_checkpoint(self, filepath: Path | str):
         torch.save(
             {
-                "model": model_state,
-                "optimizer": optimizer_state,
-                "scheduler": scheduler_state,
+                "policy": self.policy.state_dict(),
+                "critic": self.critic.state_dict(),
+                "policy-optimizer": self.policy_optimizer.state_dict(),
+                "critic-optimizer": self.critic_optimizer.state_dict(),
             },
             filepath,
         )

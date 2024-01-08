@@ -1,16 +1,13 @@
-from functools import partial
 from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 from einops.layers.torch import Rearrange
 
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
 from .integer_encoding import IntegerEncoding
 from .transformer import TransformerEncoderLayer
-
 
 
 class Backbone(nn.Module):

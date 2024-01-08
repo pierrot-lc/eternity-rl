@@ -15,7 +15,8 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
 from src.environment import EternityEnv
-from src.model import Policy
+from src.mcts import MCTSTree
+from src.model import Critic, Policy
 from src.policy_gradient import PPOLoss, Trainer
 
 
@@ -38,7 +39,7 @@ def init_env(config: DictConfig) -> EternityEnv:
     env = config.exp.env
     return EternityEnv.from_file(
         env.path,
-        config.exp.iterations.rollouts,
+        config.exp.trainer.rollouts,
         env.batch_size,
         env.scramble_size,
         config.device,
@@ -46,10 +47,10 @@ def init_env(config: DictConfig) -> EternityEnv:
     )
 
 
-def init_model(config: DictConfig, env: EternityEnv) -> Policy:
+def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
     """Initialize the model."""
     model = config.exp.model
-    return Policy(
+    policy = Policy(
         board_width=env.board_size,
         board_height=env.board_size,
         embedding_dim=model.embedding_dim,
@@ -58,6 +59,23 @@ def init_model(config: DictConfig, env: EternityEnv) -> Policy:
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
     )
+    critic = Critic(
+        board_width=env.board_size,
+        board_height=env.board_size,
+        embedding_dim=model.embedding_dim,
+        n_heads=model.n_heads,
+        backbone_layers=model.backbone_layers,
+        decoder_layers=model.decoder_layers,
+        dropout=model.dropout,
+    )
+    return policy, critic
+
+
+def init_mcts(
+    config: DictConfig, env: EternityEnv, policy: Policy, critic: Critic
+) -> MCTSTree:
+    mcts = config.exp.mcts
+    return MCTSTree(env, policy, critic, mcts.simulations, mcts.childs)
 
 
 def init_loss(config: DictConfig) -> PPOLoss:
@@ -69,7 +87,6 @@ def init_loss(config: DictConfig) -> PPOLoss:
         loss.gae_lambda,
         loss.ppo_clip_ac,
         loss.ppo_clip_vf,
-        loss.no_value_function,
     )
 
 
@@ -130,11 +147,11 @@ def init_scheduler(
 
 def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
     exp = config.exp
-    max_size = exp.env.batch_size * exp.iterations.rollouts
+    max_size = exp.env.batch_size * exp.trainer.rollouts
     return TensorDictReplayBuffer(
         storage=LazyTensorStorage(max_size=max_size, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
-        batch_size=exp.iterations.batch_size,
+        batch_size=exp.trainer.batch_size,
         pin_memory=True,
     )
 
@@ -142,25 +159,27 @@ def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
 def init_trainer(
     config: DictConfig,
     env: EternityEnv,
-    model: Policy | DDP,
+    policy: Policy | DDP,
+    critic: Critic | DDP,
     loss: PPOLoss,
-    optimizer: optim.Optimizer,
-    scheduler: optim.lr_scheduler.LinearLR,
+    policy_optimizer: optim.Optimizer,
+    critic_optimizer: optim.Optimizer,
     replay_buffer: ReplayBuffer,
 ) -> Trainer:
     """Initialize the trainer."""
     trainer = config.exp.trainer
-    iterations = config.exp.iterations
     return Trainer(
         env,
-        model,
+        policy,
+        critic,
         loss,
-        optimizer,
-        scheduler,
+        policy_optimizer,
+        critic_optimizer,
         replay_buffer,
         trainer.clip_value,
-        iterations.rollouts,
-        iterations.epochs,
+        trainer.episodes,
+        trainer.epochs,
+        trainer.rollouts,
     )
 
 
@@ -171,10 +190,14 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
 
     checkpoint_path = config.exp.checkpoint
     state_dict = torch.load(checkpoint_path, map_location=config.device)
-    trainer.model.load_state_dict(state_dict["model"])
+
+    trainer.policy.load_state_dict(state_dict["policy"])
+    trainer.critic.load_state_dict(state_dict["critic"])
+
     # HACK: The training seems to not be stable when loading the optimizer state.
-    # trainer.optimizer.load_state_dict(state_dict["optimizer"])
-    trainer.scheduler.load_state_dict(state_dict["scheduler"])
+    # trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
+    # trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
+
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
 
@@ -191,15 +214,23 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    model = init_model(config, env)
-    model = model.to(config.device)
-    model = DDP(model, device_ids=[config.device], output_device=config.device)
+    policy, critic = init_models(config, env)
+    policy, critic = policy.to(config.device), critic.to(config.device)
+    policy = DDP(policy, device_ids=[config.device], output_device=config.device)
+    critic = DDP(critic, device_ids=[config.device], output_device=config.device)
     loss = init_loss(config)
-    optimizer = init_optimizer(config, model)
-    scheduler = init_scheduler(config, optimizer)
+    policy_optimizer = init_optimizer(config, policy)
+    critic_optimizer = init_optimizer(config, critic)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, replay_buffer
+        config,
+        env,
+        policy,
+        critic,
+        loss,
+        policy_optimizer,
+        critic_optimizer,
+        replay_buffer,
     )
     reload_checkpoint(config, trainer)
 
@@ -219,14 +250,21 @@ def run_trainer_single_gpu(config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    model = init_model(config, env)
-    model = model.to(config.device)
+    policy, critic = init_models(config, env)
+    policy, critic = policy.to(config.device), critic.to(config.device)
     loss = init_loss(config)
-    optimizer = init_optimizer(config, model)
-    scheduler = init_scheduler(config, optimizer)
+    policy_optimizer = init_optimizer(config, policy)
+    critic_optimizer = init_optimizer(config, critic)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
-        config, env, model, loss, optimizer, scheduler, replay_buffer
+        config,
+        env,
+        policy,
+        critic,
+        loss,
+        policy_optimizer,
+        critic_optimizer,
+        replay_buffer,
     )
     reload_checkpoint(config, trainer)
 
