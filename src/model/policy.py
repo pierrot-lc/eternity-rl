@@ -8,7 +8,7 @@ from torchinfo import summary
 from ..environment import N_SIDES
 from ..sampling import epsilon_greedy_sampling, epsilon_sampling
 from .backbone import Backbone
-from .heads import EstimateValue, SelectSide, SelectTile
+from .heads import SelectSide, SelectTile
 
 
 class Policy(nn.Module):

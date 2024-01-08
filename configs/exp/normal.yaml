@@ -22,19 +22,15 @@ loss:
   gamma: 1.00
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
-  ppo_clip_vf: 1.00
-  value_weight: 1.000
+  ppo_clip_vf: 0.20
+  value_weight: 0.01
   entropy_weight: 1.0e-1
 
 trainer:
   episodes: -1
-  epochs: 3
+  epochs: 1
   batch_size: 128
-  rollouts: 40
+  rollouts: 60
   clip_value: 1.0
-
-mcts:
-  simulations: 20
-  childs: 5
 
 checkpoint:

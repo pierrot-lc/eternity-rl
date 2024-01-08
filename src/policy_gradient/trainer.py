@@ -5,19 +5,17 @@ from typing import Any
 import einops
 import torch
 import torch.optim as optim
+import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
-import wandb
-
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
-from ..mcts import MCTSTree
-from .rollout import mcts_rollout, rollout, split_reset_rollouts
+from .rollout import rollout, split_reset_rollouts
 
 
 class Trainer:
@@ -26,7 +24,6 @@ class Trainer:
         env: EternityEnv,
         policy: Policy | DDP,
         critic: Critic | DDP,
-        mcts: MCTSTree,
         loss: PPOLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
@@ -39,7 +36,6 @@ class Trainer:
         self.env = env
         self.policy = policy
         self.critic = critic
-        self.mcts = mcts
         self.loss = loss
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
@@ -56,25 +52,15 @@ class Trainer:
         self.mean_return = 0
 
     @torch.inference_mode()
-    def do_rollouts(self, mcts: bool, disable_logs: bool):
+    def do_rollouts(self, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
-        if mcts:
-            traces = mcts_rollout(
-                self.env,
-                self.policy,
-                self.critic,
-                self.mcts,
-                self.rollouts,
-                disable_logs,
-            )
-        else:
-            traces = rollout(
-                self.env,
-                self.policy,
-                self.critic,
-                self.rollouts,
-                disable_logs,
-            )
+        traces = rollout(
+            self.env,
+            self.policy,
+            self.critic,
+            self.rollouts,
+            disable_logs,
+        )
 
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
@@ -179,19 +165,16 @@ class Trainer:
 
             # Log gradients and model parameters.
             run.watch(self.policy)
+            run.watch(self.critic)
 
             # Infinite loop if n_batches is -1.
             iter = count(0) if self.episodes == -1 else range(self.episodes)
 
             for i in tqdm(iter, desc="Episode", disable=disable_logs):
-                # Train critic using MCTS rollouts.
-                self.do_rollouts(mcts=True, disable_logs=disable_logs)
+                self.do_rollouts(disable_logs=disable_logs)
 
                 for _ in tqdm(
-                    range(self.epochs),
-                    desc="Epoch (critic training)",
-                    leave=False,
-                    disable=disable_logs,
+                    range(self.epochs), desc="Epoch", leave=False, disable=disable_logs
                 ):
                     for batch in tqdm(
                         self.replay_buffer,
@@ -201,34 +184,14 @@ class Trainer:
                         disable=disable_logs,
                     ):
                         self.do_batch_update(
-                            batch, train_policy=False, train_critic=True
-                        )
-
-                # Train policy using standard PPO.
-                self.do_rollouts(mcts=False, disable_logs=disable_logs)
-
-                for _ in tqdm(
-                    range(self.epochs),
-                    desc="Epoch (actor training)",
-                    leave=False,
-                    disable=disable_logs,
-                ):
-                    for batch in tqdm(
-                        self.replay_buffer,
-                        total=len(self.replay_buffer) // self.replay_buffer._batch_size,
-                        desc="Batch",
-                        leave=False,
-                        disable=disable_logs,
-                    ):
-                        self.do_batch_update(
-                            batch, train_policy=True, train_critic=False
+                            batch, train_policy=True, train_critic=True
                         )
 
                 metrics = self.evaluate()
                 run.log(metrics)
 
                 if i % save_every == 0 and not disable_logs:
-                    self.save_checkpoint("model.pt")
+                    self.save_checkpoint("checkpoint.pt")
                     self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:

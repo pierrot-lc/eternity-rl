@@ -27,14 +27,10 @@ loss:
   entropy_weight: 1.0e-2
 
 trainer:
-  episodes: 500
+  episodes: 250
   epochs: 3
   batch_size: 128
   rollouts: 30
   clip_value: 1.0
-
-mcts:
-  simulations: 10
-  childs: 5
 
 checkpoint:

@@ -241,8 +241,8 @@ class EternityEnv(gym.Env):
         delta_rewards = (matches - previous_matches) / self.best_possible_matches
         best_delta_rewards = diff_matches / self.best_possible_matches
         best_delta_rewards[best_delta_rewards < 0] = 0
-        # done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
-        done_rewards = (matches / self.best_possible_matches) * dones.float()
+        done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
+        # done_rewards = (matches / self.best_possible_matches) * dones.float()
         rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
 
         infos = {
