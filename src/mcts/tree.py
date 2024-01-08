@@ -293,6 +293,7 @@ class MCTSTree:
 
         # If an env is done, we take the value of the final board instead of
         # the prediction of the critic.
+        # WARNING: How to properly decide the value of a terminated env?
         values = dones * envs.best_matches / envs.best_possible_matches + ~dones * values
 
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)

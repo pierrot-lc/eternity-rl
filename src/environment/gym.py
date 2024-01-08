@@ -24,7 +24,6 @@ from .constants import (
     WEST,
 )
 from .draw import draw_gif, draw_instance
-from .generate import random_perfect_instances
 
 # Defines convs that will compute vertical and horizontal matches.
 # Shapes are [out_channels, in_channels, kernel_height, kernel_width].
@@ -59,8 +58,7 @@ class EternityEnv(gym.Env):
     def __init__(
         self,
         instances: torch.Tensor,
-        episode_length: int,
-        scramble_size: float = 0,
+        episode_length: int | float,
         device: str = "cpu",
         seed: int = 0,
         sample_size: int = 40,
@@ -71,20 +69,21 @@ class EternityEnv(gym.Env):
         Args:
             instances: The instances of this environment.
                 Long tensor of shape of [batch_size, N_SIDES, size, size].
-            reward_type: The type of reward to use.
-                Can be either "delta" or "win".
+            episode_length: The length of a whole episode. Should be an integer
+                or a "+inf" float.
             device: The device to use.
             seed: The seed for the random number generator.
+            sample_size: The number of steps to sample for the GIF.
         """
         assert len(instances.shape) == 4, "Tensor must have 4 dimensions."
         assert instances.shape[1] == N_SIDES, "The pieces must have 4 sides."
         assert instances.shape[2] == instances.shape[3], "Instances are not squares."
         assert torch.all(instances >= 0), "Classes must be positives."
+        assert sample_size > 0, "Provide a positive number of frames for the gif."
 
         super().__init__()
         self.instances = instances.to(device)
         self.episode_length = episode_length
-        self.scramble_size = scramble_size
         self.device = device
         self.rng = torch.Generator(device).manual_seed(seed)
 
@@ -143,23 +142,7 @@ class EternityEnv(gym.Env):
                 start=0, end=self.batch_size, device=self.device
             )
 
-        # # Generate new random instances.
-        # self.instances[scramble_ids] = random_perfect_instances(
-        #     self.board_size, self.n_classes, len(scramble_ids), self.rng
-        # )
-
         self.scramble_instances(instance_ids)
-
-        candidate_ids = instance_ids[
-            self.best_matches[instance_ids] != self.best_possible_matches
-        ]
-        best_boards_proportion = int((1 - self.scramble_size) * len(candidate_ids))
-        best_board_ids = torch.randperm(
-            len(candidate_ids), generator=self.rng, device=self.device
-        )
-        best_board_ids = best_board_ids[:best_boards_proportion]
-        best_board_ids = candidate_ids[best_board_ids]
-        self.instances[best_board_ids] = self.best_boards[best_board_ids]
 
         self.best_matches[instance_ids] = self.matches[instance_ids]
         self.best_boards[instance_ids] = self.instances[instance_ids].clone()
@@ -167,7 +150,7 @@ class EternityEnv(gym.Env):
         just_won = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 
         # Do not reset the best env found, only updates it.
-        # This best env is used for perpetual search purpose.
+        # This best env is used for perpetual search.
         self.update_best_env()
 
         infos = {
@@ -239,11 +222,11 @@ class EternityEnv(gym.Env):
 
         # Rewards.
         delta_rewards = (matches - previous_matches) / self.best_possible_matches
-        best_delta_rewards = diff_matches / self.best_possible_matches
-        best_delta_rewards[best_delta_rewards < 0] = 0
-        done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
+        # best_delta_rewards = diff_matches / self.best_possible_matches
+        # best_delta_rewards[best_delta_rewards < 0] = 0
+        # done_rewards = (self.best_matches / self.best_possible_matches) * dones.float()
         # done_rewards = (matches / self.best_possible_matches) * dones.float()
-        rewards = 0.00 * delta_rewards + 0.0 * best_delta_rewards + 1.0 * done_rewards
+        rewards = delta_rewards
 
         infos = {
             "just-won": just_won,
@@ -487,7 +470,6 @@ class EternityEnv(gym.Env):
         copy = cls(
             env.instances,
             env.episode_length,
-            env.scramble_size,
             env.device,
             env.rng.seed(),
             env.sample_size,
@@ -520,7 +502,6 @@ class EternityEnv(gym.Env):
         copy = cls(
             instances,
             env.episode_length,
-            env.scramble_size,
             env.device,
             env.rng.seed(),
             env.sample_size,
@@ -540,13 +521,12 @@ class EternityEnv(gym.Env):
         instance_path: Path,
         episode_length: int,
         batch_size: int,
-        scramble_size: float = 0,
         device: str = "cpu",
         seed: int = 0,
     ) -> "EternityEnv":
         instance = read_instance_file(instance_path)
         instances = repeat(instance, "c h w -> b c h w", b=batch_size)
-        return cls(instances, episode_length, scramble_size, device, seed)
+        return cls(instances, episode_length, device, seed)
 
 
 def read_instance_file(instance_path: Path | str) -> torch.Tensor:

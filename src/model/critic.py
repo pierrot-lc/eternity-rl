@@ -45,8 +45,7 @@ class Critic(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        n_steps = torch.zeros(1, dtype=torch.long, device=device)
-        return (tiles, tiles, n_steps)
+        return (tiles,)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -62,8 +61,6 @@ class Critic(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        best_tiles: torch.Tensor,
-        n_steps: torch.Tensor,
     ) -> torch.Tensor:
         """Predict the actions and value for the given game states.
 
@@ -71,10 +68,6 @@ class Critic(nn.Module):
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            best_tiles: The game best state.
-                Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            n_steps: Number of steps of each game.
-                Long tensor of shape [batch_size,].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.
@@ -92,7 +85,7 @@ class Critic(nn.Module):
                 Shape of [batch_size,].
         """
         batch_size = tiles.shape[0]
-        tiles = self.backbone(tiles, best_tiles, n_steps)
+        tiles = self.backbone(tiles)
         queries = repeat(self.value_query, "e -> b e", b=batch_size)
         values = self.estimate_value(tiles, queries)
         return values

@@ -4,7 +4,7 @@ group: Normal
 env:
   path: ./instances/eternity_A.txt
   batch_size: 128
-  scramble_size: 1.00
+  episode_length: inf
 
 model:
   embedding_dim: 16
@@ -19,7 +19,7 @@ optimizer:
   weight_decay: 1.0e-2
 
 loss:
-  gamma: 1.00
+  gamma: 0.99
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
@@ -31,6 +31,7 @@ trainer:
   epochs: 1
   batch_size: 128
   rollouts: 60
+  reset_proportion: 0.20
   clip_value: 1.0
 
 checkpoint:
