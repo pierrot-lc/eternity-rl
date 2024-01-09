@@ -20,6 +20,7 @@ in
       cudaPackages.cudatoolkit
       cudaPackages.cudnn
       just
+      pdm
     ]);
     runScript = "bash";
   }).env
