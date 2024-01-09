@@ -156,10 +156,10 @@ class PPOLoss(nn.Module):
         # entropies[:, 2] *= 0.10
         # entropies[:, 3] *= 0.10
         entropies = entropies.sum(dim=1)
-        metrics["loss/entropy"] = -entropies.mean()
-        metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
-        # metrics["loss/entropy"] = torch.relu(3.0 - entropies).mean()
-        # metrics["loss/weighted-entropy"] = metrics["loss/entropy"]
+        # metrics["loss/entropy"] = -entropies.mean()
+        # metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
+        metrics["loss/entropy"] = torch.relu(3.4 - entropies).mean()
+        metrics["loss/weighted-entropy"] = metrics["loss/entropy"]
 
         metrics["loss/total"] = (
             metrics["loss/weighted-policy"] + metrics["loss/weighted-entropy"]

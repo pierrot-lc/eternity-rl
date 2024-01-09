@@ -27,11 +27,11 @@ loss:
   entropy_weight: 1.0e-1
 
 trainer:
-  episodes: -1
+  episodes: 15000
   epochs: 1
   batch_size: 128
   rollouts: 60
-  reset_proportion: 0.20
+  reset_proportion: 0.75
   clip_value: 1.0
 
 checkpoint:
