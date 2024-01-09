@@ -285,16 +285,16 @@ class MCTSTree:
                 Shape of [batch_size, n_childs].
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
-        actions, *_ = self.policy(
-            envs.render(), envs.best_boards, envs.n_steps, sampling_mode="softmax"
-        )
+        actions, *_ = self.policy(envs.render(), sampling_mode="softmax")
         boards, _, dones, truncated, _ = envs.step(actions)
-        values = self.critic(boards, envs.best_boards, envs.n_steps)
+        values = self.critic(boards)
 
         # If an env is done, we take the value of the final board instead of
         # the prediction of the critic.
         # WARNING: How to properly decide the value of a terminated env?
-        values = dones * envs.best_matches / envs.best_possible_matches + ~dones * values
+        values = (
+            dones * envs.best_matches / envs.best_possible_matches + ~dones * values
+        )
 
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
         values = rearrange(values, "(b c) -> b c", c=self.n_childs)
