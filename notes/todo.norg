@@ -10,26 +10,8 @@ updated: 2024-01-03T17:53:48+0100
   - Verify enhancements:
   -- ( ) ReLU entropy
   -- ( ) Action-specific weighted entropy
-  -- ( ) Critic network
-  -- ( ) Multiple batches per epoch
-  -- ( ) PPO loss (if multiple batches)
-  -- ( ) Splitted actor/critic models
-  -- ( ) Mixed reward sources
-  -- ( ) Use the n_steps input
-  - ( ) Never-ending episodes with appropriate rewards.
-  - ( ) Delta-max reward.
-  - ( ) Composite rewards.
-  - ( ) Critic network.
-  -- ( ) With help for reward computations.
-  -- ( ) Without help for reward computations.
-  -- ( ) Critic learning rate. Is it possible to overfit?
-  - ( ) Episodic rollouts with random resets between two rollouts.
-  - (x) Add "best boards":
-  -- (x) Encoding-decoding transformer.
-  -- (x) Pytest for best-boards internal state.
-  - (x) Reset from current best boards.
-  - ( ) Use a CNN as a backbone encoder. Concat best tiles with tiles. Use as many
-        groups are there are total sides (8) before merging sides. How to use `n_steps` ?
+  -- ( ) Separated actor/critic network
+  -- ( ) CNN backbone encoder
   - ( ) Checker https://arxiv.org/abs/2110.00641
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
