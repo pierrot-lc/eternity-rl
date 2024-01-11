@@ -32,6 +32,7 @@ class Trainer:
         episodes: int,
         epochs: int,
         rollouts: int,
+        reset_proportion: float,
     ):
         self.env = env
         self.policy = policy
@@ -44,16 +45,24 @@ class Trainer:
         self.episodes = episodes
         self.epochs = epochs
         self.rollouts = rollouts
+        self.reset_proportion = reset_proportion
 
         self.device = env.device
+        self.rng = self.env.rng
 
         # Dynamic infos.
         self.best_matches_found = 0
-        self.mean_return = 0
 
     @torch.inference_mode()
     def do_rollouts(self, disable_logs: bool):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
+        total_resets = int(self.reset_proportion * self.env.batch_size)
+        reset_ids = torch.randperm(
+            self.env.batch_size, generator=self.rng, device=self.device
+        )
+        reset_ids = reset_ids[:total_resets]
+        self.env.reset(reset_ids)
+
         traces = rollout(
             self.env,
             self.policy,
@@ -73,11 +82,6 @@ class Trainer:
             == traces["masks"].sum().item()
             == self.env.batch_size * self.rollouts
         ), "Some samples are missing."
-
-        returns = (traces["rewards"] * traces["masks"]).sum(dim=1)
-        dones = traces["dones"].float().sum(dim=1)
-        returns *= dones  # Only count ended episodes.
-        self.mean_return = returns.sum() / dones.sum()
 
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
@@ -217,7 +221,6 @@ class Trainer:
         metrics |= self.loss(batch, self.policy, self.critic)
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
-        metrics["metrics/return"] = self.mean_return
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.

@@ -12,7 +12,6 @@ def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv
         instance_path,
         episode_length=10,
         batch_size=2,
-        scramble_size=1.0,
         device="cpu",
         seed=0,
     )

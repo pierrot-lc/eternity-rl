@@ -6,7 +6,6 @@ from einops.layers.torch import Rearrange
 
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
-from .integer_encoding import IntegerEncoding
 from .transformer import TransformerEncoderLayer
 
 
@@ -43,7 +42,6 @@ class Backbone(nn.Module):
             # To transformer layout.
             Rearrange("b h w e -> (h w) b e"),
         )
-        self.steps_encoder = IntegerEncoding(embedding_dim)
 
         self.encoder = nn.TransformerEncoder(
             TransformerEncoderLayer(
@@ -61,8 +59,6 @@ class Backbone(nn.Module):
     def forward(
         self,
         boards: torch.Tensor,
-        best_boards: torch.Tensor,
-        n_steps: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -70,10 +66,6 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            best_tiles: The game best state.
-                Tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            n_steps: Number of steps of each game.
-                Long tensor of shape [batch_size,].
 
         ---
         Returns:
@@ -81,8 +73,5 @@ class Backbone(nn.Module):
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
         boards = self.embed_board(boards)
-        n_steps = self.steps_encoder(n_steps)
-        tokens = torch.concat((n_steps.unsqueeze(0), boards), dim=0)
-        tokens = self.encoder(tokens)
-
-        return tokens[1:]
+        tokens = self.encoder(boards)
+        return tokens

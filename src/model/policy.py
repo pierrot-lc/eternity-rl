@@ -52,8 +52,7 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        n_steps = torch.zeros(1, dtype=torch.long, device=device)
-        return (tiles, tiles, n_steps)
+        return (tiles,)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -69,8 +68,6 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        best_tiles: torch.Tensor,
-        n_steps: torch.Tensor,
         sampling_mode: str | None = "softmax",
         sampled_actions: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -80,10 +77,6 @@ class Policy(nn.Module):
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            best_tiles: The game best state.
-                Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            n_steps: Number of steps of each game.
-                Long tensor of shape [batch_size,].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.
@@ -105,7 +98,7 @@ class Policy(nn.Module):
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
-        tiles = self.backbone(tiles, best_tiles, n_steps)
+        tiles = self.backbone(tiles)
         actions, logprobs, entropies = [], [], []
 
         # Node selections.

@@ -7,8 +7,8 @@ from tensordict import TensorDict, TensorDictBase
 from tqdm import tqdm
 
 from ..environment import EternityEnv
-from ..model import Policy, Critic
 from ..mcts import MCTSTree
+from ..model import Critic, Policy
 
 
 def rollout(
@@ -39,30 +39,17 @@ def rollout(
     ):
         sample = dict()
         sample["states"] = env.render()
-        sample["conditionals"] = env.n_steps
-        sample["best-boards"] = env.best_boards
 
         sample["actions"], sample["log-probs"], _ = policy(
-            sample["states"],
-            sample["best-boards"],
-            sample["conditionals"],
-            sampling_mode="softmax",
+            sample["states"], sampling_mode="softmax"
         )
-        sample["values"] = critic(
-            sample["states"],
-            sample["best-boards"],
-            sample["conditionals"],
-        )
+        sample["values"] = critic(sample["states"])
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
             sample["actions"]
         )
 
-        sample["next-values"] = critic(
-            env.render(),
-            env.best_boards,
-            env.n_steps,
-        )
+        sample["next-values"] = critic(env.render())
 
         sample["next-values"] *= (~sample["dones"]).float()
 
@@ -118,20 +105,11 @@ def mcts_rollout(
 
         sample["actions"] = mcts.evaluate(disable_logs)
         sample["states"] = env.render()
-        sample["conditionals"] = env.n_steps
-        sample["best-boards"] = env.best_boards
 
         _, sample["log-probs"], _ = policy(
-            sample["states"],
-            sample["best-boards"],
-            sample["conditionals"],
-            sampled_actions=sample["actions"],
+            sample["states"], sampled_actions=sample["actions"]
         )
-        sample["values"] = critic(
-            sample["states"],
-            sample["best-boards"],
-            sample["conditionals"],
-        )
+        sample["values"] = critic(sample["states"])
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
             sample["actions"]

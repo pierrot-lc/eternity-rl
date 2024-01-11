@@ -37,11 +37,17 @@ def cleanup_distributed():
 def init_env(config: DictConfig) -> EternityEnv:
     """Initialize the environment."""
     env = config.exp.env
+    if not isinstance(env.episode_length, int):
+        assert env.episode_length in {
+            "inf",
+            "+inf",
+        }, "Provide either an integer or 'inf'."
+        env.episode_length = float(env.episode_length)
+
     return EternityEnv.from_file(
         env.path,
-        config.exp.trainer.rollouts,
+        env.episode_length,
         env.batch_size,
-        env.scramble_size,
         config.device,
         config.seed,
     )
@@ -180,6 +186,7 @@ def init_trainer(
         trainer.episodes,
         trainer.epochs,
         trainer.rollouts,
+        trainer.reset_proportion,
     )
 
 
