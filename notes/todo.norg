@@ -15,19 +15,22 @@ updated: 2024-01-03T17:53:48+0100
   - ( ) Checker https://arxiv.org/abs/2110.00641
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
-** MCTS
-   - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
-         en compte la probabilité de chaque node.
-   - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
-         un moyen de voir la quantité d'exploration et d'exploitation.
-   -- ( ) Tree depth
-   -- ( ) Visit count distribution
-   -- ( ) Average node value vs average node ucb score
-   -- ( ) Same-node count
+* MCTS
+  - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
+        en compte la probabilité de chaque node.
+  - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
+        un moyen de voir la quantité d'exploration et d'exploitation.
+  -- ( ) Tree depth
+  -- ( ) Visit count distribution
+  -- ( ) Average node value vs average node ucb score
+  -- ( ) Same-node count
 
-   - Comment backprop les résultats d'un rollout ?
-   -- La somme pour commencer.
-   -- On pourrait aussi prendre le max des childs.
+  - Regarder pour améliorer le MCTS avec rewards intermédiaires:
+  -- Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
+  -- Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
+  -- Ajouter aussi le produit gamma.
+
+  - Ajouter la normalisation MinMax des scores pour ne pas avoir à tuner la constante d'exploration.
 
 * Why it does not work?
   - Is that possible that the model struggles at some point because the value function
