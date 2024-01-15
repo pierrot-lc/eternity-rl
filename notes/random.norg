@@ -53,10 +53,14 @@ version: 1.1.1
   I did not really spend a lot of time experimenting this. It may be worth to have
   two small models that are faster than a single big shared model for both actor and critic.
 
-  It is important that the critic does not overfit the actor actions. At some point, the
+  Finally, I have separated my models since it allows me to train the critic more independently.
+  Doing so, I can train the critic with samples from another trajectories (MCTS sampling for example).
+
+  *It is important that the critic does not overfit the actor actions. At some point, the
   critic gets use to the mean actor performance. When that happen, the critic is not
   guiding the actor anymore. The only way for the actor to improve is to randomly
-  find good moves that the critic did not predict.
+  find good moves that the critic did not predict.*
+  This is why you should have a low learning rate for the critic.
 
   The issue is:
   - Either the actor just cannot randomly find the good moves. The probability is too
@@ -126,6 +130,8 @@ version: 1.1.1
   batched steps forward. It can be used to estimate what the next best action is.
   This process can also be repeated multiple times to trade time for memory.
 
+  A kind of beam search.
+
 * Potentially never-ending episodes
   A proper way to train the model is to use never-ending episodes. Doing so,
   the return is impossible to truly compute with MCTS sampling, but it can
@@ -139,14 +145,18 @@ version: 1.1.1
   The reward is also very important. A good reward shaping will make it easier
   for the model to quickly understand what the goal is.
 
-  *Hypothesis: this training is very prone to local minimas. Once the board is almost
+  Hypothesis: this training is very prone to local minimas. Once the board is almost
   complete, the model is having a really hard time to finish the puzzle because most of
   the time it means that many pieces have to be swapped around. Doing so is asking for
-  a lot of exploration, arguably too much exploration.*
+  a lot of exploration, arguably too much exploration.
 
   To avoid local minimas, the model should build the board from scratch everytime
   and only be given the reward at the end of the episode (like I used to to at the
   beginning).
+
+  It does seem like this hypothesis is not true in the end. The model sees the result
+  of the multiple actions. At least, for my current training setup, havin a never-ending
+  or fixed horizon rollout does not change the local minimas the model is prone to.
 
 * About on-policy learning and exploration
   It's harder to implement a forced exploration or exploitation when using an on-policy
@@ -243,3 +253,38 @@ version: 1.1.1
   to sample to childs for each node of the tree (not only at the leafs!). For example,
   we could have a fictious child node which, when selected, means that the father should
   sample a new child because others are too explored.
+
+* A batched MCTS
+  I have implemented a simplified MCTS that can search in a batch of environments.
+  This means that I can collect rollouts in parallel, but it doesn't search in a single
+  tree in parallel.
+
+  To do so, I have made a simplification: the number of child each node can have is bounded.
+  I have made such simplification so that I can bound the total number of nodes in the tree.
+
+  Here's the main ideas:
+  - I can compute the number of nodes in a single tree with the following equation:
+    $total_nodes = n_simulations * n_childs_per_nodes + 1$
+    At each simulation, we will expand a node and create at most $n_childs_per_nodes$.
+    The $+ 1$ is to account for the root node.
+  - Each node is given an id (starting at $0$ for the root node).
+  - An array of shape `[batch_size, total_nodes, n_childs_per_nodes]` is used to know
+    the ids of the childs of a given node id in each MCTS trees.
+  - An array of shape `[batch_size, total_nodes]` is used to know the ids of the parent
+    of any node id in each MCTS trees.
+  - The same general idea is used to know the number of visits, the total score and other
+    properties of each node in each trees.
+  - Each step of the MCTS algorithm is batched along all the trees. For example, when
+    selecting the next node to expand, I dive in all trees at the same time until all
+    trees have reach a leaf.
+  - When expanding a batch of nodes, I sample the new childs according to the policy.
+    I do not make sure that childs are differents. Also, I use the critic network to
+    immediately compute the value of the new nodes.
+  - Of course, since everything is done with tensor operations, those operations are done
+    on GPU and can be done with the standard multi-GPU distributed training.
+
+  Because the maximum number of nodes is known, I can stack all trees together inside
+  tensors.
+
+  Needless to say, a beam search would have been much easier to implement. But I wanted
+  to try this out.

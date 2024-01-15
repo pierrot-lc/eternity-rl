@@ -10,42 +10,29 @@ updated: 2024-01-03T17:53:48+0100
   - Verify enhancements:
   -- ( ) ReLU entropy
   -- ( ) Action-specific weighted entropy
-  -- ( ) Critic network
-  -- ( ) Multiple batches per epoch
-  -- ( ) PPO loss (if multiple batches)
-  -- ( ) Splitted actor/critic models
-  -- ( ) Mixed reward sources
-  -- ( ) Use the n_steps input
-  - ( ) Never-ending episodes with appropriate rewards.
-  - ( ) Delta-max reward.
-  - ( ) Composite rewards.
-  - ( ) Critic network.
-  -- ( ) With help for reward computations.
-  -- ( ) Without help for reward computations.
-  -- ( ) Critic learning rate. Is it possible to overfit?
-  - ( ) Episodic rollouts with random resets between two rollouts.
-  - (x) Add "best boards":
-  -- (x) Encoding-decoding transformer.
-  -- (x) Pytest for best-boards internal state.
-  - (x) Reset from current best boards.
-  - ( ) Use a CNN as a backbone encoder. Concat best tiles with tiles. Use as many
-        groups are there are total sides (8) before merging sides. How to use `n_steps` ?
+  -- ( ) Separated actor/critic network
+  -- ( ) CNN backbone encoder
   - ( ) Checker https://arxiv.org/abs/2110.00641
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
-** MCTS
-   - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
-         en compte la probabilité de chaque node.
-   - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
-         un moyen de voir la quantité d'exploration et d'exploitation.
-   -- ( ) Tree depth
-   -- ( ) Visit count distribution
-   -- ( ) Average node value vs average node ucb score
-   -- ( ) Same-node count
+* MCTS
+  - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
+        en compte la probabilité de chaque node.
+  - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
+        un moyen de voir la quantité d'exploration et d'exploitation.
+  -- ( ) Tree depth
+  -- ( ) Visit count distribution
+  -- ( ) Average node value vs average node ucb score
+  -- ( ) Same-node count
 
-   - Comment backprop les résultats d'un rollout ?
-   -- La somme pour commencer.
-   -- On pourrait aussi prendre le max des childs.
+  - Regarder pour améliorer le MCTS avec rewards intermédiaires:
+  -- Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
+  -- Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
+  -- Ajouter aussi le produit gamma.
+  -- Voir https://github.com/tmoer/alphazero_singleplayer.
+
+  - Ajouter la normalisation MinMax des scores pour ne pas avoir à tuner la constante d'exploration.
+    Voir https://arxiv.org/pdf/1911.08265.pdf page 12.
 
 * Why it does not work?
   - Is that possible that the model struggles at some point because the value function
@@ -115,13 +102,3 @@ updated: 2024-01-03T17:53:48+0100
     learn a policy that solves it: {https://arxiv.org/abs/2310.06794v1}.
   - Ideally the model needs an architectural bias that allows him
     to play multiple rounds in its latent space.
-
-** Batched MCTS
-   - If we know the number of simulations we're doing, let's say N.
-   - We can represent a tree by an array of shape [N, N].
-     The first dims are all the nodes, the second are the childs ids of the given node.
-   - We can have a null-node, the first one for example (id 0).
-     This means that when we see that a node has the child node 0, it means the null node (empty child).
-   - When iteratively visiting the nodes to find the node to select and expand,
-     it is possible to do it iteratively accross the batch of trees (shape of [B, N, N]).
-     Just iterate until everyone has reach the leaf.
