@@ -111,8 +111,10 @@ class PPOLoss(nn.Module):
         """
         metrics = dict()
 
-        _, logprobs, entropies = policy(batch["states"], None, batch["actions"])
-        values = critic(batch["states"])
+        _, logprobs, entropies, _ = policy(
+            batch["states"], batch["memories-policy"], None, batch["actions"]
+        )
+        values, _ = critic(batch["states"], batch["memories-critic"])
 
         # Compute the joint log probability of the actions.
         logprobs = logprobs.sum(dim=1)

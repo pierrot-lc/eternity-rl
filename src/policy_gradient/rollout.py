@@ -15,6 +15,8 @@ def rollout(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
+    memories_policy: torch.Tensor,
+    memories_critic: torch.Tensor,
     steps: int,
     disable_logs: bool,
 ) -> TensorDictBase:
@@ -25,12 +27,18 @@ def rollout(
         env: The environments to play in.
         policy: The policy to use.
         critic: The critic to use.
+        memories_policy: The memories of the policy.
+            Shape of [batch_size, n_memories, embedding_dim].
+        memories_critic: The memories of the critic.
+            Shape of [batch_size, n_memories, embedding_dim].
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
 
     ---
     Returns:
-        The traces of the played steps.
+        traces: The traces of the played steps.
+        memories_policy: The updated memories of the policy.
+        memories_critic: The updated memories of the critic.
     """
     traces = defaultdict(list)
 
@@ -39,17 +47,21 @@ def rollout(
     ):
         sample = dict()
         sample["states"] = env.render()
+        sample["memories-policy"] = memories_policy
+        sample["memories-critic"] = memories_critic
 
-        sample["actions"], sample["log-probs"], _ = policy(
-            sample["states"], sampling_mode="softmax"
+        sample["actions"], sample["log-probs"], _, memories_policy = policy(
+            sample["states"], sample["memories-policy"], sampling_mode="softmax"
         )
         sample["values"] = critic(sample["states"])
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
-            sample["actions"]
+            sample["actions"],
         )
 
-        sample["next-values"] = critic(env.render())
+        sample["next-values"], memories_critic = critic(
+            env.render(), sample["memories-critic"]
+        )
 
         sample["next-values"] *= (~sample["dones"]).float()
 
@@ -57,6 +69,13 @@ def rollout(
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
             reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
             env.reset(reset_ids)
+
+            memories_policy[reset_ids] = policy.init_memories(
+                len(reset_ids), device=env.device
+            )
+            memories_critic[reset_ids] = critic.init_memories(
+                len(reset_ids), device=env.device
+            )
 
         # BUG: There's an issue with cuda that hallucinates values when stacking
         # more than 128 tensors. To avoid this issue, we have to offload the tensors
@@ -68,7 +87,11 @@ def rollout(
         traces[name] = torch.stack(tensors, dim=1)  # Stack on CPU.
         traces[name] = traces[name].to(env.device)  # Back to GPU.
 
-    return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+    return (
+        TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device),
+        memories_policy,
+        memories_critic,
+    )
 
 
 def mcts_rollout(
