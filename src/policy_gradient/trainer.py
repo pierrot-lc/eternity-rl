@@ -54,7 +54,12 @@ class Trainer:
         self.best_matches_found = 0
 
     @torch.inference_mode()
-    def do_rollouts(self, disable_logs: bool):
+    def do_rollouts(
+        self,
+        memories_policy: torch.Tensor,
+        memories_critic: torch.Tensor,
+        disable_logs: bool,
+    ):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
         total_resets = int(self.reset_proportion * self.env.batch_size)
         reset_ids = torch.randperm(
@@ -62,11 +67,19 @@ class Trainer:
         )
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
+        memories_policy[reset_ids] = self.policy.init_memories(
+            total_resets, self.device
+        )
+        memories_critic[reset_ids] = self.critic.init_memories(
+            total_resets, self.device
+        )
 
-        traces = rollout(
+        traces, memories_policy, memories_critic = rollout(
             self.env,
             self.policy,
             self.critic,
+            memories_policy,
+            memories_critic,
             self.rollouts,
             disable_logs,
         )
@@ -97,6 +110,8 @@ class Trainer:
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
         self.replay_buffer.extend(samples)
+
+        return memories_policy, memories_critic
 
     def do_batch_update(
         self, batch: TensorDict, train_policy: bool, train_critic: bool
@@ -154,7 +169,15 @@ class Trainer:
             mode=mode,
         ) as run:
             self.policy.to(self.device)
+            self.critic.to(self.device)
+
             self.env.reset()
+            memories_policy = self.policy.init_memories(
+                self.env.batch_size, self.device
+            )
+            memories_critic = self.critic.init_memories(
+                self.env.batch_size, self.device
+            )
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
@@ -175,7 +198,9 @@ class Trainer:
             iter = count(0) if self.episodes == -1 else range(self.episodes)
 
             for i in tqdm(iter, desc="Episode", disable=disable_logs):
-                self.do_rollouts(disable_logs=disable_logs)
+                memories_policy, memories_critic = self.do_rollouts(
+                    memories_policy, memories_critic, disable_logs=disable_logs
+                )
 
                 for _ in tqdm(
                     range(self.epochs), desc="Epoch", leave=False, disable=disable_logs

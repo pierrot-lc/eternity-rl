@@ -53,14 +53,14 @@ def rollout(
         sample["actions"], sample["log-probs"], _, memories_policy = policy(
             sample["states"], sample["memories-policy"], sampling_mode="softmax"
         )
-        sample["values"] = critic(sample["states"])
+        sample["values"], memories_critic = critic(sample["states"], sample["memories-critic"])
 
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
             sample["actions"],
         )
 
-        sample["next-values"], memories_critic = critic(
-            env.render(), sample["memories-critic"]
+        sample["next-values"], _ = critic(
+            env.render(), memories_critic
         )
 
         sample["next-values"] *= (~sample["dones"]).float()

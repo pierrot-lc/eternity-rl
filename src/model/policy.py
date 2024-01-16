@@ -50,7 +50,7 @@ class Policy(nn.Module):
     ) -> torch.Tensor:
         return self.backbone.init_memories(batch_size, self.n_memories, device)
 
-    def dummy_input(self, n_memories: int, device: str) -> tuple[torch.Tensor]:
+    def dummy_input(self, device: str) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
             1,
             N_SIDES,
