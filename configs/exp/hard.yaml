@@ -3,35 +3,35 @@ group: Eternity B
 
 env:
   path: ./instances/eternity_B.txt
-  batch_size: 1000
-  scramble_size: 1.00
+  batch_size: 1024
+  episode_length: inf
 
 model:
-  embedding_dim: 16
-  n_heads: 1
-  backbone_layers: 6
+  embedding_dim: 32
+  n_heads: 2
+  backbone_layers: 8
   decoder_layers: 2
   dropout: 0.00
 
 optimizer:
   optimizer: adamw
   learning_rate: 3.0e-4
-  weight_decay: 1.0e-2
+  weight_decay: 1.0e-3
 
 loss:
-  gamma: 1.00
+  gamma: 0.995
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 0.5
+  value_weight: 0.01
   entropy_weight: 1.0e-1
 
 trainer:
-  clip_value: 1.0
-
-iterations:
+  episodes: -1
+  epochs: 3
+  batch_size: 1024
   rollouts: 100
-  epochs: -1
-  batch_size: 10000
+  reset_proportion: 0.75
+  clip_value: 1.0
 
 checkpoint:

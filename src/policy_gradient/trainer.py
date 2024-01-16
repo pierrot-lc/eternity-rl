@@ -47,6 +47,13 @@ class Trainer:
         self.rollouts = rollouts
         self.reset_proportion = reset_proportion
 
+        self.policy_module = (
+            self.policy.module if isinstance(self.policy, DDP) else self.policy
+        )
+        self.critic_module = (
+            self.critic.module if isinstance(self.critic, DDP) else self.critic
+        )
+
         self.device = env.device
         self.rng = self.env.rng
 
@@ -67,17 +74,17 @@ class Trainer:
         )
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
-        memories_policy[reset_ids] = self.policy.init_memories(
+        memories_policy[reset_ids] = self.policy_module.init_memories(
             total_resets, self.device
         )
-        memories_critic[reset_ids] = self.critic.init_memories(
+        memories_critic[reset_ids] = self.critic_module.init_memories(
             total_resets, self.device
         )
 
         traces, memories_policy, memories_critic = rollout(
             self.env,
-            self.policy,
-            self.critic,
+            self.policy_module,
+            self.critic_module,
             memories_policy,
             memories_critic,
             self.rollouts,
@@ -172,22 +179,17 @@ class Trainer:
             self.critic.to(self.device)
 
             self.env.reset()
-            memories_policy = self.policy.init_memories(
+            memories_policy = self.policy_module.init_memories(
                 self.env.batch_size, self.device
             )
-            memories_critic = self.critic.init_memories(
+            memories_critic = self.critic_module.init_memories(
                 self.env.batch_size, self.device
             )
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
-                if isinstance(self.policy, DDP):
-                    self.policy.module.summary(self.device)
-                    self.critic.module.summary(self.device)
-                else:
-                    self.policy.summary(self.device)
-                    self.critic.summary(self.device)
-
+                self.policy_module.summary(self.device)
+                self.critic_module.summary(self.device)
                 print(f"\nLaunching training on device {self.device}.\n")
 
             # Log gradients and model parameters.
@@ -216,12 +218,13 @@ class Trainer:
                             batch, train_policy=True, train_critic=True
                         )
 
-                metrics = self.evaluate()
-                run.log(metrics)
+                if not disable_logs:
+                    metrics = self.evaluate()
+                    run.log(metrics)
 
-                if i % save_every == 0 and not disable_logs:
-                    self.save_checkpoint("checkpoint.pt")
-                    self.env.save_sample("sample.gif")
+                    if i % save_every == 0:
+                        self.save_checkpoint("checkpoint.pt")
+                        self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
