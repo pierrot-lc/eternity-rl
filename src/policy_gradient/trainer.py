@@ -81,6 +81,18 @@ class Trainer:
             total_resets, self.device
         )
 
+        # A first rollout in greedy-mode, to exploit the model.
+        rollout(
+            self.env,
+            self.policy_module,
+            self.critic_module,
+            memories_policy,
+            memories_critic,
+            self.rollouts,
+            disable_logs,
+            sampling_mode="greedy"
+        )
+
         traces, memories_policy, memories_critic = rollout(
             self.env,
             self.policy_module,

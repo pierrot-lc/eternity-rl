@@ -19,6 +19,7 @@ def rollout(
     memories_critic: torch.Tensor,
     steps: int,
     disable_logs: bool,
+    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps.
 
@@ -51,7 +52,7 @@ def rollout(
         sample["memories-critic"] = memories_critic
 
         sample["actions"], sample["log-probs"], _, memories_policy = policy(
-            sample["states"], sample["memories-policy"], sampling_mode="softmax"
+            sample["states"], sample["memories-policy"], sampling_mode=sampling_mode
         )
         sample["values"], memories_critic = critic(sample["states"], sample["memories-critic"])
 

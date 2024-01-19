@@ -3,14 +3,14 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 128
+  batch_size: 1024
   episode_length: inf
 
 model:
-  embedding_dim: 16
-  n_heads: 1
+  embedding_dim: 32
+  n_heads: 4
   backbone_layers: 6
-  decoder_layers: 2
+  decoder_layers: 1
   dropout: 0.00
 
 optimizer:
@@ -29,9 +29,9 @@ loss:
 trainer:
   episodes: 15000
   epochs: 1
-  batch_size: 128
+  batch_size: 1024
   rollouts: 60
-  reset_proportion: 0.75
+  reset_proportion: 0.50
   clip_value: 1.0
 
 checkpoint:

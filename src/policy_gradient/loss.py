@@ -158,15 +158,17 @@ class PPOLoss(nn.Module):
         # entropies[:, 2] *= 0.10
         # entropies[:, 3] *= 0.10
         entropies = entropies.sum(dim=1)
-        # metrics["loss/entropy"] = -entropies.mean()
-        # metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
-        metrics["loss/entropy"] = torch.relu(3.4 - entropies).mean()
-        metrics["loss/weighted-entropy"] = metrics["loss/entropy"]
+        metrics["loss/entropy"] = -entropies.mean()
+        metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
+        entropy_penalty = torch.relu(2.5 - entropies).mean()
+        metrics["loss/clipped-entropy"] = entropy_penalty
 
         metrics["loss/total"] = (
-            metrics["loss/weighted-policy"] + metrics["loss/weighted-entropy"]
+            metrics["loss/weighted-policy"]
+            + metrics["loss/weighted-entropy"]
+            + metrics["loss/clipped-entropy"]
+            + metrics["loss/weighted-value"]
         )
-        metrics["loss/total"] = metrics["loss/total"] + metrics["loss/weighted-value"]
 
         # Some metrics to track, but it does not contribute to the loss.
         with torch.no_grad():
