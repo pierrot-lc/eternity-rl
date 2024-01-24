@@ -12,6 +12,7 @@ model:
   backbone_layers: 6
   decoder_layers: 1
   dropout: 0.00
+  use_memories: true
 
 optimizer:
   optimizer: adamw
@@ -27,7 +28,7 @@ loss:
   entropy_weight: 1.0e-1
 
 trainer:
-  episodes: 15000
+  episodes: 1000
   epochs: 1
   batch_size: 1024
   rollouts: 60

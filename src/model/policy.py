@@ -22,12 +22,14 @@ class Policy(nn.Module):
         decoder_layers: int,
         dropout: float,
         n_memories: int,
+        use_memories: bool,
     ):
         super().__init__()
         self.board_width = board_width
         self.board_height = board_height
         self.embedding_dim = embedding_dim
         self.n_memories = n_memories
+        self.use_memories = use_memories
 
         self.backbone = Backbone(
             embedding_dim,
@@ -109,6 +111,8 @@ class Policy(nn.Module):
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
+        if not self.use_memories:
+            memories = memories.fill_(0.0)
         tiles, memories = self.backbone(tiles, memories)
         actions, logprobs, entropies = [], [], []
 

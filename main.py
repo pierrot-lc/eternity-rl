@@ -65,6 +65,7 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
         n_memories=2,
+        use_memories=model.use_memories,
     )
     critic = Critic(
         board_width=env.board_size,
@@ -75,6 +76,7 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
         n_memories=2,
+        use_memories=model.use_memories,
     )
     return policy, critic
 

@@ -1,0 +1,29 @@
+# Test if memory is useful for the model to plan and reason.
+
+---
+program: main.py
+method: random
+
+metric:
+  name: matches/best
+  goal: maximize
+
+parameters:
+  exp.trainer.episodes:
+    value: 500
+
+  exp.model.use_memories:
+    values: [true, false]
+    distribution: categorical
+
+  seed:
+    min: 1
+    max: 10000
+
+  exp.group:
+    value: Sweep - memories
+
+command:
+  - python3
+  - ${program}
+  - ${args_no_hyphens}
