@@ -1,7 +1,8 @@
 ---
 defaults:
   - _self_
-  - exp: normal
+  - exp: trivial
+  - model: medium
 
 seed: 0
 device: auto

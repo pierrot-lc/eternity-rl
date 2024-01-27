@@ -1,0 +1,32 @@
+# Test if the model size is important or not.
+
+---
+program: main.py
+method: random
+
+metric:
+  name: matches/best
+  goal: maximize
+
+parameters:
+  exp:
+    value: normal
+
+  exp.trainer.episodes:
+    value: 500
+
+  model:
+    values: ["small", "medium", "big"]
+    distribution: categorical
+
+  seed:
+    min: 1
+    max: 10000
+
+  exp.group:
+    value: Sweep - model size
+
+command:
+  - python3
+  - ${program}
+  - ${args_no_hyphens}

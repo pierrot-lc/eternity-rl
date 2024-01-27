@@ -6,13 +6,6 @@ env:
   batch_size: 128
   episode_length: inf
 
-model:
-  embedding_dim: 8
-  n_heads: 1
-  backbone_layers: 4
-  decoder_layers: 1
-  dropout: 0.00
-
 optimizer:
   optimizer: adamw
   learning_rate: 3.0e-4

@@ -55,7 +55,7 @@ def init_env(config: DictConfig) -> EternityEnv:
 
 def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
     """Initialize the model."""
-    model = config.exp.model
+    model = config.model
     policy = Policy(
         board_width=env.board_size,
         board_height=env.board_size,
