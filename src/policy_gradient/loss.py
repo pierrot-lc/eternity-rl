@@ -32,15 +32,18 @@ class PPOLoss(nn.Module):
         self,
         value_weight: float,
         entropy_weight: float,
+        entropy_clip: float,
         gamma: float,
         gae_lambda: float,
         ppo_clip_ac: float,
         ppo_clip_vf: float,
     ):
         super().__init__()
+        assert entropy_clip >= 0
 
         self.value_weight = value_weight
         self.entropy_weight = entropy_weight
+        self.entropy_clip = entropy_clip
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.ppo_clip_ac = ppo_clip_ac
@@ -111,10 +114,10 @@ class PPOLoss(nn.Module):
         """
         metrics = dict()
 
-        _, logprobs, entropies, _ = policy(
-            batch["states"], batch["memories-policy"], None, batch["actions"]
+        _, logprobs, entropies = policy(
+            batch["states"], None, batch["actions"]
         )
-        values, _ = critic(batch["states"], batch["memories-critic"])
+        values = critic(batch["states"])
 
         # Compute the joint log probability of the actions.
         logprobs = logprobs.sum(dim=1)
@@ -153,14 +156,10 @@ class PPOLoss(nn.Module):
         metrics["loss/value"] = value_losses.max(dim=-1).values.mean()
         metrics["loss/weighted-value"] = self.value_weight * metrics["loss/value"]
 
-        # entropies[:, 0] *= 1.0
-        # entropies[:, 1] *= 1.0
-        # entropies[:, 2] *= 0.10
-        # entropies[:, 3] *= 0.10
         entropies = entropies.sum(dim=1)
         metrics["loss/entropy"] = -entropies.mean()
         metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
-        entropy_penalty = torch.relu(2.5 - entropies).mean()
+        entropy_penalty = torch.relu(self.entropy_clip - entropies).mean()
         metrics["loss/clipped-entropy"] = entropy_penalty
 
         metrics["loss/total"] = (

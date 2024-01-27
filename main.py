@@ -64,8 +64,6 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         backbone_layers=model.backbone_layers,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
-        n_memories=2,
-        use_memories=model.use_memories,
     )
     critic = Critic(
         board_width=env.board_size,
@@ -75,8 +73,6 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         backbone_layers=model.backbone_layers,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
-        n_memories=2,
-        use_memories=model.use_memories,
     )
     return policy, critic
 
@@ -93,6 +89,7 @@ def init_loss(config: DictConfig) -> PPOLoss:
     return PPOLoss(
         loss.value_weight,
         loss.entropy_weight,
+        loss.entropy_clip,
         loss.gamma,
         loss.gae_lambda,
         loss.ppo_clip_ac,

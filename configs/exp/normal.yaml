@@ -12,7 +12,6 @@ model:
   backbone_layers: 6
   decoder_layers: 1
   dropout: 0.00
-  use_memories: true
 
 optimizer:
   optimizer: adamw
@@ -26,6 +25,7 @@ loss:
   ppo_clip_vf: 0.20
   value_weight: 0.01
   entropy_weight: 1.0e-1
+  entropy_clip: 3.0
 
 trainer:
   episodes: 1000

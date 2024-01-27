@@ -21,15 +21,11 @@ class Policy(nn.Module):
         backbone_layers: int,
         decoder_layers: int,
         dropout: float,
-        n_memories: int,
-        use_memories: bool,
     ):
         super().__init__()
         self.board_width = board_width
         self.board_height = board_height
         self.embedding_dim = embedding_dim
-        self.n_memories = n_memories
-        self.use_memories = use_memories
 
         self.backbone = Backbone(
             embedding_dim,
@@ -47,11 +43,6 @@ class Policy(nn.Module):
         self.tiles_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
         self.sides_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
-    def init_memories(
-        self, batch_size: int, device: torch.device | str
-    ) -> torch.Tensor:
-        return self.backbone.init_memories(batch_size, self.n_memories, device)
-
     def dummy_input(self, device: str) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
             1,
@@ -61,8 +52,7 @@ class Policy(nn.Module):
             dtype=torch.long,
             device=device,
         )
-        memories = self.init_memories(1, device)
-        return (tiles, memories)
+        return (tiles,)
 
     def summary(self, device: str):
         """Torchinfo summary."""
@@ -78,18 +68,15 @@ class Policy(nn.Module):
     def forward(
         self,
         tiles: torch.Tensor,
-        memories: torch.Tensor,
         sampling_mode: str | None = "softmax",
         sampled_actions: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict the actions and value for the given game states.
 
         ---
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            memories: The memories of the agent from the previous state.
-                Tensor of shape [batch_size, n_memories, embedding_dim].
             sampling_mode: The sampling mode of the actions.
                 One of ["sample", "greedy"].
             sampled_actions: The already sampled actions, if any.
@@ -103,17 +90,13 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
             entropies: The entropies of the predicted actions.
                 Shape of [batch_size, n_actions].
-            memories: The updated memories.
-                Shape of [batch_size, n_memories, embedding_dim].
         """
         assert not (
             sampling_mode is None and sampled_actions is None
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
 
-        if not self.use_memories:
-            memories = memories.fill_(0.0)
-        tiles, memories = self.backbone(tiles, memories)
+        tiles = self.backbone(tiles)
         actions, logprobs, entropies = [], [], []
 
         # Node selections.
@@ -157,7 +140,7 @@ class Policy(nn.Module):
         logprobs = torch.stack(logprobs, dim=1)
         entropies = torch.stack(entropies, dim=1)
 
-        return actions, logprobs, entropies, memories
+        return actions, logprobs, entropies
 
     @staticmethod
     def sample_actions(probs: torch.Tensor, mode: str) -> torch.Tensor:

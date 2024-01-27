@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
@@ -57,31 +56,9 @@ class Backbone(nn.Module):
             enable_nested_tensor=False,  # Pre-norm can't profit from this.
         )
 
-    def init_memories(
-        self, batch_size: int, n_memories: int, device: torch.device | str = "cpu"
-    ) -> torch.Tensor:
-        """Initialize the memories of the agent.
-
-        ---
-        Args:
-            batch_size: The batch size.
-            n_memories: The number of memories.
-            device: The device to use.
-
-        ---
-        Returns:
-            The initialized memories.
-                Tensor of shape [batch_size, n_memories, embedding_dim].
-        """
-        return torch.zeros(
-            (batch_size, n_memories, self.embedding_dim),
-            device=device,
-        )
-
     def forward(
         self,
         boards: torch.Tensor,
-        memories: torch.Tensor,
     ) -> torch.Tensor:
         """Embed the game state.
 
@@ -89,23 +66,12 @@ class Backbone(nn.Module):
         Args:
             tiles: The game state.
                 Tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            memories: The memories of the agent from the previous state.
-                Tensor of shape [batch_size, n_memories, embedding_dim].
 
         ---
         Returns:
             tiles: The embedded game state as sequence of tiles.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
-            memories: The updated memories.
-                Tensor of shape [batch_size, n_memories, embedding_dim].
         """
-        n_memories = memories.shape[1]
-
         boards = self.embed_board(boards)
-        memories = rearrange(memories, "b m e -> m b e")
-        tokens = torch.cat([boards, memories], dim=0)
-        tokens = self.encoder(tokens)
-
-        tiles, memories = tokens[:-n_memories], tokens[-n_memories:]
-        memories = rearrange(memories, "m b e -> b m e")
-        return tiles, memories
+        tokens = self.encoder(boards)
+        return tokens
