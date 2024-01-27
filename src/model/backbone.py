@@ -1,8 +1,7 @@
-from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
-
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
+from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
 from ..environment import N_SIDES
 from .class_encoding import ClassEncoding
@@ -30,6 +29,7 @@ class Backbone(nn.Module):
         dropout: float,
     ):
         super().__init__()
+        self.embedding_dim = embedding_dim
 
         self.embed_board = nn.Sequential(
             # Encode the classes.
@@ -69,7 +69,7 @@ class Backbone(nn.Module):
 
         ---
         Returns:
-            The embedded game state as sequence of tiles.
+            tiles: The embedded game state as sequence of tiles.
                 Shape of [board_height x board_width, batch_size, embedding_dim].
         """
         boards = self.embed_board(boards)

@@ -58,29 +58,16 @@ class Critic(nn.Module):
             device=device,
         )
 
-    def forward(
-        self,
-        tiles: torch.Tensor,
-    ) -> torch.Tensor:
+    def forward(self, tiles: torch.Tensor) -> torch.Tensor:
         """Predict the actions and value for the given game states.
 
         ---
         Args:
             tiles: The game state.
                 Long tensor of shape [batch_size, N_SIDES, board_height, board_width].
-            sampling_mode: The sampling mode of the actions.
-                One of ["sample", "greedy"].
-            sampled_actions: The already sampled actions, if any.
-                To compute the logprobs and entropies of those actions.
-                Long tensor of shape [batch_size, n_actions].
+
         ---
         Returns:
-            actions: The predicted actions.
-                Shape of [batch_size, n_actions].
-            logprobs: The log probabilities of the predicted actions.
-                Shape of [batch_size, n_actions].
-            entropies: The entropies of the predicted actions.
-                Shape of [batch_size, n_actions].
             values: The predicted values.
                 Shape of [batch_size,].
         """

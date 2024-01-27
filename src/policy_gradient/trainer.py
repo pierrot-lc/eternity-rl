@@ -1,4 +1,4 @@
-from itertools import count
+from itertools import count, chain
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +47,13 @@ class Trainer:
         self.rollouts = rollouts
         self.reset_proportion = reset_proportion
 
+        self.policy_module = (
+            self.policy.module if isinstance(self.policy, DDP) else self.policy
+        )
+        self.critic_module = (
+            self.critic.module if isinstance(self.critic, DDP) else self.critic
+        )
+
         self.device = env.device
         self.rng = self.env.rng
 
@@ -63,10 +70,20 @@ class Trainer:
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
 
+        # A first rollout in greedy-mode, to exploit the model.
+        rollout(
+            self.env,
+            self.policy_module,
+            self.critic_module,
+            self.rollouts,
+            disable_logs,
+            sampling_mode="greedy",
+        )
+
         traces = rollout(
             self.env,
-            self.policy,
-            self.critic,
+            self.policy_module,
+            self.critic_module,
             self.rollouts,
             disable_logs,
         )
@@ -154,17 +171,14 @@ class Trainer:
             mode=mode,
         ) as run:
             self.policy.to(self.device)
+            self.critic.to(self.device)
+
             self.env.reset()
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
-                if isinstance(self.policy, DDP):
-                    self.policy.module.summary(self.device)
-                    self.critic.module.summary(self.device)
-                else:
-                    self.policy.summary(self.device)
-                    self.critic.summary(self.device)
-
+                self.policy_module.summary(self.device)
+                self.critic_module.summary(self.device)
                 print(f"\nLaunching training on device {self.device}.\n")
 
             # Log gradients and model parameters.
@@ -191,12 +205,13 @@ class Trainer:
                             batch, train_policy=True, train_critic=True
                         )
 
-                metrics = self.evaluate()
-                run.log(metrics)
+                if not disable_logs:
+                    metrics = self.evaluate()
+                    run.log(metrics)
 
-                if i % save_every == 0 and not disable_logs:
-                    self.save_checkpoint("checkpoint.pt")
-                    self.env.save_sample("sample.gif")
+                    if i % save_every == 0:
+                        self.save_checkpoint("checkpoint.pt")
+                        self.env.save_sample("sample.gif")
 
     def evaluate(self) -> dict[str, Any]:
         """Evaluates the model and returns some computed metrics."""
@@ -229,7 +244,7 @@ class Trainer:
 
         metrics["loss/total"].backward()
         weights, grads = [], []
-        for p in self.policy.parameters():
+        for p in chain(self.policy.parameters(), self.critic.parameters()):
             weights.append(p.data.abs().mean().item())
 
             if p.grad is not None:

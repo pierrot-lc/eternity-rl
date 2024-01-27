@@ -17,6 +17,7 @@ def rollout(
     critic: Critic,
     steps: int,
     disable_logs: bool,
+    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps.
 
@@ -30,7 +31,7 @@ def rollout(
 
     ---
     Returns:
-        The traces of the played steps.
+        traces: The traces of the played steps.
     """
     traces = defaultdict(list)
 
@@ -41,7 +42,7 @@ def rollout(
         sample["states"] = env.render()
 
         sample["actions"], sample["log-probs"], _ = policy(
-            sample["states"], sampling_mode="softmax"
+            sample["states"], sampling_mode=sampling_mode
         )
         sample["values"] = critic(sample["states"])
 

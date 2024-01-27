@@ -90,8 +90,6 @@ class Policy(nn.Module):
                 Shape of [batch_size, n_actions].
             entropies: The entropies of the predicted actions.
                 Shape of [batch_size, n_actions].
-            values: The predicted values.
-                Shape of [batch_size,].
         """
         assert not (
             sampling_mode is None and sampled_actions is None
