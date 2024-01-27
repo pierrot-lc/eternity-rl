@@ -1,4 +1,4 @@
-from itertools import count
+from itertools import count, chain
 from pathlib import Path
 from typing import Any
 
@@ -244,7 +244,7 @@ class Trainer:
 
         metrics["loss/total"].backward()
         weights, grads = [], []
-        for p in self.policy.parameters():
+        for p in chain(self.policy.parameters(), self.critic.parameters()):
             weights.append(p.data.abs().mean().item())
 
             if p.grad is not None:
