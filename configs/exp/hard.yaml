@@ -8,8 +8,8 @@ env:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 3.0e-4
-  weight_decay: 1.0e-3
+  learning_rate: 1.0e-5
+  weight_decay: 1.0e-2
 
 loss:
   gamma: 0.995
@@ -25,7 +25,7 @@ trainer:
   epochs: 3
   batch_size: 1024
   rollouts: 100
-  reset_proportion: 0.75
+  reset_proportion: 0.50
   clip_value: 1.0
 
 checkpoint:

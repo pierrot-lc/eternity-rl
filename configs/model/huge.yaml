@@ -1,0 +1,6 @@
+---
+embedding_dim: 128
+n_heads: 4
+backbone_layers: 10
+decoder_layers: 2
+dropout: 0.00

@@ -126,7 +126,7 @@ class EstimateValue(nn.Module):
         )
         self.predict_value = nn.Sequential(
             nn.Linear(embedding_dim, 1),
-            SymExp(),
+            nn.Tanh(),
         )
 
     def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:

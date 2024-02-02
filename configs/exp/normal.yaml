@@ -8,7 +8,7 @@ env:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 3.0e-4
+  learning_rate: 1.0e-5
   weight_decay: 1.0e-2
 
 loss:
@@ -21,8 +21,8 @@ loss:
   entropy_clip: 3.0
 
 trainer:
-  episodes: 1000
-  epochs: 1
+  episodes: -1
+  epochs: 3
   batch_size: 1024
   rollouts: 60
   reset_proportion: 0.50
