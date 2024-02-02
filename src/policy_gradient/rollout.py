@@ -28,6 +28,7 @@ def rollout(
         critic: The critic to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
+        sampling_mode: The sampling mode to use for the policy.
 
     ---
     Returns:
@@ -70,6 +71,36 @@ def rollout(
         traces[name] = traces[name].to(env.device)  # Back to GPU.
 
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
+
+
+def exploit_rollout(
+    env: EternityEnv,
+    policy: Policy,
+    steps: int,
+    disable_logs: bool,
+    sampling_mode: str = "greedy",
+):
+    """Play some steps, do not collect anything nor use the critic.
+
+    ---
+    Args:
+        env: The environments to play in.
+        policy: The policy to use.
+        steps: The number of steps to play.
+        disable_logs: Whether to disable the logs.
+        sampling_mode: The sampling mode to use for the policy.
+    """
+    for step_id in tqdm(
+        range(steps), desc="Exploit rollout", leave=False, disable=disable_logs
+    ):
+        actions, *_ = policy(env.render(), sampling_mode=sampling_mode)
+
+        _, _, dones, truncated, _ = env.step(actions)
+
+        if (dones | truncated).sum() > 0:
+            reset_ids = torch.arange(0, env.batch_size, device=env.device)
+            reset_ids = reset_ids[dones | truncated]
+            env.reset(reset_ids)
 
 
 def mcts_rollout(

@@ -1,21 +1,22 @@
-from itertools import count, chain
+from itertools import chain, count
 from pathlib import Path
 from typing import Any
 
 import einops
 import torch
 import torch.optim as optim
-import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
 from torchrl.data import ReplayBuffer
 from tqdm import tqdm
 
+import wandb
+
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
-from .rollout import rollout, split_reset_rollouts
+from .rollout import exploit_rollout, rollout, split_reset_rollouts
 
 
 class Trainer:
@@ -71,15 +72,9 @@ class Trainer:
         self.env.reset(reset_ids)
 
         # A first rollout in greedy-mode, to exploit the model.
-        rollout(
-            self.env,
-            self.policy_module,
-            self.critic_module,
-            self.rollouts,
-            disable_logs,
-            sampling_mode="greedy",
-        )
+        exploit_rollout(self.env, self.policy_module, self.rollouts, disable_logs)
 
+        # Then we collect the rollouts with the current policy.
         traces = rollout(
             self.env,
             self.policy_module,
