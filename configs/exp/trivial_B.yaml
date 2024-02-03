@@ -3,7 +3,7 @@ group: Trivial B
 
 env:
   path: ./instances/eternity_trivial_B.txt
-  batch_size: 128
+  batch_size: 256
   episode_length: inf
 
 optimizer:
@@ -21,11 +21,11 @@ loss:
   entropy_clip: 3.0
 
 trainer:
-  episodes: 4000
-  epochs: 1
-  batch_size: 128
+  episodes: 750
+  epochs: 3
+  batch_size: 256
   rollouts: 30
-  reset_proportion: 0.75
+  reset_proportion: 0.50
   clip_value: 1.0
 
 checkpoint:

@@ -73,6 +73,7 @@ def rollout(
     return TensorDict(traces, batch_size=traces["states"].shape[0], device=env.device)
 
 
+@torch.inference_mode()
 def exploit_rollout(
     env: EternityEnv,
     policy: Policy,
