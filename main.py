@@ -137,6 +137,7 @@ def init_scheduler(
             optimizer=optimizer,
             T_0=scheduler.cosine_t0,
             T_mult=scheduler.cosine_tmult,
+            eta_min=scheduler.eta_min,
         )
         schedulers.append(lr_scheduler)
 
@@ -171,6 +172,8 @@ def init_trainer(
     loss: PPOLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
+    policy_scheduler: optim.lr_scheduler.LRScheduler,
+    critic_scheduler: optim.lr_scheduler.LRScheduler,
     replay_buffer: ReplayBuffer,
 ) -> Trainer:
     """Initialize the trainer."""
@@ -182,6 +185,8 @@ def init_trainer(
         loss,
         policy_optimizer,
         critic_optimizer,
+        policy_scheduler,
+        critic_scheduler,
         replay_buffer,
         trainer.clip_value,
         trainer.episodes,
@@ -205,6 +210,8 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
     # HACK: The training seems to not be stable when loading the optimizer state.
     # trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
     # trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
+    # trainer.policy_scheduler.load_state_dict(state_dict["policy-scheduler"])
+    # trainer.critic_scheduler.load_state_dict(state_dict["critic-scheduler"])
 
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
@@ -229,6 +236,8 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
+    policy_scheduler = init_scheduler(config, policy_optimizer)
+    critic_scheduler = init_scheduler(config, critic_optimizer)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
         config,
@@ -238,6 +247,8 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         loss,
         policy_optimizer,
         critic_optimizer,
+        policy_scheduler,
+        critic_scheduler,
         replay_buffer,
     )
     reload_checkpoint(config, trainer)
@@ -263,6 +274,8 @@ def run_trainer_single_gpu(config: DictConfig):
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
+    policy_scheduler = init_scheduler(config, policy_optimizer)
+    critic_scheduler = init_scheduler(config, critic_optimizer)
     replay_buffer = init_replay_buffer(config)
     trainer = init_trainer(
         config,
@@ -272,6 +285,8 @@ def run_trainer_single_gpu(config: DictConfig):
         loss,
         policy_optimizer,
         critic_optimizer,
+        policy_scheduler,
+        critic_scheduler,
         replay_buffer,
     )
     reload_checkpoint(config, trainer)

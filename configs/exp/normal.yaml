@@ -8,8 +8,14 @@ env:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-5
+  learning_rate: 1.0e-4
   weight_decay: 1.0e-2
+
+scheduler:
+  warmup_steps: 0
+  cosine_t0: 100
+  cosine_tmult: 1
+  eta_min: 1.0e-6
 
 loss:
   gamma: 0.99
