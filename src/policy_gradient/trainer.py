@@ -94,9 +94,9 @@ class Trainer:
         traces = split_reset_rollouts(traces)
         self.loss.advantages(traces)
 
-        # assert torch.all(
-        #     traces["rewards"].sum(dim=1) <= 1 + 1e-4  # Account for small FP errors.
-        # ), f"Some returns are > 1 ({traces['rewards'].sum(dim=1).max().item()})."
+        assert torch.all(
+            traces["rewards"].sum(dim=1) <= 1 + 1e-4  # Account for small FP errors.
+        ), f"Some returns are > 1 ({traces['rewards'].sum(dim=1).max().item()})."
         assert (
             self.replay_buffer._storage.max_size
             == traces["masks"].sum().item()
