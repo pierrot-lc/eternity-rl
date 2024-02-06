@@ -28,6 +28,7 @@ class Backbone(nn.Module):
         n_layers: int,
         dropout: float,
     ):
+        assert embedding_dim % N_SIDES == 0
         super().__init__()
         self.embedding_dim = embedding_dim
 
@@ -35,8 +36,10 @@ class Backbone(nn.Module):
             # Encode the classes.
             ClassEncoding(embedding_dim),
             # Merge the classes of each tile into a single embedding.
+            # Applies the same projection to all tiles so that the final
+            # embedding is shift equivariant.
+            nn.Linear(embedding_dim, embedding_dim // N_SIDES),
             Rearrange("b t h w e -> b h w (t e)"),
-            nn.Linear(N_SIDES * embedding_dim, embedding_dim),
             # Add the 2D positional encodings.
             Summer(PositionalEncoding2D(embedding_dim)),
             # To transformer layout.
