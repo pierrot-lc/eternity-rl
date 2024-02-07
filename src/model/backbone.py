@@ -30,7 +30,6 @@ class Backbone(nn.Module):
     ):
         assert embedding_dim % N_SIDES == 0
         super().__init__()
-        self.embedding_dim = embedding_dim
 
         self.embed_board = nn.Sequential(
             # Encode the classes.
