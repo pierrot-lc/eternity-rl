@@ -3,12 +3,12 @@ import torch.nn as nn
 from einops.layers.torch import Rearrange
 from positional_encodings.torch_encodings import PositionalEncoding2D, Summer
 
-from ..environment import N_SIDES
-from .class_encoding import ClassEncoding
-from .transformer import TransformerEncoderLayer
+from ...environment import N_SIDES
+from ..class_encoding import ClassEncoding
+from ..transformer import TransformerEncoderLayer
 
 
-class Backbone(nn.Module):
+class TransformerBackbone(nn.Module):
     """Encode the board and produce a final embedding of the
     wanted size.
 

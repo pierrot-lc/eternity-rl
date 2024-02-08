@@ -27,7 +27,7 @@ from .draw import draw_gif, draw_instance
 
 # Defines convs that will compute vertical and horizontal matches.
 # Shapes are [out_channels, in_channels, kernel_height, kernel_width].
-# See `BatchedEternityEnv.matches` for more information.
+# See `EternityEnv.matches` for more information.
 # Don't forget that the y-axis is reversed!!
 HORIZONTAL_CONV = torch.zeros((1, N_SIDES, 2, 1))
 HORIZONTAL_CONV[0, SOUTH, 1, 0] = 1

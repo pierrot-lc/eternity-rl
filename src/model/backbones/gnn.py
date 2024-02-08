@@ -1,10 +1,10 @@
 import einops
 import torch
 import torch.nn as nn
-from einops.layers.torch import Rearrange, Reduce
+from einops.layers.torch import Rearrange
 
-from ..environment.constants import EAST, N_SIDES, NORTH, SOUTH, WEST
-from .class_encoding import ClassEncoding
+from ...environment.constants import EAST, N_SIDES, NORTH, SOUTH, WEST
+from ..class_encoding import ClassEncoding
 
 
 class GNNExter(nn.Module):
@@ -34,7 +34,7 @@ class GNNExter(nn.Module):
         padded_tokens = nn.functional.pad(tokens, (0, 0, 0, 0, 1, 1, 1, 1), value=0.0)
         self_tokens = self.self_linear(tokens)
         other_tokens = self.other_linear(padded_tokens)
-        messages = tokens.detach().clone()
+        messages = torch.zeros_like(tokens)
 
         messages[:, :, :, NORTH] = (
             self_tokens[:, :, :, NORTH] + other_tokens[:, 2:, 1:-1, SOUTH]
@@ -112,7 +112,11 @@ class GNNBackbone(nn.Module):
         self.inter_layers = nn.ModuleList(
             [GNNInter(embedding_dim) for _ in range(n_layers)]
         )
-        self.to_sequence = Reduce("b h w t e -> (h w) b e", reduction="max")
+        self.to_sequence = nn.Sequential(
+            Rearrange("b h w t e -> b h w (t e)"),
+            nn.Linear(embedding_dim * N_SIDES, embedding_dim),
+            Rearrange("b h w e -> (h w) b e"),
+        )
 
     def forward(self, boards: torch.Tensor) -> torch.Tensor:
         # To shape [batch_size, board_height, board_width, N_SIDES, embedding_dim].
