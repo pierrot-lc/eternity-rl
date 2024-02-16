@@ -128,7 +128,7 @@ def init_scheduler(
             optimizer=optimizer,
             start_factor=0.001,
             end_factor=1.0,
-            total_iters=config.exp.scheduler.warmup_steps,
+            total_iters=scheduler.warmup_steps,
         )
         schedulers.append(warmup_scheduler)
 
@@ -207,11 +207,11 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
     trainer.policy.load_state_dict(state_dict["policy"])
     trainer.critic.load_state_dict(state_dict["critic"])
 
-    # HACK: The training seems to not be stable when loading the optimizer state.
-    # trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
-    # trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
-    # trainer.policy_scheduler.load_state_dict(state_dict["policy-scheduler"])
-    # trainer.critic_scheduler.load_state_dict(state_dict["critic-scheduler"])
+    trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
+    trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
+
+    trainer.policy_scheduler.load_state_dict(state_dict["policy-scheduler"])
+    trainer.critic_scheduler.load_state_dict(state_dict["critic-scheduler"])
 
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
