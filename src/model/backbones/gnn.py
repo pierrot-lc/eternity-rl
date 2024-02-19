@@ -1,7 +1,7 @@
 import einops
 import torch
 import torch.nn as nn
-from einops.layers.torch import Rearrange
+from einops.layers.torch import Rearrange, Reduce
 
 from ...environment.constants import EAST, N_SIDES, NORTH, SOUTH, WEST
 from ..class_encoding import ClassEncoding
@@ -62,11 +62,6 @@ class GNNInter(nn.Module):
 
         self.self_linear = nn.Linear(embedding_dim, embedding_dim)
         self.other_linear = nn.Linear(embedding_dim, embedding_dim)
-        self.mix = nn.Sequential(
-            # nn.Linear(embedding_dim, embedding_dim // N_SIDES),
-            Rearrange("b h w t e -> b h w (t e)"),
-            nn.Linear(embedding_dim * N_SIDES, embedding_dim),
-        )
         self.activation = nn.Sequential(
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
@@ -86,13 +81,12 @@ class GNNInter(nn.Module):
             tokens: The updated tokens embeddings.
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         """
-        self_tokens = self.self_linear(tokens)
-        other_tokens = self.other_linear(tokens)
-        other_tokens = self.mix(other_tokens)
-        other_tokens = einops.repeat(other_tokens, "b h w e -> b h w t e", t=N_SIDES)
-
-        messages = self_tokens + other_tokens
-        tokens = self.norm(tokens + self.activation(messages))
+        for shift in [1, -1]:
+            self_tokens = self.self_linear(tokens)
+            other_tokens = self.other_linear(tokens)
+            other_tokens = torch.roll(other_tokens, shifts=shift, dims=3)
+            messages = self.activation(self_tokens + other_tokens)
+            tokens = self.norm(tokens + messages)
 
         return tokens
 
@@ -112,18 +106,27 @@ class GNNBackbone(nn.Module):
         self.inter_layers = nn.ModuleList(
             [GNNInter(embedding_dim) for _ in range(n_layers)]
         )
-        self.to_sequence = nn.Sequential(
-            Rearrange("b h w t e -> b h w (t e)"),
-            nn.Linear(embedding_dim * N_SIDES, embedding_dim),
-            Rearrange("b h w e -> (h w) b e"),
+        self.mlp_layers = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(embedding_dim, embedding_dim),
+                    nn.ReLU(),
+                    nn.LayerNorm(embedding_dim),
+                )
+                for _ in range(n_layers)
+            ]
         )
+        self.to_sequence = Reduce("b h w t e -> (h w) b e", reduction="mean")
 
     def forward(self, boards: torch.Tensor) -> torch.Tensor:
         # To shape [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         tokens = self.embed_tokens(boards)
 
-        for gnn_inter, gnn_exter in zip(self.inter_layers, self.neighbour_layers):
+        for gnn_inter, gnn_exter, mlp in zip(
+            self.inter_layers, self.neighbour_layers, self.mlp_layers
+        ):
             tokens = gnn_inter(tokens)
             tokens = gnn_exter(tokens)
+            tokens = mlp(tokens) + tokens
 
         return self.to_sequence(tokens)
