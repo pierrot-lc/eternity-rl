@@ -4,7 +4,7 @@ from einops import repeat
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from .backbones import TransformerBackbone
+from .backbones import GNNBackbone
 from .heads import EstimateValue
 
 
@@ -24,9 +24,7 @@ class Critic(nn.Module):
         self.board_height = board_height
         self.embedding_dim = embedding_dim
 
-        self.backbone = TransformerBackbone(
-            embedding_dim, n_heads, backbone_layers, dropout
-        )
+        self.backbone = GNNBackbone(embedding_dim, backbone_layers)
 
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout

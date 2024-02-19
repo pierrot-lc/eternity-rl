@@ -1,4 +1,3 @@
-import einops
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange, Reduce
@@ -16,7 +15,6 @@ class GNNExter(nn.Module):
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
         )
-        self.norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """Share the embedding from the direct neighbour token of each tokens.
@@ -50,9 +48,7 @@ class GNNExter(nn.Module):
         )
 
         messages = self.activation(messages)
-        self.norm(tokens + messages)
-
-        return tokens
+        return messages
 
 
 class GNNInter(nn.Module):
@@ -66,9 +62,8 @@ class GNNInter(nn.Module):
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
         )
-        self.norm = nn.LayerNorm(embedding_dim)
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, shift: int) -> torch.Tensor:
         """Do the message passing inter-tokens.
 
         ---
@@ -81,14 +76,11 @@ class GNNInter(nn.Module):
             tokens: The updated tokens embeddings.
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         """
-        for shift in [1, -1]:
-            self_tokens = self.self_linear(tokens)
-            other_tokens = self.other_linear(tokens)
-            other_tokens = torch.roll(other_tokens, shifts=shift, dims=3)
-            messages = self.activation(self_tokens + other_tokens)
-            tokens = self.norm(tokens + messages)
-
-        return tokens
+        self_tokens = self.self_linear(tokens)
+        other_tokens = self.other_linear(tokens)
+        other_tokens = torch.roll(other_tokens, shifts=shift, dims=3)
+        messages = self.activation(self_tokens + other_tokens)
+        return messages
 
 
 class GNNBackbone(nn.Module):
@@ -125,8 +117,9 @@ class GNNBackbone(nn.Module):
         for gnn_inter, gnn_exter, mlp in zip(
             self.inter_layers, self.neighbour_layers, self.mlp_layers
         ):
-            tokens = gnn_inter(tokens)
-            tokens = gnn_exter(tokens)
+            tokens = gnn_exter(tokens) + tokens
+            tokens = gnn_inter(tokens, shift=1) + tokens
+            tokens = gnn_inter(tokens, shift=-1) + tokens
             tokens = mlp(tokens) + tokens
 
         return self.to_sequence(tokens)
