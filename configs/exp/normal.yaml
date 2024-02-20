@@ -3,13 +3,13 @@ group: Normal
 
 env:
   path: ./instances/eternity_A.txt
-  batch_size: 1024
+  batch_size: 2048
   episode_length: inf
 
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-2
+  weight_decay: 0.0e-2
 
 scheduler:
   warmup_steps: 0
@@ -22,7 +22,7 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 0.01
+  value_weight: 1e-4
   entropy_weight: 1.0e-1
   entropy_clip: 3.0
 

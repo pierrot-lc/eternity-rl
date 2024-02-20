@@ -1,3 +1,4 @@
+"""Graph Neural Network backbone."""
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange, Reduce
@@ -6,7 +7,14 @@ from ...environment.constants import EAST, N_SIDES, NORTH, SOUTH, WEST
 from ..class_encoding import ClassEncoding
 
 
-class GNNExter(nn.Module):
+class MessagePassingExter(nn.Module):
+    """Message-passing to external neighbour sides.
+
+    A side will receive a message-passing information from its connected side to its
+    neighbour's token. For example, the side `NORTH` will receive a message from the
+    `SOUTH` side of its neighbour, the upper token.
+    """
+
     def __init__(self, embedding_dim):
         super().__init__()
         self.self_linear = nn.Linear(embedding_dim, embedding_dim)
@@ -51,7 +59,17 @@ class GNNExter(nn.Module):
         return messages
 
 
-class GNNInter(nn.Module):
+class MessagePassingInter(nn.Module):
+    """Message-passing to internal neighbour sides.
+
+    A side will receive a message-passing information from one of the other sides of the
+    same token. For example, the side `NORTH` will receive a message from the `EAST`
+    side of the same token. The messages are passed only to one of its neighbour,
+    depending on the shift parameter.
+
+    We shift so that the order of the sides inside a token is not lost, I think.
+    """
+
     def __init__(self, embedding_dim: int):
         assert embedding_dim % N_SIDES == 0
         super().__init__()
@@ -70,6 +88,7 @@ class GNNInter(nn.Module):
         Args:
             tokens: The current tokens embeddings.
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
+            shift: The direction to pass the message. It can be 1 (right) or -1 (left).
 
         ---
         Returns:
@@ -84,6 +103,13 @@ class GNNInter(nn.Module):
 
 
 class GNNBackbone(nn.Module):
+    """Graph Neural Network backbone.
+
+    Keep separated embeddings for each side of the tokens. Embeddings are iteratively
+    updated based on the external neighbours (other tokens), internal neighbours
+    (same token), and a MLP layer.
+    """
+
     def __init__(self, embedding_dim: int, n_layers: int):
         super().__init__()
 
@@ -92,11 +118,11 @@ class GNNBackbone(nn.Module):
             Rearrange("b t h w e -> b h w t e"),
         )
 
-        self.neighbour_layers = nn.ModuleList(
-            [GNNExter(embedding_dim) for _ in range(n_layers)]
+        self.exter_layers = nn.ModuleList(
+            [MessagePassingExter(embedding_dim) for _ in range(n_layers)]
         )
         self.inter_layers = nn.ModuleList(
-            [GNNInter(embedding_dim) for _ in range(n_layers)]
+            [MessagePassingInter(embedding_dim) for _ in range(n_layers)]
         )
         self.mlp_layers = nn.ModuleList(
             [
@@ -111,15 +137,27 @@ class GNNBackbone(nn.Module):
         self.to_sequence = Reduce("b h w t e -> (h w) b e", reduction="mean")
 
     def forward(self, boards: torch.Tensor) -> torch.Tensor:
+        """Do the forward pass of the GNN backbone.
+
+        ---
+        Args:
+            boards: The input boards.
+                Shape of [batch_size, board_height, board_width, N_SIDES].
+
+        ---
+        Returns:
+            tokens: The updated tokens embeddings.
+                Shape of [board_height * board_width, embedding_dim].
+        """
         # To shape [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         tokens = self.embed_tokens(boards)
 
-        for gnn_inter, gnn_exter, mlp in zip(
-            self.inter_layers, self.neighbour_layers, self.mlp_layers
+        for inter, exter, mlp in zip(
+            self.inter_layers, self.exter_layers, self.mlp_layers
         ):
-            tokens = gnn_exter(tokens) + tokens
-            tokens = gnn_inter(tokens, shift=1) + tokens
-            tokens = gnn_inter(tokens, shift=-1) + tokens
+            tokens = exter(tokens) + tokens
+            tokens = inter(tokens, shift=1) + tokens
+            tokens = inter(tokens, shift=-1) + tokens
             tokens = mlp(tokens) + tokens
 
         return self.to_sequence(tokens)
