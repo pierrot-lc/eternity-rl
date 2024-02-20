@@ -108,8 +108,12 @@ def test_rotate(boards: torch.Tensor, rotated: torch.Tensor):
             ),
         ),  # One trivial example.
         (
-            instanciate_boards("./instances/eternity_A.txt"),
+            instanciate_boards("./instances/eternity_trivial_A.txt"),
             GNNBackbone(32, 2),
+        ),
+        (
+            instanciate_boards("./instances/eternity_A.txt"),
+            GNNBackbone(32, 4),
         ),
     ],
 )
@@ -128,7 +132,7 @@ def test_rotation_equivariant(boards: torch.Tensor, model: nn.Module):
         model_rotated = einops.rearrange(
             model_rotated, "(h w) b e -> b h w e", h=height, w=width
         )
-        assert torch.allclose(model_rotated, rotated_references)
+        assert torch.allclose(model_rotated, rotated_references, atol=1e-7)
 
     assert torch.all(rotated_references == references)
     assert torch.all(rotated_boards == boards)

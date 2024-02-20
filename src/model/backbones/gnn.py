@@ -43,10 +43,10 @@ class MessagePassingExter(nn.Module):
         messages = torch.zeros_like(tokens)
 
         messages[:, :, :, NORTH] = (
-            self_tokens[:, :, :, NORTH] + other_tokens[:, 2:, 1:-1, SOUTH]
+            self_tokens[:, :, :, NORTH] + other_tokens[:, :-2, 1:-1, SOUTH]
         )
         messages[:, :, :, SOUTH] = (
-            self_tokens[:, :, :, SOUTH] + other_tokens[:, :-2, 1:-1, NORTH]
+            self_tokens[:, :, :, SOUTH] + other_tokens[:, 2:, 1:-1, NORTH]
         )
         messages[:, :, :, EAST] = (
             self_tokens[:, :, :, EAST] + other_tokens[:, 1:-1, 2:, WEST]
