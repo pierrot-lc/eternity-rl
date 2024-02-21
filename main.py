@@ -53,12 +53,10 @@ def init_env(config: DictConfig) -> EternityEnv:
     )
 
 
-def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
+def init_models(config: DictConfig) -> tuple[Policy, Critic]:
     """Initialize the model."""
     model = config.model
     policy = Policy(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
@@ -66,8 +64,6 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         dropout=model.dropout,
     )
     critic = Critic(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
@@ -229,7 +225,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    policy, critic = init_models(config, env)
+    policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
     policy = DDP(policy, device_ids=[config.device], output_device=config.device)
     critic = DDP(critic, device_ids=[config.device], output_device=config.device)
@@ -269,7 +265,7 @@ def run_trainer_single_gpu(config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    policy, critic = init_models(config, env)
+    policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)

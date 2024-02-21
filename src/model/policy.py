@@ -14,8 +14,6 @@ from .heads import SelectSide, SelectTile
 class Policy(nn.Module):
     def __init__(
         self,
-        board_width: int,
-        board_height: int,
         embedding_dim: int,
         n_heads: int,
         backbone_layers: int,
@@ -23,9 +21,6 @@ class Policy(nn.Module):
         dropout: float,
     ):
         super().__init__()
-        self.board_width = board_width
-        self.board_height = board_height
-        self.embedding_dim = embedding_dim
 
         self.backbone = GNNBackbone(embedding_dim, backbone_layers)
 
@@ -38,20 +33,19 @@ class Policy(nn.Module):
         self.tiles_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
         self.sides_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
-    def dummy_input(self, device: str) -> tuple[torch.Tensor]:
+    def dummy_input(
+        self, board_height: int, board_width: int, device: str
+    ) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
-            1,
-            N_SIDES,
-            self.board_height,
-            self.board_width,
+            (1, N_SIDES, board_height, board_width),
             dtype=torch.long,
             device=device,
         )
         return (tiles,)
 
-    def summary(self, device: str):
+    def summary(self, board_height: int, board_width: int, device: str):
         """Torchinfo summary."""
-        dummy_input = self.dummy_input(device)
+        dummy_input = self.dummy_input(board_height, board_width, device)
         print("\nPolicy summary:")
         summary(
             self,
