@@ -53,12 +53,10 @@ def init_env(config: DictConfig) -> EternityEnv:
     )
 
 
-def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
+def init_models(config: DictConfig) -> tuple[Policy, Critic]:
     """Initialize the model."""
     model = config.model
     policy = Policy(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
@@ -66,8 +64,6 @@ def init_models(config: DictConfig, env: EternityEnv) -> tuple[Policy, Critic]:
         dropout=model.dropout,
     )
     critic = Critic(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
@@ -128,7 +124,7 @@ def init_scheduler(
             optimizer=optimizer,
             start_factor=0.001,
             end_factor=1.0,
-            total_iters=config.exp.scheduler.warmup_steps,
+            total_iters=scheduler.warmup_steps,
         )
         schedulers.append(warmup_scheduler)
 
@@ -207,11 +203,11 @@ def reload_checkpoint(config: DictConfig, trainer: Trainer):
     trainer.policy.load_state_dict(state_dict["policy"])
     trainer.critic.load_state_dict(state_dict["critic"])
 
-    # HACK: The training seems to not be stable when loading the optimizer state.
-    # trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
-    # trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
-    # trainer.policy_scheduler.load_state_dict(state_dict["policy-scheduler"])
-    # trainer.critic_scheduler.load_state_dict(state_dict["critic-scheduler"])
+    trainer.policy_optimizer.load_state_dict(state_dict["policy-optimizer"])
+    trainer.critic_optimizer.load_state_dict(state_dict["critic-optimizer"])
+
+    trainer.policy_scheduler.load_state_dict(state_dict["policy-scheduler"])
+    trainer.critic_scheduler.load_state_dict(state_dict["critic-scheduler"])
 
     print(f"Checkpoint from {checkpoint_path} loaded.")
 
@@ -229,7 +225,7 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    policy, critic = init_models(config, env)
+    policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
     policy = DDP(policy, device_ids=[config.device], output_device=config.device)
     critic = DDP(critic, device_ids=[config.device], output_device=config.device)
@@ -269,7 +265,7 @@ def run_trainer_single_gpu(config: DictConfig):
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     env = init_env(config)
-    policy, critic = init_models(config, env)
+    policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)

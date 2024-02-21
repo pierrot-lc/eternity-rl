@@ -4,15 +4,13 @@ from einops import repeat
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from .backbone import Backbone
+from .backbones import GNNBackbone
 from .heads import EstimateValue
 
 
 class Critic(nn.Module):
     def __init__(
         self,
-        board_width: int,
-        board_height: int,
         embedding_dim: int,
         n_heads: int,
         backbone_layers: int,
@@ -20,36 +18,27 @@ class Critic(nn.Module):
         dropout: float,
     ):
         super().__init__()
-        self.board_width = board_width
-        self.board_height = board_height
-        self.embedding_dim = embedding_dim
 
-        self.backbone = Backbone(
-            embedding_dim,
-            n_heads,
-            backbone_layers,
-            dropout,
-        )
+        self.backbone = GNNBackbone(embedding_dim, backbone_layers)
 
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout
         )
         self.value_query = nn.Parameter(torch.randn(embedding_dim))
 
-    def dummy_input(self, device: str) -> tuple[torch.Tensor]:
+    def dummy_input(
+        self, board_height: int, board_width: int, device: str
+    ) -> tuple[torch.Tensor]:
         tiles = torch.zeros(
-            1,
-            N_SIDES,
-            self.board_height,
-            self.board_width,
+            (1, N_SIDES, board_height, board_width),
             dtype=torch.long,
             device=device,
         )
         return (tiles,)
 
-    def summary(self, device: str):
+    def summary(self, board_height: int, board_width: int, device: str):
         """Torchinfo summary."""
-        dummy_input = self.dummy_input(device)
+        dummy_input = self.dummy_input(board_height, board_width, device)
         print("\nCritic summary:")
         summary(
             self,
