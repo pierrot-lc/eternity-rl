@@ -180,8 +180,12 @@ class Trainer:
             self.best_matches_found = 0  # Reset.
 
             if not disable_logs:
-                self.policy_module.summary(self.device)
-                self.critic_module.summary(self.device)
+                self.policy_module.summary(
+                    self.env.board_size, self.env.board_size, self.device
+                )
+                self.critic_module.summary(
+                    self.env.board_size, self.env.board_size, self.device
+                )
                 print(f"\nLaunching training on device {self.device}.\n")
 
             # Log gradients and model parameters.

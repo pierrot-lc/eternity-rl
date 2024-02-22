@@ -4,8 +4,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from environment import EternityEnv
-from environment.constants import EAST, NORTH, SOUTH, WEST
+from ..environment import EternityEnv
+from ..environment.constants import EAST, NORTH, SOUTH, WEST
 
 from .backbones.gnn import GNNBackbone
 from .policy import Policy
