@@ -468,7 +468,7 @@ class EternityEnv(gym.Env):
         the original env.
         """
         copy = cls(
-            env.instances,
+            env.instances.clone(),
             env.episode_length,
             env.device,
             env.rng.seed(),

@@ -27,6 +27,7 @@ class Trainer:
         env: EternityEnv,
         policy: Policy | DDP,
         critic: Critic | DDP,
+        mcts: MCTSTree,
         loss: PPOLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
@@ -42,6 +43,7 @@ class Trainer:
         self.env = env
         self.policy = policy
         self.critic = critic
+        self.mcts = mcts
         self.loss = loss
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
@@ -59,15 +61,6 @@ class Trainer:
         )
         self.critic_module = (
             self.critic.module if isinstance(self.critic, DDP) else self.critic
-        )
-
-        self.mcts = MCTSTree(
-            self.env,
-            self.policy_module,
-            self.critic_module,
-            self.loss.gamma,
-            simulations=10,
-            childs=10,
         )
 
         self.device = env.device

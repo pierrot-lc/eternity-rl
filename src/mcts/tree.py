@@ -37,7 +37,7 @@ class MCTSTree:
         self.device = self.envs.device
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
-        self.c_ucb = torch.sqrt(torch.FloatTensor([2])).to(self.device)
+        self.c_puct = torch.FloatTensor([1.5]).to(self.device)
 
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
@@ -206,8 +206,9 @@ class MCTSTree:
         corrected_node_visits = node_visits.clone()
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
-        ucb = sum_scores / corrected_node_visits + priors * self.c_ucb * torch.sqrt(
-            torch.log(parent_visits) / corrected_node_visits
+        ucb = (
+            sum_scores / corrected_node_visits
+            + priors * self.c_puct * torch.sqrt(parent_visits) / corrected_node_visits
         )
         ucb[node_visits == 0] = torch.inf
         return ucb
@@ -306,7 +307,7 @@ class MCTSTree:
         Returns:
             actions: The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
-            priots: The priors of the corresponding childs.
+            priors: The priors of the corresponding childs.
                 Shape of [batch_size, n_childs].
             rewards: The rewards obtained when arriving in
                 the corresponding child states.
@@ -317,7 +318,7 @@ class MCTSTree:
                 Shape of [batch_size, n_childs].
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
-        actions, logprobs, _ = self.policy(envs.render(), sampling_mode="softmax")
+        actions, logprobs, _ = self.policy(envs.render(), sampling_mode="epsilon")
         boards, rewards, dones, truncated, _ = envs.step(actions)
         values = self.critic(boards)
 

@@ -261,7 +261,7 @@ def tree_mockup_small() -> MCTSTree:
 )
 def test_ucb(nodes: torch.Tensor):
     tree = tree_mockup()
-    c = torch.sqrt(torch.Tensor([2]))
+    c = tree.c_puct
     ucb = torch.zeros_like(nodes, dtype=torch.float)
     for batch_id in range(nodes.shape[0]):
         for ucb_index, node_id in enumerate(nodes[batch_id]):
@@ -275,8 +275,8 @@ def test_ucb(nodes: torch.Tensor):
             parent_visits = tree.visits[batch_id, parent_id]
             node_score = tree.sum_scores[batch_id, node_id] / node_visits
             prior = tree.priors[batch_id, node_id]
-            ucb[batch_id, ucb_index] = node_score + prior * c * torch.sqrt(
-                torch.log(parent_visits) / node_visits
+            ucb[batch_id, ucb_index] = (
+                node_score + prior * c * torch.sqrt(parent_visits) / node_visits
             )
 
     assert torch.allclose(ucb, tree.ucb_scores(nodes)), "Wrong UCB scores"

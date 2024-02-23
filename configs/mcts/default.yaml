@@ -1,0 +1,3 @@
+---
+simulations: ${exp.trainer.rollouts}
+childs: 10
