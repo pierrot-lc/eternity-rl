@@ -6,11 +6,6 @@ from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .tree import MCTSTree
 
-# WARNING: The MCTS is not maintained for now. Changes made to the models is not
-# reflected in the MCTS. Moreover, the MCTS is wrongly implemented.
-# See ./notes/todo.norg for more.
-# pytest.skip("MCTS Ignored, it is not ready yet (see @todo).", allow_module_level=True)
-
 
 def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv:
     return EternityEnv.from_file(
