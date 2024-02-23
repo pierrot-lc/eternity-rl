@@ -1,3 +1,10 @@
+"""A batched implementation of the MCTS algorithm.
+
+Thanks to:
+- https://github.com/tmoer/alphazero_singleplayer.
+- https://arxiv.org/pdf/1911.08265.pdf (notably, page 12).
+- royale for the fruitful conversations.
+"""
 import torch
 from einops import rearrange, repeat
 from tqdm import tqdm
@@ -196,11 +203,12 @@ class MCTSTree:
         parent_nodes = torch.gather(self.parents, dim=1, index=nodes)
         parent_visits = torch.gather(self.visits, dim=1, index=parent_nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
+        priors = torch.gather(self.priors, dim=1, index=nodes)
 
         corrected_node_visits = node_visits.clone()
         corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
 
-        ucb = sum_scores / corrected_node_visits + self.c_ucb * torch.sqrt(
+        ucb = sum_scores / corrected_node_visits + priors * self.c_ucb * torch.sqrt(
             torch.log(parent_visits) / corrected_node_visits
         )
         ucb[node_visits == 0] = torch.inf

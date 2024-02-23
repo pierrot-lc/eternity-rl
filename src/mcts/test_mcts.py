@@ -274,7 +274,8 @@ def test_ucb(nodes: torch.Tensor):
             parent_id = tree.parents[batch_id, node_id]
             parent_visits = tree.visits[batch_id, parent_id]
             node_score = tree.sum_scores[batch_id, node_id] / node_visits
-            ucb[batch_id, ucb_index] = node_score + c * torch.sqrt(
+            prior = tree.priors[batch_id, node_id]
+            ucb[batch_id, ucb_index] = node_score + prior * c * torch.sqrt(
                 torch.log(parent_visits) / node_visits
             )
 

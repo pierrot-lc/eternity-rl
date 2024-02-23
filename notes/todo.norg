@@ -16,7 +16,7 @@ updated: 2024-01-03T17:53:48+0100
   - ( ) Regarder s'il est possible d'optimiser l'env batché
 
 * MCTS
-  - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
+  - (x) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
         en compte la probabilité de chaque node.
   - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
         un moyen de voir la quantité d'exploration et d'exploitation.
@@ -51,7 +51,7 @@ updated: 2024-01-03T17:53:48+0100
 
 * Enhancements
   - (x) Rotation and symmetry invariant.
-  - 2D RoPE.
+  - (_) 2D RoPE.
 
 * Questions
   - Is the model better with conv layers, transfo layers, or little bit of both?
