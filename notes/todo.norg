@@ -50,7 +50,7 @@ updated: 2024-01-03T17:53:48+0100
     This would allow for better credit assignment.
 
 * Enhancements
-  - Rotation and symmetry invariant.
+  - (x) Rotation and symmetry invariant.
   - 2D RoPE.
 
 * Questions

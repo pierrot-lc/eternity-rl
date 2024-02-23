@@ -1,5 +1,5 @@
 {
-  description = "TSP devshell";
+  description = "PyTorch devshell";
 
   nixConfig = {
     extra-substituters = [
@@ -35,7 +35,7 @@
       ];
 
     fhs = pkgs.buildFHSUserEnv {
-      name = "tsp-env";
+      name = "pytorch";
       targetPkgs = pkgs: (with pkgs; [
         (python311.withPackages python-packages)
         cudaPackages.cudatoolkit

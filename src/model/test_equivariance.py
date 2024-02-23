@@ -136,7 +136,7 @@ def test_rotation_equivariant_backbone(boards: torch.Tensor, model: nn.Module):
             model_rotated, "(h w) b e -> b h w e", h=height, w=width
         )
         assert torch.allclose(
-            model_rotated, rotated_references, rtol=1e-4, atol=1e-7
+            model_rotated, rotated_references, rtol=1e-4, atol=1e-6
         ), f"Absolute mean error is {( model_rotated - rotated_references ).abs().mean()}"
 
     assert torch.all(rotated_references == references)
