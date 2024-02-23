@@ -12,14 +12,17 @@ class MCTSTree:
         envs: EternityEnv,
         policy: Policy,
         critic: Critic,
+        gamma: float,
         simulations: int,
         childs: int,
     ):
         self.envs = envs
         self.policy = policy
         self.critic = critic
+        self.gamma = gamma
         self.n_simulations = simulations
         self.n_childs = childs
+
         self.n_nodes = (
             self.n_simulations * self.n_childs
         ) + 1  # Add the root node (id '0').
@@ -47,6 +50,11 @@ class MCTSTree:
         self.visits = torch.zeros(
             (self.batch_size, self.n_nodes),
             dtype=torch.long,
+            device=self.device,
+        )
+        self.rewards = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
             device=self.device,
         )
         self.sum_scores = torch.zeros(
@@ -77,6 +85,7 @@ class MCTSTree:
         self.parents.zero_()
         self.actions.zero_()
         self.visits.zero_()
+        self.rewards.zero_()
         self.sum_scores.zero_()
         self.terminated.zero_()
 
@@ -112,7 +121,7 @@ class MCTSTree:
         ):
             self.step()
 
-            # Save the actions of the new terminated envs if there are some.
+            # Save the actions of the new terminated envs if there are any.
             newly_terminated_envs = (~terminated_envs) & self.terminated[:, 0]
             best_actions[newly_terminated_envs] = self.best_actions()[
                 newly_terminated_envs
@@ -132,10 +141,12 @@ class MCTSTree:
         leafs, envs = self.select_leafs()
 
         # 2. Sample new nodes to add to the tree.
-        actions, values, terminated = self.sample_nodes(envs)
-        self.expand_nodes(leafs, actions, values, terminated)
+        actions, rewards, values, terminated = self.sample_nodes(envs)
 
-        # 3. Backpropagate child values.
+        # 3. Add and expand the new nodes.
+        self.expand_nodes(leafs, actions, rewards, values, terminated)
+
+        # 4. Backpropagate child values.
         # NOTE: The new child is upadated here as well.
         # Hence it will be visited two times already and have its score
         # doubled.
@@ -264,7 +275,9 @@ class MCTSTree:
 
         return nodes, envs
 
-    def sample_nodes(self, envs: EternityEnv) -> torch.Tensor:
+    def sample_nodes(
+        self, envs: EternityEnv
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Use the policy to sample new actions from the given environments.
         Also evaluate the new childs directly using the critic.
 
@@ -279,6 +292,9 @@ class MCTSTree:
         Returns:
             actions: The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
+            rewards: The rewards obtained when arriving in
+                the corresponding child states.
+                Shape of [batch_size, n_childs].
             values: The estimated values of the corresponding childs.
                 Shape of [batch_size, n_childs].
             terminated: The terminated childs.
@@ -286,31 +302,29 @@ class MCTSTree:
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
         actions, *_ = self.policy(envs.render(), sampling_mode="softmax")
-        boards, _, dones, truncated, _ = envs.step(actions)
+        boards, rewards, dones, truncated, _ = envs.step(actions)
         values = self.critic(boards)
 
-        # If an env is done, we take the value of the final board instead of
-        # the prediction of the critic.
-        # WARNING: How to properly decide the value of a terminated env?
-        values = (
-            dones * envs.best_matches / envs.best_possible_matches + ~dones * values
-        )
+        # If an env is done, we ignore the predicted value from the critic.
+        values *= (~dones).float()
 
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
+        rewards = rearrange(rewards, "(b c) -> b c", c=self.n_childs)
         values = rearrange(values, "(b c) -> b c", c=self.n_childs)
         terminated = rearrange(dones | truncated, "(b c) -> b c", c=self.n_childs)
 
-        # Save the best board if necessary.
+        # Save the best board if any.
         if self.envs.best_matches_ever < envs.best_matches_ever:
             self.envs.best_matches_ever = envs.best_matches_ever
             self.envs.best_board_ever = envs.best_board_ever
 
-        return actions, values, terminated
+        return actions, rewards, values, terminated
 
     def expand_nodes(
         self,
         nodes: torch.Tensor,
         actions: torch.Tensor,
+        rewards: torch.Tensor,
         values: torch.Tensor,
         terminated: torch.Tensor,
     ):
@@ -329,6 +343,9 @@ class MCTSTree:
                 Shape of [batch_size,].
             actions: The actions to add to the tree.
                 Shape of [batch_size, n_childs, n_actions].
+            rewards: The rewards obtained when arriving in
+                the corresponding child states.
+                Shape of [batch_size, n_childs].
             values: Initial values of the childs.
                 Shape of [batch_size, n_childs].
             terminated: Whether the childs are terminated.
@@ -356,6 +373,7 @@ class MCTSTree:
         self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
 
         # Add the values, initial visits and terminated states.
+        self.rewards.scatter_(dim=1, index=childs_node_id, src=rewards)
         self.sum_scores.scatter_(dim=1, index=childs_node_id, src=values)
         ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
         self.visits.scatter_(dim=1, index=childs_node_id, src=ones)

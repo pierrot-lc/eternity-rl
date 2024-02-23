@@ -9,7 +9,7 @@ from .tree import MCTSTree
 # WARNING: The MCTS is not maintained for now. Changes made to the models is not
 # reflected in the MCTS. Moreover, the MCTS is wrongly implemented.
 # See ./notes/todo.norg for more.
-pytest.skip("MCTS Ignored, it is not ready yet (see @todo).", allow_module_level=True)
+# pytest.skip("MCTS Ignored, it is not ready yet (see @todo).", allow_module_level=True)
 
 
 def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv:
@@ -22,10 +22,8 @@ def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv
     )
 
 
-def models_mockup(env: EternityEnv) -> tuple[Policy, Critic]:
+def models_mockup() -> tuple[Policy, Critic]:
     policy = Policy(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
@@ -33,8 +31,6 @@ def models_mockup(env: EternityEnv) -> tuple[Policy, Critic]:
         dropout=0.0,
     )
     critic = Critic(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
@@ -61,8 +57,8 @@ def tree_mockup() -> MCTSTree:
         └── 2
     """
     env = env_mockup()
-    policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
+    policy, critic = models_mockup()
+    tree = MCTSTree(env, policy, critic, gamma=1.0, simulations=2, childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -152,8 +148,8 @@ def tree_mockup_small() -> MCTSTree:
         └
     """
     env = env_mockup()
-    policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
+    policy, critic = models_mockup()
+    tree = MCTSTree(env, policy, critic, gamma=1.0, simulations=2, childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -374,7 +370,7 @@ def test_select_leafs(tree: MCTSTree):
 def test_expand_nodes(nodes: torch.Tensor):
     tree = tree_mockup_small()
 
-    actions, values, terminated = tree.sample_nodes(tree.envs)
+    actions, rewards, values, terminated = tree.sample_nodes(tree.envs)
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
     ), "Wrong actions shape"
@@ -384,7 +380,7 @@ def test_expand_nodes(nodes: torch.Tensor):
 
     original_tree_nodes = tree.tree_nodes.clone()
 
-    tree.expand_nodes(nodes, actions, values, terminated)
+    tree.expand_nodes(nodes, actions, rewards, values, terminated)
 
     for batch_id, node_id in enumerate(nodes):
         childs = tree.childs[batch_id, node_id]
@@ -398,6 +394,9 @@ def test_expand_nodes(nodes: torch.Tensor):
             assert torch.all(
                 tree.actions[batch_id, child_id] == actions[batch_id, child_number]
             ), "Wrong child actions"
+            assert torch.all(
+                tree.rewards[batch_id, child_id] == rewards[batch_id, child_number]
+            ), "Wrong child reward values"
             assert torch.all(
                 tree.sum_scores[batch_id, child_id] == values[batch_id, child_number]
             ), "Wrong child values"
