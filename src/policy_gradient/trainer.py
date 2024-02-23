@@ -17,7 +17,8 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
-from .rollout import exploit_rollout, rollout, split_reset_rollouts
+from .rollout import exploit_rollout, rollout, split_reset_rollouts, mcts_rollout
+from ..mcts import MCTSTree
 
 
 class Trainer:
@@ -60,6 +61,15 @@ class Trainer:
             self.critic.module if isinstance(self.critic, DDP) else self.critic
         )
 
+        self.mcts = MCTSTree(
+            self.env,
+            self.policy_module,
+            self.critic_module,
+            self.loss.gamma,
+            simulations=10,
+            childs=10,
+        )
+
         self.device = env.device
         self.rng = self.env.rng
 
@@ -76,17 +86,16 @@ class Trainer:
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
 
-        # A first rollout in greedy-mode, to exploit the model.
-        self.policy_module.eval()
-        exploit_rollout(self.env, self.policy_module, self.rollouts, disable_logs)
+        # # A first rollout in greedy-mode, to exploit the model.
+        # self.policy_module.eval()
+        # exploit_rollout(self.env, self.policy_module, self.rollouts, disable_logs)
 
         # Then we collect the rollouts with the current policy.
-        self.policy_module.train()
-        self.critic_module.train()
-        traces = rollout(
+        self.policy_module.eval()
+        self.critic_module.eval()
+        traces = mcts_rollout(
             self.env,
-            self.policy_module,
-            self.critic_module,
+            self.mcts,
             self.rollouts,
             disable_logs,
         )

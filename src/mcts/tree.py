@@ -85,7 +85,7 @@ class MCTSTree:
             device=self.device,
         )
 
-    def reset(self, envs: EternityEnv, policy: Policy, critic: Critic):
+    def reset(self, envs: EternityEnv):
         """Reset the overall object state.
         The MCTSTree can then be used again.
 
@@ -95,15 +95,13 @@ class MCTSTree:
         assert envs.device == self.device
 
         self.envs = envs
-        self.policy = policy
-        self.critic = critic
 
         self.childs.zero_()
         self.parents.zero_()
         self.actions.zero_()
         self.visits.zero_()
         self.rewards.zero_()
-        self.values.zeros_()
+        self.values.zero_()
         self.sum_scores.zero_()
         self.priors.zero_()
         self.terminated.zero_()

@@ -140,6 +140,7 @@ class PPOLoss(nn.Module):
             dim=-1,
         )
         metrics["loss/policy"] = -gains.min(dim=-1).values.mean()
+        metrics["loss/policy"] = -logprobs.mean()
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
         old_values = batch["values"]

@@ -106,8 +106,6 @@ def exploit_rollout(
 
 def mcts_rollout(
     env: EternityEnv,
-    policy: Policy,
-    critic: Critic,
     mcts: MCTSTree,
     steps: int,
     disable_logs: bool,
@@ -118,8 +116,6 @@ def mcts_rollout(
     ---
     Args:
         env: The environments to play in.
-        policy: The policy to use.
-        critic: The critic to use.
         mcts: The MCTS tree to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
@@ -128,13 +124,14 @@ def mcts_rollout(
     Returns:
         The traces of the played steps.
     """
+    policy, critic = mcts.policy, mcts.critic
     traces = defaultdict(list)
 
     for step_id in tqdm(
         range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
     ):
         sample = dict()
-        mcts.reset(env, policy, critic)
+        mcts.reset(env)
 
         sample["actions"] = mcts.evaluate(disable_logs)
         sample["states"] = env.render()
@@ -148,12 +145,7 @@ def mcts_rollout(
             sample["actions"]
         )
 
-        sample["next-values"] = critic(
-            env.render(),
-            env.best_boards,
-            env.n_steps,
-        )
-
+        sample["next-values"] = critic(env.render())
         sample["next-values"] *= (~sample["dones"]).float()
 
         if (sample["dones"] | sample["truncated"]).sum() > 0:
