@@ -370,7 +370,7 @@ def test_select_leafs(tree: MCTSTree):
 def test_expand_nodes(nodes: torch.Tensor):
     tree = tree_mockup_small()
 
-    actions, rewards, values, terminated = tree.sample_nodes(tree.envs)
+    actions, priors, rewards, values, terminated = tree.sample_nodes(tree.envs)
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
     ), "Wrong actions shape"
@@ -380,7 +380,7 @@ def test_expand_nodes(nodes: torch.Tensor):
 
     original_tree_nodes = tree.tree_nodes.clone()
 
-    tree.expand_nodes(nodes, actions, rewards, values, terminated)
+    tree.expand_nodes(nodes, actions, priors, rewards, values, terminated)
 
     for batch_id, node_id in enumerate(nodes):
         childs = tree.childs[batch_id, node_id]
@@ -394,6 +394,9 @@ def test_expand_nodes(nodes: torch.Tensor):
             assert torch.all(
                 tree.actions[batch_id, child_id] == actions[batch_id, child_number]
             ), "Wrong child actions"
+            assert torch.all(
+                tree.priors[batch_id, child_id] == priors[batch_id, child_number]
+            ), "Wrong child prior values"
             assert torch.all(
                 tree.rewards[batch_id, child_id] == rewards[batch_id, child_number]
             ), "Wrong child reward values"

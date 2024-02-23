@@ -62,6 +62,11 @@ class MCTSTree:
             dtype=torch.float,
             device=self.device,
         )
+        self.priors = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
+            device=self.device,
+        )
         self.terminated = torch.zeros(
             (self.batch_size, self.n_nodes),
             dtype=torch.bool,
@@ -87,6 +92,7 @@ class MCTSTree:
         self.visits.zero_()
         self.rewards.zero_()
         self.sum_scores.zero_()
+        self.priors.zero_()
         self.terminated.zero_()
 
     @torch.inference_mode()
@@ -141,10 +147,10 @@ class MCTSTree:
         leafs, envs = self.select_leafs()
 
         # 2. Sample new nodes to add to the tree.
-        actions, rewards, values, terminated = self.sample_nodes(envs)
+        actions, priors, rewards, values, terminated = self.sample_nodes(envs)
 
         # 3. Add and expand the new nodes.
-        self.expand_nodes(leafs, actions, rewards, values, terminated)
+        self.expand_nodes(leafs, actions, priors, rewards, values, terminated)
 
         # 4. Backpropagate child values.
         # NOTE: The new child is upadated here as well.
@@ -277,7 +283,7 @@ class MCTSTree:
 
     def sample_nodes(
         self, envs: EternityEnv
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Use the policy to sample new actions from the given environments.
         Also evaluate the new childs directly using the critic.
 
@@ -292,6 +298,8 @@ class MCTSTree:
         Returns:
             actions: The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
+            priots: The priors of the corresponding childs.
+                Shape of [batch_size, n_childs].
             rewards: The rewards obtained when arriving in
                 the corresponding child states.
                 Shape of [batch_size, n_childs].
@@ -301,14 +309,20 @@ class MCTSTree:
                 Shape of [batch_size, n_childs].
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
-        actions, *_ = self.policy(envs.render(), sampling_mode="softmax")
+        actions, logprobs, _ = self.policy(envs.render(), sampling_mode="softmax")
         boards, rewards, dones, truncated, _ = envs.step(actions)
         values = self.critic(boards)
 
         # If an env is done, we ignore the predicted value from the critic.
         values *= (~dones).float()
 
+        # Compute priors.
+        logprobs = logprobs.sum(dim=1)
+        priors = torch.exp(logprobs)
+
+        # Reshape outputs.
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
+        priors = rearrange(priors, "(b c) -> b c", c=self.n_childs)
         rewards = rearrange(rewards, "(b c) -> b c", c=self.n_childs)
         values = rearrange(values, "(b c) -> b c", c=self.n_childs)
         terminated = rearrange(dones | truncated, "(b c) -> b c", c=self.n_childs)
@@ -318,12 +332,13 @@ class MCTSTree:
             self.envs.best_matches_ever = envs.best_matches_ever
             self.envs.best_board_ever = envs.best_board_ever
 
-        return actions, rewards, values, terminated
+        return actions, priors, rewards, values, terminated
 
     def expand_nodes(
         self,
         nodes: torch.Tensor,
         actions: torch.Tensor,
+        priors: torch.Tensor,
         rewards: torch.Tensor,
         values: torch.Tensor,
         terminated: torch.Tensor,
@@ -343,6 +358,8 @@ class MCTSTree:
                 Shape of [batch_size,].
             actions: The actions to add to the tree.
                 Shape of [batch_size, n_childs, n_actions].
+            priors: The priors of the corresponding childs.
+                Shape of [batch_size, n_childs].
             rewards: The rewards obtained when arriving in
                 the corresponding child states.
                 Shape of [batch_size, n_childs].
@@ -373,6 +390,7 @@ class MCTSTree:
         self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
 
         # Add the values, initial visits and terminated states.
+        self.priors.scatter_(dim=1, index=childs_node_id, src=priors)
         self.rewards.scatter_(dim=1, index=childs_node_id, src=rewards)
         self.sum_scores.scatter_(dim=1, index=childs_node_id, src=values)
         ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
