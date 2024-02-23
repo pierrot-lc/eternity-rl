@@ -57,6 +57,11 @@ class MCTSTree:
             dtype=torch.float,
             device=self.device,
         )
+        self.values = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
+            device=self.device,
+        )
         self.sum_scores = torch.zeros(
             (self.batch_size, self.n_nodes),
             dtype=torch.float,
@@ -91,6 +96,7 @@ class MCTSTree:
         self.actions.zero_()
         self.visits.zero_()
         self.rewards.zero_()
+        self.values.zeros_()
         self.sum_scores.zero_()
         self.priors.zero_()
         self.terminated.zero_()
@@ -152,13 +158,9 @@ class MCTSTree:
         # 3. Add and expand the new nodes.
         self.expand_nodes(leafs, actions, priors, rewards, values, terminated)
 
-        # 4. Backpropagate child values.
-        # NOTE: The new child is upadated here as well.
-        # Hence it will be visited two times already and have its score
-        # doubled.
+        # 4. Backpropagate best child values.
         childs = self.select_childs(leafs)
-        values = self.sum_scores[self.batch_range, childs]
-        self.backpropagate(childs, values)
+        self.backpropagate(childs)
 
     def best_actions(self) -> torch.Tensor:
         """Return the actions corresponding to the best child
@@ -392,7 +394,9 @@ class MCTSTree:
         # Add the values, initial visits and terminated states.
         self.priors.scatter_(dim=1, index=childs_node_id, src=priors)
         self.rewards.scatter_(dim=1, index=childs_node_id, src=rewards)
-        self.sum_scores.scatter_(dim=1, index=childs_node_id, src=values)
+        self.values.scatter_(dim=1, index=childs_node_id, src=values)
+        sum_scores = rewards + self.gamma * values
+        self.sum_scores.scatter_(dim=1, index=childs_node_id, src=sum_scores)
         ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
         self.visits.scatter_(dim=1, index=childs_node_id, src=ones)
         self.terminated.scatter_(dim=1, index=childs_node_id, src=terminated)
@@ -402,7 +406,7 @@ class MCTSTree:
         self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
 
     def update_nodes_info(
-        self, nodes: torch.Tensor, values: torch.Tensor, filters: torch.Tensor
+        self, nodes: torch.Tensor, scores: torch.Tensor, filters: torch.Tensor
     ):
         """Update the information of the given nodes.
 
@@ -410,7 +414,7 @@ class MCTSTree:
         """
         ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
         self.visits[self.batch_range, nodes] += ones * filters
-        self.sum_scores[self.batch_range, nodes] += values * filters
+        self.sum_scores[self.batch_range, nodes] += scores * filters
 
         # A parent is terminated if all its childs are terminated.
         childs = self.childs[self.batch_range, nodes]
@@ -419,19 +423,29 @@ class MCTSTree:
         terminated = terminated.sum(dim=1) == (childs != 0).sum(dim=1)
         self.terminated[self.batch_range, nodes] = terminated
 
-    def backpropagate(self, nodes: torch.Tensor, values: torch.Tensor):
-        """Backpropagate the given values to the given nodes and their parents."""
-        filters = torch.ones(self.batch_size, dtype=torch.bool, device=self.device)
-        self.update_nodes_info(nodes, values, filters)
+    def backpropagate(self, leafs: torch.Tensor):
+        """Backpropagate the new value estimate from the given leafs to their parents.
 
-        # Do not update twice a root node.
+        The leafs themselves are not updated as their initial expansion has already
+        initialized the `sum_scores` and `terminated` states.
+        """
+        # Do the rest of the propagation until we reach the root nodes.
+        # We maintain a list of node to exclude so that we do not update
+        # twice a root node.
+        nodes = leafs
         filters = nodes != 0
+
+        scores = (
+            self.rewards[self.batch_range, leafs]
+            + self.gamma * self.values[self.batch_range, leafs]
+        )
 
         # While we did not update all root nodes.
         while not torch.all(~filters):
-            # Root nodes are their own parents.
+            # NOTE: root nodes are their own parents.
             nodes = self.parents[self.batch_range, nodes]
-            self.update_nodes_info(nodes, values, filters)
+            scores = self.rewards[self.batch_range, nodes] + self.gamma * scores
+            self.update_nodes_info(nodes, scores, filters)
 
             # Do not update twice a root node.
             filters = nodes != 0

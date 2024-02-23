@@ -25,11 +25,11 @@ updated: 2024-01-03T17:53:48+0100
   -- ( ) Average node value vs average node ucb score
   -- ( ) Same-node count
 
-  - Regarder pour améliorer le MCTS avec rewards intermédiaires:
-  -- Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
-  -- Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
-  -- Ajouter aussi le produit gamma.
-  -- Voir https://github.com/tmoer/alphazero_singleplayer.
+  - (x) Regarder pour améliorer le MCTS avec rewards intermédiaires:
+  -- (x) Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
+  -- (x) Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
+  -- (x) Ajouter aussi le produit gamma.
+  -- (x) Voir https://github.com/tmoer/alphazero_singleplayer.
 
   - Ajouter la normalisation MinMax des scores pour ne pas avoir à tuner la constante d'exploration.
     Voir https://arxiv.org/pdf/1911.08265.pdf page 12.

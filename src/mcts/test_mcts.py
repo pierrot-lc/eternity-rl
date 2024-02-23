@@ -58,7 +58,7 @@ def tree_mockup() -> MCTSTree:
     """
     env = env_mockup()
     policy, critic = models_mockup()
-    tree = MCTSTree(env, policy, critic, gamma=1.0, simulations=2, childs=3)
+    tree = MCTSTree(env, policy, critic, gamma=0.9, simulations=2, childs=3)
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -116,6 +116,24 @@ def tree_mockup() -> MCTSTree:
         [
             [4, 2, 1, 1, 1, 1, 0],
             [2, 1, 1, 0, 0, 0, 0],
+        ]
+    )
+    tree.rewards = torch.FloatTensor(
+        [
+            [0.0, 1.0, 0.4, 0.2, 0.0, 0.0, 0.0],
+            [0.0, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    tree.values = torch.FloatTensor(
+        [
+            [0.0, 1.1, 0.8, 0.1, 0.1, 2.0, 0.0],
+            [0.0, 0.4, 1.2, 0.2, 1.0, 1.0, 0.0],
+        ]
+    )
+    tree.priors = torch.FloatTensor(
+        [
+            [0.0, 1.0, 0.8, 0.1, 0.1, 0.4, 0.3],
+            [0.0, 0.4, 0.7, 0.2, 1.0, 1.0, 0.0],
         ]
     )
     tree.sum_scores = torch.FloatTensor(
@@ -393,21 +411,28 @@ def test_expand_nodes(nodes: torch.Tensor):
 
             assert torch.all(
                 tree.actions[batch_id, child_id] == actions[batch_id, child_number]
-            ), "Wrong child actions"
+            ), "Wrong children actions"
             assert torch.all(
                 tree.priors[batch_id, child_id] == priors[batch_id, child_number]
-            ), "Wrong child prior values"
+            ), "Wrong children priors"
             assert torch.all(
                 tree.rewards[batch_id, child_id] == rewards[batch_id, child_number]
-            ), "Wrong child reward values"
+            ), "Wrong children rewards"
             assert torch.all(
-                tree.sum_scores[batch_id, child_id] == values[batch_id, child_number]
-            ), "Wrong child values"
-            assert torch.all(tree.visits[batch_id, child_id] == 1), "Wrong child visits"
+                tree.values[batch_id, child_id] == values[batch_id, child_number]
+            ), "Wrong children values"
+            assert torch.all(
+                tree.sum_scores[batch_id, child_id]
+                == rewards[batch_id, child_number]
+                + tree.gamma * values[batch_id, child_number]
+            ), "Wrong children sum_scores"
+            assert torch.all(
+                tree.visits[batch_id, child_id] == 1
+            ), "Wrong children visits"
             assert torch.all(
                 tree.terminated[batch_id, child_id]
                 == terminated[batch_id, child_number]
-            ), "Wrong child terminated"
+            ), "Wrong children terminated"
 
     assert torch.all(tree.tree_nodes == original_tree_nodes + tree.n_childs)
 
@@ -431,21 +456,20 @@ def test_repeat_interleave():
 
 
 @pytest.mark.parametrize(
-    "nodes, values, updated_visits, updated_sum_scores, updated_terminated",
+    "nodes, updated_visits, updated_sum_scores, updated_terminated",
     [
         (
             torch.LongTensor([0, 1]),
-            torch.FloatTensor([0.5, 0.3]),
             torch.LongTensor(
                 [
-                    [5, 2, 1, 1, 1, 1, 0],
-                    [3, 2, 1, 0, 0, 0, 0],
+                    [4, 2, 1, 1, 1, 1, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [3.5, 2.0, 0.6, 0.4, 1.0, 1.0, 0.0],
-                    [2.3, 1.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+                    [3.0000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.6840, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -457,17 +481,16 @@ def test_repeat_interleave():
         ),
         (
             torch.LongTensor([5, 1]),
-            torch.FloatTensor([0.6, 0.4]),
             torch.LongTensor(
                 [
-                    [5, 3, 1, 1, 1, 2, 0],
-                    [3, 2, 1, 0, 0, 0, 0],
+                    [5, 3, 1, 1, 1, 1, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [3.6, 2.6, 0.6, 0.4, 1.0, 1.6, 0.0],
-                    [2.4, 1.5, 0.9, 0.0, 0.0, 0.0, 0.0],
+                    [5.3580, 4.6200, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.6840, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -481,13 +504,13 @@ def test_repeat_interleave():
 )
 def test_backpropagate(
     nodes: torch.Tensor,
-    values: torch.Tensor,
     updated_visits: torch.Tensor,
     updated_sum_scores: torch.Tensor,
     updated_terminated: torch.Tensor,
 ):
     tree = tree_mockup()
-    tree.backpropagate(nodes, values)
+    tree.backpropagate(nodes)
+    print(tree.sum_scores)
 
     assert torch.all(tree.visits == updated_visits), "Wrong visits number"
     assert torch.allclose(
