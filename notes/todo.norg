@@ -15,6 +15,10 @@ updated: 2024-01-03T17:53:48+0100
   - ( ) Checker https://arxiv.org/abs/2110.00641
   - ( ) Regarder s'il est possible d'optimiser l'env batché
   - ( ) Restart of the value network training from time to time.
+  - ( ) Use random envs. Start from optimal env, scramble with random
+        actions, with a random number of actions. Do scramble the original
+        env as well. This is akin to local search with some noise added
+        from time to time.
 
 * MCTS
   - (x) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
