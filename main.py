@@ -73,17 +73,15 @@ def init_models(config: DictConfig) -> tuple[Policy, Critic]:
     return policy, critic
 
 
-def init_mcts(
-    config: DictConfig, env: EternityEnv, policy: Policy | DDP, critic: Critic | DDP
-) -> MCTSTree:
+def init_mcts(config: DictConfig, env: EternityEnv) -> MCTSTree:
     mcts = config.mcts
     return MCTSTree(
-        env,
-        policy,
-        critic,
         config.exp.loss.gamma,
         mcts.simulations,
         mcts.childs,
+        len(env.action_space),
+        env.batch_size,
+        env.device,
     )
 
 
@@ -172,7 +170,6 @@ def init_trainer(
     env: EternityEnv,
     policy: Policy | DDP,
     critic: Critic | DDP,
-    mcts: MCTSTree,
     loss: PPOLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
@@ -186,7 +183,6 @@ def init_trainer(
         env,
         policy,
         critic,
-        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,
@@ -238,7 +234,6 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
     policy, critic = policy.to(config.device), critic.to(config.device)
     policy = DDP(policy, device_ids=[config.device], output_device=config.device)
     critic = DDP(critic, device_ids=[config.device], output_device=config.device)
-    mcts = init_mcts(config, env, policy, critic)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
@@ -250,7 +245,6 @@ def run_trainer_ddp(rank: int, world_size: int, config: DictConfig):
         env,
         policy,
         critic,
-        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,
@@ -278,7 +272,6 @@ def run_trainer_single_gpu(config: DictConfig):
     env = init_env(config)
     policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
-    mcts = init_mcts(config, env, policy, critic)
     loss = init_loss(config)
     policy_optimizer = init_optimizer(config, policy)
     critic_optimizer = init_optimizer(config, critic)
@@ -290,7 +283,6 @@ def run_trainer_single_gpu(config: DictConfig):
         env,
         policy,
         critic,
-        mcts,
         loss,
         policy_optimizer,
         critic_optimizer,

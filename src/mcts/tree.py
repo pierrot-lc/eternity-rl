@@ -16,25 +16,23 @@ from ..model import Critic, Policy
 class MCTSTree:
     def __init__(
         self,
-        envs: EternityEnv,
-        policy: Policy,
-        critic: Critic,
         gamma: float,
-        simulations: int,
-        childs: int,
+        n_simulations: int,
+        n_childs: int,
+        n_actions: int,
+        batch_size: int,
+        device: torch.device,
     ):
-        self.envs = envs
-        self.policy = policy
-        self.critic = critic
         self.gamma = gamma
-        self.n_simulations = simulations
-        self.n_childs = childs
+        self.n_simulations = n_simulations
+        self.n_childs = n_childs
+        self.n_actions = n_actions
+        self.batch_size = batch_size
+        self.device = device
 
         self.n_nodes = (
             self.n_simulations * self.n_childs
         ) + 1  # Add the root node (id '0').
-        self.batch_size = self.envs.batch_size
-        self.device = self.envs.device
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
         self.c_puct = torch.FloatTensor([1.5]).to(self.device)
@@ -50,7 +48,7 @@ class MCTSTree:
             device=self.device,
         )
         self.actions = torch.zeros(
-            (self.batch_size, self.n_nodes, len(self.envs.action_space)),
+            (self.batch_size, self.n_nodes, n_actions),
             dtype=torch.long,
             device=self.device,
         )
@@ -85,7 +83,7 @@ class MCTSTree:
             device=self.device,
         )
 
-    def reset(self, envs: EternityEnv):
+    def reset(self, envs: EternityEnv, policy: Policy, critic: Critic):
         """Reset the overall object state.
         The MCTSTree can then be used again.
 
@@ -95,6 +93,8 @@ class MCTSTree:
         assert envs.device == self.device
 
         self.envs = envs
+        self.policy = policy
+        self.critic = critic
 
         self.childs.zero_()
         self.parents.zero_()
@@ -107,28 +107,26 @@ class MCTSTree:
         self.terminated.zero_()
 
     @torch.inference_mode()
-    def evaluate(self, disable_logs: bool) -> torch.Tensor:
+    def evaluate(self, disable_logs: bool) -> tuple[torch.Tensor, torch.Tensor]:
         """Do all the simulation steps of the MCTS algorithm.
 
         ---
         Returns:
-            The best actions to take from the root node based on the MCTS
-            simulations.
-                Shape of [batch_size, n_actions].
+            probs: The target policy to learn from the MCTS simulations.
+                Shape of [batch_size, n_childs].
+            values: The target value to learn from the MCTS simulations.
+                Shape of [batch_size, n_childs].
+            actions: The corresponding actions sampled from the MCTS simulations.
+                Shape of [batch_size, n_childs, n_actions].
         """
         assert torch.all(
             self.tree_nodes == 1
         ), "All trees should have the root node only."
-
-        # An env is terminated if its root node is marked as terminated.
-        terminated_envs = torch.zeros(
-            self.batch_size, dtype=torch.bool, device=self.device
-        )
-        best_actions = torch.zeros(
-            (self.batch_size, self.actions.shape[2]),
-            dtype=torch.long,
-            device=self.device,
-        )
+        assert (
+            hasattr(self, "envs")
+            and hasattr(self, "policy")
+            and hasattr(self, "critic")
+        ), "You should reset the MCTS before using it."
 
         for _ in tqdm(
             range(self.n_simulations),
@@ -136,20 +134,23 @@ class MCTSTree:
             leave=False,
             disable=disable_logs,
         ):
+            if torch.all(self.terminated[:, 0]):
+                # All root nodes are marked as terminated!
+                break
+
             self.step()
 
-            # Save the actions of the new terminated envs if there are any.
-            newly_terminated_envs = (~terminated_envs) & self.terminated[:, 0]
-            best_actions[newly_terminated_envs] = self.best_actions()[
-                newly_terminated_envs
-            ]
+        childs = self.childs[:, 0]  # Root's children.
+        visits = torch.gather(self.visits, dim=1, index=childs)
+        scores = self.scores(childs)
 
-            terminated_envs = self.terminated[:, 0]
+        probs = visits / visits.sum(dim=1, keepdim=True)
+        values = visits * scores / visits.sum(dim=1, keepdim=True)
 
-        # Save the actions of the remaining envs.
-        best_actions[~terminated_envs] = self.best_actions()[~terminated_envs]
+        childs = repeat(childs, "b c -> b c a", a=self.n_actions)
+        actions = torch.gather(self.actions, dim=1, index=childs)
 
-        return best_actions
+        return probs, values, actions
 
     @torch.inference_mode()
     def step(self):
@@ -379,11 +380,14 @@ class MCTSTree:
         """
         assert torch.any(
             self.tree_nodes + self.n_childs <= self.n_nodes
-        ), "A tree has run out of nodes!"
+        ), "Some tree to expand has run out of nodes!"
 
         assert torch.any(
             self.childs[self.batch_range, nodes] == 0
-        ), "A node already has childs!"
+        ), "Some node to expand already has childs!"
+        assert torch.any(
+            ~self.terminated[self.batch_range, nodes]
+        ), "Some node to expand is already terminated!"
 
         # Compute the node id of each child.
         arange = torch.arange(self.n_childs, device=self.device)

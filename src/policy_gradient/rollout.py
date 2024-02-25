@@ -104,8 +104,11 @@ def exploit_rollout(
             env.reset(reset_ids)
 
 
+@torch.inference_mode()
 def mcts_rollout(
     env: EternityEnv,
+    policy: Policy,
+    critic: Critic,
     mcts: MCTSTree,
     steps: int,
     disable_logs: bool,
@@ -116,6 +119,8 @@ def mcts_rollout(
     ---
     Args:
         env: The environments to play in.
+        policy: The policy to use.
+        critic: The critic to use.
         mcts: The MCTS tree to use.
         steps: The number of steps to play.
         disable_logs: Whether to disable the logs.
@@ -124,29 +129,24 @@ def mcts_rollout(
     Returns:
         The traces of the played steps.
     """
-    policy, critic = mcts.policy, mcts.critic
     traces = defaultdict(list)
 
     for step_id in tqdm(
         range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
     ):
         sample = dict()
-        mcts.reset(env)
+        mcts.reset(env, policy, critic)
 
-        sample["actions"] = mcts.evaluate(disable_logs)
         sample["states"] = env.render()
-
-        _, sample["log-probs"], _ = policy(
-            sample["states"], sampled_actions=sample["actions"]
+        sample["probs"], sample["values"], sample["actions"] = mcts.evaluate(
+            disable_logs
         )
-        sample["values"] = critic(sample["states"])
 
+        action_ids = Policy.sample_actions(sample["probs"], mode="softmax")
+        sampled_actions = sample["actions"][mcts.batch_range, action_ids]
         _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
-            sample["actions"]
+            sampled_actions
         )
-
-        sample["next-values"] = critic(env.render())
-        sample["next-values"] *= (~sample["dones"]).float()
 
         if (sample["dones"] | sample["truncated"]).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
