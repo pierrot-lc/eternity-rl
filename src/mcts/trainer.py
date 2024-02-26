@@ -16,19 +16,17 @@ import wandb
 
 from ..environment import EternityEnv
 from ..model import Critic, Policy
-from .loss import PPOLoss
 from ..policy_gradient.rollout import mcts_rollout
-from ..mcts import MCTSTree
+from .tree import MCTSTree
 
 
-class Trainer:
+class MCTSTrainer:
     def __init__(
         self,
         env: EternityEnv,
         policy: Policy | DDP,
         critic: Critic | DDP,
         mcts: MCTSTree,
-        loss: PPOLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
         policy_scheduler: LRScheduler,
@@ -44,7 +42,6 @@ class Trainer:
         self.policy = policy
         self.critic = critic
         self.mcts = mcts
-        self.loss = loss
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
         self.policy_scheduler = policy_scheduler
@@ -91,27 +88,10 @@ class Trainer:
             disable_logs,
         )
 
-        traces = split_reset_rollouts(traces)
-        self.loss.advantages(traces)
-
-        assert torch.all(
-            traces["rewards"].sum(dim=1) <= 1 + 1e-4  # Account for small FP errors.
-        ), f"Some returns are > 1 ({traces['rewards'].sum(dim=1).max().item()})."
-        assert (
-            self.replay_buffer._storage.max_size
-            == traces["masks"].sum().item()
-            == self.env.batch_size * self.rollouts
-        ), "Some samples are missing."
-
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
-        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
         for name, tensor in traces.items():
-            if name == "masks":
-                continue
-
-            tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
-            samples[name] = tensor[masks]
+            samples[name] = einops.rearrange(tensor, "b d ... -> (b d) ...")
 
         samples = TensorDict(
             samples, batch_size=samples["states"].shape[0], device=self.device
@@ -131,8 +111,6 @@ class Trainer:
             self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
-        metrics = self.loss(batch, self.policy, self.critic)
-        metrics["loss/total"].backward()
 
         if train_policy:
             clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)

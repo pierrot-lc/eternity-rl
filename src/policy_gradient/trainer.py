@@ -20,7 +20,7 @@ from .loss import PPOLoss
 from .rollout import exploit_rollout, rollout, split_reset_rollouts
 
 
-class Trainer:
+class PPOTrainer:
     def __init__(
         self,
         env: EternityEnv,

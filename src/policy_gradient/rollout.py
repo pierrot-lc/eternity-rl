@@ -144,13 +144,13 @@ def mcts_rollout(
 
         action_ids = Policy.sample_actions(sample["probs"], mode="softmax")
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
-        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
+        _, rewards, dones, truncated, _ = env.step(
             sampled_actions
         )
 
-        if (sample["dones"] | sample["truncated"]).sum() > 0:
+        if (dones | truncated).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
-            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
+            reset_ids = reset_ids[dones | truncated]
             env.reset(reset_ids)
 
         # BUG: There's an issue with cuda that hallucinates values when stacking
