@@ -128,9 +128,10 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
             config.exp.group, OmegaConf.to_container(config), config.mode
         )
     except KeyboardInterrupt:
-        print("Caught KeyboardInterrupt. Cleaning up distributed processes...")
+        print("Caught KeyboardInterrupt.")
     finally:
         if use_ddp:
+            print("Cleaning up distributed processes...")
             cleanup_distributed()
 
 

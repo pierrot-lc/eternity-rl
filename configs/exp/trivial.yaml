@@ -3,7 +3,7 @@ group: Trivial A
 
 env:
   path: ./instances/eternity_trivial_A.txt
-  batch_size: 128
+  batch_size: 256
   episode_length: inf
 
 optimizer:
@@ -13,23 +13,23 @@ optimizer:
 
 scheduler:
   warmup_steps: 0
-  cosine_t0: 100
+  cosine_t0: 0
   cosine_tmult: 1
   eta_min: 1.0e-4
 
 loss:
-  gamma: 0.99
+  gamma: 0.90
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 1.0
-  entropy_weight: 0.0e-2
-  entropy_clip: 0.0
+  value_weight: 1.0e-5
+  entropy_weight: 1.0e-2
+  entropy_clip: 3.0
 
 trainer:
-  episodes: 1000
+  episodes: 100
   epochs: 3
-  batch_size: 128
+  batch_size: 256
   rollouts: 10
   reset_proportion: 0.50
   clip_value: 1.0

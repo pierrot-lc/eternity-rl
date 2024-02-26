@@ -7,7 +7,7 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
 from src.environment import EternityEnv
-from src.mcts import MCTSTree, MCTSTrainer
+from src.mcts import MCTSTree, MCTSTrainer, MCTSLoss
 from src.model import Critic, Policy
 from src.policy_gradient import PPOLoss, PPOTrainer
 
@@ -193,6 +193,7 @@ def init_mcts_trainer(
         policy,
         critic,
         mcts,
+        MCTSLoss(1.0, 0.0, 0.0),
         policy_optimizer,
         critic_optimizer,
         policy_scheduler,

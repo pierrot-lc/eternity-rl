@@ -18,6 +18,7 @@ from ..environment import EternityEnv
 from ..model import Critic, Policy
 from ..policy_gradient.rollout import mcts_rollout
 from .tree import MCTSTree
+from .loss import MCTSLoss
 
 
 class MCTSTrainer:
@@ -27,6 +28,7 @@ class MCTSTrainer:
         policy: Policy | DDP,
         critic: Critic | DDP,
         mcts: MCTSTree,
+        loss: MCTSLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
         policy_scheduler: LRScheduler,
@@ -42,6 +44,7 @@ class MCTSTrainer:
         self.policy = policy
         self.critic = critic
         self.mcts = mcts
+        self.loss = loss
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
         self.policy_scheduler = policy_scheduler
@@ -111,6 +114,8 @@ class MCTSTrainer:
             self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
+        metrics = self.loss(batch, self.policy, self.critic)
+        metrics["loss/total"].backward()
 
         if train_policy:
             clip_grad.clip_grad_norm_(self.policy.parameters(), self.clip_value)
