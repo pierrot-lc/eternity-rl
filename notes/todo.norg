@@ -29,6 +29,8 @@ updated: 2024-01-03T17:53:48+0100
   -- ( ) Visit count distribution
   -- ( ) Average node value vs average node ucb score
   -- ( ) Same-node count
+  - ( ) Backprop toutes les visites lorsqu'on expand un noeud.
+  - ( ) Augmenter la visite du noeud terminal lorsqu'on le sélectionne.
 
   - (x) Regarder pour améliorer le MCTS avec rewards intermédiaires:
   -- (x) Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.

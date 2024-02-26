@@ -227,7 +227,7 @@ class MCTSTrainer:
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
         metrics |= self.loss(batch, self.policy, self.critic)
-        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
+        metrics["metrics/values"] = wandb.Histogram(batch["values"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
 
         # Compute the gradient mean and maximum values.

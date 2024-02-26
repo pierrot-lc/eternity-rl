@@ -6,7 +6,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import epsilon_greedy_sampling, epsilon_sampling
+from ..sampling import epsilon_greedy_sampling, epsilon_sampling, dirichlet_sampling
 from .backbones import GNNBackbone
 from .heads import SelectSide, SelectTile
 
@@ -146,6 +146,10 @@ class Policy(nn.Module):
                 logits = Categorical(probs=probs).logits
                 logits = logits / 2.0
                 action_ids = Categorical(logits=logits).sample()
+            case "dirichlet":
+                action_ids = dirichlet_sampling(
+                    probs, concentration=0.03, exploration=0.25
+                )
             case _:
                 raise ValueError(f"Invalid mode: {mode}")
         return action_ids

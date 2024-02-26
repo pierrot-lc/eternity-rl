@@ -1,4 +1,5 @@
 import pytest
+from copy import deepcopy
 import torch
 from einops import rearrange, repeat
 
@@ -314,7 +315,6 @@ def test_select_childs(nodes: torch.Tensor):
 
     ucb = tree.ucb_scores(childs)
     ucb[childs == 0] = -torch.inf
-    ucb[terminated] = -torch.inf
     best_childs_ids = torch.argmax(ucb, dim=1)
     best_childs = torch.stack(
         [
@@ -402,7 +402,6 @@ def test_expand_nodes(nodes: torch.Tensor):
     policy, critic = models_mockup()
     tree.envs, tree.policy, tree.critic = env, policy, critic
 
-
     actions, priors, rewards, values, terminated = tree.sample_nodes(tree.envs)
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
@@ -413,7 +412,8 @@ def test_expand_nodes(nodes: torch.Tensor):
 
     original_tree_nodes = tree.tree_nodes.clone()
 
-    tree.expand_nodes(nodes, actions, priors, rewards, values, terminated)
+    to_ignore = torch.zeros(tree.batch_size, dtype=torch.bool)
+    tree.expand_nodes(nodes, actions, priors, rewards, values, terminated, to_ignore)
 
     for batch_id, node_id in enumerate(nodes):
         childs = tree.childs[batch_id, node_id]
@@ -533,17 +533,42 @@ def test_backpropagate(
     ), "Wrong sum scores number"
 
 
-# Ignore this test for now, raise a warning.
-@pytest.mark.skip
 def test_all_terminated():
     """When all the tree is terminated, the tree.step() should not break."""
-    tree = tree_mockup_small()
     env = env_mockup()
     policy, critic = models_mockup()
+
+    tree = tree_mockup_small()
     tree.envs, tree.policy, tree.critic = env, policy, critic
-    tree.terminated = torch.ones_like(
-        tree.terminated, dtype=torch.bool, device=tree.device
-    )
+    tree.terminated[0] = True
+
+    actions_ = tree.actions.clone()
+    childs_ = tree.childs.clone()
+    parents_ = tree.parents.clone()
+    priors_ = tree.priors.clone()
+    rewards_ = tree.rewards.clone()
+    sum_scores_ = tree.sum_scores.clone()
+    terminated_ = tree.terminated.clone()
+    values_ = tree.values.clone()
+    visits_ = tree.visits.clone()
+
+    leafs, envs = tree.select_leafs()
+    actions, priors, rewards, values, terminated = tree.sample_nodes(envs)
+    to_ignore = torch.zeros(env.batch_size, dtype=torch.bool)
+    to_ignore[0] = True
+    tree.expand_nodes(leafs, actions, priors, rewards, values, terminated, to_ignore)
+
+    assert torch.all(actions_[to_ignore] == tree.actions[to_ignore])
+    assert torch.all(childs_[to_ignore] == tree.childs[to_ignore])
+    assert torch.all(parents_[to_ignore] == tree.parents[to_ignore])
+    assert torch.all(priors_[to_ignore] == tree.priors[to_ignore])
+    assert torch.all(rewards_[to_ignore] == tree.rewards[to_ignore])
+    assert torch.all(sum_scores_[to_ignore] == tree.sum_scores[to_ignore])
+    assert torch.all(terminated_[to_ignore] == tree.terminated[to_ignore])
+    assert torch.all(values_[to_ignore] == tree.values[to_ignore])
+    assert torch.all(visits_[to_ignore] == tree.visits[to_ignore])
+
+    # TODO: Make sure the backprop is done correctly.
 
     # Make sure the step does not break.
     tree.step()

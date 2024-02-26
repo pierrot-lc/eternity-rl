@@ -115,7 +115,7 @@ class MCTSTree:
             probs: The target policy to learn from the MCTS simulations.
                 Shape of [batch_size, n_childs].
             values: The target value to learn from the MCTS simulations.
-                Shape of [batch_size, n_childs].
+                Shape of [batch_size, ].
             actions: The corresponding actions sampled from the MCTS simulations.
                 Shape of [batch_size, n_childs, n_actions].
         """
@@ -146,6 +146,7 @@ class MCTSTree:
 
         probs = visits / visits.sum(dim=1, keepdim=True)
         values = visits * scores / visits.sum(dim=1, keepdim=True)
+        values = values.sum(dim=1)
 
         childs = repeat(childs, "b c -> b c a", a=self.n_actions)
         actions = torch.gather(self.actions, dim=1, index=childs)
@@ -157,12 +158,13 @@ class MCTSTree:
         """Do a one step of the MCTS algorithm."""
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
+        to_ignore = self.terminated[self.batch_range, leafs]
 
         # 2. Sample new nodes to add to the tree.
         actions, priors, rewards, values, terminated = self.sample_nodes(envs)
 
         # 3. Add and expand the new nodes.
-        self.expand_nodes(leafs, actions, priors, rewards, values, terminated)
+        self.expand_nodes(leafs, actions, priors, rewards, values, terminated, to_ignore)
 
         # 4. Backpropagate best child values.
         childs = self.select_childs(leafs)
@@ -235,6 +237,8 @@ class MCTSTree:
         """Dive one step into the tree following the UCB score.
         Do not change the id of a node that has no child.
 
+        NOTE: It is possible to select a terminated node!
+
         ---
         Args:
             nodes: Id of the node for each batch sample.
@@ -249,9 +253,8 @@ class MCTSTree:
         childs = self.childs[self.batch_range, nodes]
         ucb = self.ucb_scores(childs)
 
-        # Ignore terminated or fictive childs.
-        terminated = torch.gather(self.terminated, dim=1, index=childs)
-        ucb[terminated | (childs == 0)] = -torch.inf
+        # Ignore fictive childs.
+        ucb[childs == 0] = -torch.inf
 
         best_childs = childs[self.batch_range, torch.argmax(ucb, dim=1)]
 
@@ -319,7 +322,10 @@ class MCTSTree:
                 Shape of [batch_size, n_childs].
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
-        actions, logprobs, _ = self.policy(envs.render(), sampling_mode="epsilon")
+        actions, logprobs, _ = self.policy(envs.render(), sampling_mode="dirichlet")
+
+        # NOTE: We should technically ignore the potentially already terminated envs
+        # here. But it is not a big deal as the envs won't crash if we try to step them.
         boards, rewards, dones, truncated, _ = envs.step(actions)
         values = self.critic(boards)
 
@@ -352,6 +358,7 @@ class MCTSTree:
         rewards: torch.Tensor,
         values: torch.Tensor,
         terminated: torch.Tensor,
+        to_ignore: torch.Tensor,
     ):
         """Sample childs from the current nodes and add them
         to the trees.
@@ -377,6 +384,9 @@ class MCTSTree:
                 Shape of [batch_size, n_childs].
             terminated: Whether the childs are terminated.
                 Shape of [batch_size, n_childs].
+            to_ignore: Whether to ignore the given nodes (e.g.
+                terminal nodes).
+                Shape of [batch_size, ].
         """
         assert torch.any(
             self.tree_nodes + self.n_childs <= self.n_nodes
@@ -385,9 +395,6 @@ class MCTSTree:
         assert torch.any(
             self.childs[self.batch_range, nodes] == 0
         ), "Some node to expand already has childs!"
-        assert torch.any(
-            ~self.terminated[self.batch_range, nodes]
-        ), "Some node to expand is already terminated!"
 
         # Compute the node id of each child.
         arange = torch.arange(self.n_childs, device=self.device)
@@ -395,26 +402,48 @@ class MCTSTree:
         childs_node_id = self.tree_nodes.unsqueeze(1) + arange
         # Shape of [batch_size, n_childs].
 
+        parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
+        sum_scores = rewards + self.gamma * values
+        visits = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
+
+        # This is a filter to modify only the non-terminated nodes.
+        to_modify = ~to_ignore
+
         # Add the childs to their parent childs.
-        self.childs[self.batch_range, nodes] = childs_node_id
+        self.childs[self.batch_range[to_modify], nodes[to_modify]] = childs_node_id[
+            to_modify
+        ]
 
         # Add the parents.
-        parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
-        self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
+        parents = self.parents.scatter(dim=1, index=childs_node_id, src=parents_id)
+        self.parents[to_modify] = parents[to_modify]
 
         # Add the values, initial visits and terminated states.
-        self.priors.scatter_(dim=1, index=childs_node_id, src=priors)
-        self.rewards.scatter_(dim=1, index=childs_node_id, src=rewards)
-        self.values.scatter_(dim=1, index=childs_node_id, src=values)
-        sum_scores = rewards + self.gamma * values
-        self.sum_scores.scatter_(dim=1, index=childs_node_id, src=sum_scores)
-        ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
-        self.visits.scatter_(dim=1, index=childs_node_id, src=ones)
-        self.terminated.scatter_(dim=1, index=childs_node_id, src=terminated)
+        priors = self.priors.scatter(dim=1, index=childs_node_id, src=priors)
+        self.priors[to_modify] = priors[to_modify]
 
-        # Add the actions.
+        rewards = self.rewards.scatter(dim=1, index=childs_node_id, src=rewards)
+        self.rewards[to_modify] = rewards[to_modify]
+
+        values = self.values.scatter(dim=1, index=childs_node_id, src=values)
+        self.values[to_modify] = values[to_modify]
+
+        sum_scores = self.sum_scores.scatter(
+            dim=1, index=childs_node_id, src=sum_scores
+        )
+        self.sum_scores[to_modify] = sum_scores[to_modify]
+
+        visits = self.visits.scatter(dim=1, index=childs_node_id, src=visits)
+        self.visits[to_modify] = visits[to_modify]
+
+        terminated = self.terminated.scatter(
+            dim=1, index=childs_node_id, src=terminated
+        )
+        self.terminated[to_modify] = terminated[to_modify]
+
         childs_node_id = repeat(childs_node_id, "b c -> b c a", a=actions.shape[2])
-        self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
+        actions = self.actions.scatter(dim=1, index=childs_node_id, src=actions)
+        self.actions[to_modify] = actions[to_modify]
 
     def update_nodes_info(
         self, nodes: torch.Tensor, scores: torch.Tensor, filters: torch.Tensor

@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 from tensordict import TensorDictBase
-from einops import rearrange
 
 from ..model import Critic, Policy
-from ..environment import EternityEnv
 
 
 class MCTSLoss(nn.Module):
@@ -23,38 +22,23 @@ class MCTSLoss(nn.Module):
         metrics = dict()
         n_actions = batch["actions"].shape[1]
 
-        # WARNING: episode length should be set accordingly.
-        env = EternityEnv(
-            batch["states"], episode_length=float("+inf"), device=batch.device
-        )
-        env = EternityEnv.duplicate_interleave(env, n_duplicates=n_actions)
+        values = critic(batch["states"])
+        metrics["loss/critic"] = self.mse(values, batch["values"])
+        metrics["loss/weighted-critic"] = self.value_weight * metrics["loss/critic"]
 
+        states = repeat(batch["states"], "b s h w -> b n s h w", n=n_actions)
+        states = rearrange(states, "b n s h w -> (b n) s h w")
         actions = rearrange(batch["actions"], "b n a -> (b n) a")
         _, logprobs, entropies = policy(
-            env.render(), sampled_actions=actions, sampling_mode=None
+            states, sampled_actions=actions, sampling_mode=None
         )
         logprobs = rearrange(logprobs, "(b n) a -> b n a", n=n_actions)
 
         metrics["loss/policy"] = -(batch["probs"] * logprobs.sum(dim=2)).mean()
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
-        entropies = entropies.sum(dim=1)
-        metrics["loss/entropy"] = -entropies.mean()
-        metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
-        entropy_penalty = torch.relu(self.entropy_clip - entropies).mean()
-        metrics["loss/clipped-entropy"] = entropy_penalty
-
-        states, *_ = env.step(actions)
-        values = critic(states)
-        values = rearrange(values, "(b n) -> b n", n=n_actions)
-        metrics["loss/critic"] = self.mse(values, batch["values"])
-        metrics["loss/weighted-critic"] = self.value_weight * metrics["loss/critic"]
-
         metrics["loss/total"] = (
-            metrics["loss/weighted-policy"]
-            + metrics["loss/weighted-critic"]
-            + metrics["loss/weighted-entropy"]
-            + metrics["loss/clipped-entropy"]
+            metrics["loss/weighted-policy"] + metrics["loss/weighted-critic"]
         )
 
         return metrics
