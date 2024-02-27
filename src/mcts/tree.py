@@ -158,13 +158,25 @@ class MCTSTree:
         """Do a one step of the MCTS algorithm."""
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
-        to_ignore = self.terminated[self.batch_range, leafs]
+        terminated_leafs = self.terminated[self.batch_range, leafs]
 
         # 2. Sample new nodes to add to the tree.
         actions, priors, rewards, values, terminated = self.sample_nodes(envs)
 
         # 3. Add and expand the new nodes.
-        self.expand_nodes(leafs, actions, priors, rewards, values, terminated, to_ignore)
+        self.expand_nodes(
+            leafs,
+            actions,
+            priors,
+            rewards,
+            values,
+            terminated,
+            to_ignore=terminated_leafs,
+        )
+
+        # 3.5 If some leafs are terminated, we increment their visit count by 1.
+        if torch.any(terminated_leafs):
+            self.visits[terminated_leafs, leafs[terminated_leafs]] += 1
 
         # 4. Backpropagate best child values.
         childs = self.select_childs(leafs)
@@ -445,23 +457,31 @@ class MCTSTree:
         actions = self.actions.scatter(dim=1, index=childs_node_id, src=actions)
         self.actions[to_modify] = actions[to_modify]
 
-    def update_nodes_info(
-        self, nodes: torch.Tensor, scores: torch.Tensor, filters: torch.Tensor
-    ):
+    def update_nodes_info(self, nodes: torch.Tensor, filters: torch.Tensor):
         """Update the information of the given nodes.
 
         If a node is masked (filter is False), its value is not updated.
         """
-        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        self.visits[self.batch_range, nodes] += ones * filters
-        self.sum_scores[self.batch_range, nodes] += scores * filters
+        childs = self.childs[self.batch_range, nodes]
 
         # A parent is terminated if all its childs are terminated.
-        childs = self.childs[self.batch_range, nodes]
         terminated = torch.gather(self.terminated, dim=1, index=childs)
         terminated[childs == 0] = False  # Ignore fictive childs.
         terminated = terminated.sum(dim=1) == (childs != 0).sum(dim=1)
         self.terminated[self.batch_range, nodes] = terminated
+
+        # Set the visits as the sum of the children visits.
+        visits = torch.gather(self.visits, dim=1, index=childs)
+        visits[childs == 0] = 0
+        self.visits[self.batch_range, nodes] = visits.sum(dim=1) * filters
+
+        # Same for `sum_scores`.
+        sum_scores = torch.gather(self.sum_scores, dim=1, index=childs)
+        rewards = torch.gather(self.rewards, dim=1, index=childs)
+        sum_scores[childs == 0] = 0.0
+        rewards[childs == 0] = 0.0
+        scores = rewards + self.gamma * sum_scores
+        self.sum_scores[self.batch_range, nodes] = scores.sum(dim=1) * filters
 
     def backpropagate(self, leafs: torch.Tensor):
         """Backpropagate the new value estimate from the given leafs to their parents.
@@ -469,23 +489,17 @@ class MCTSTree:
         The leafs themselves are not updated as their initial expansion has already
         initialized the `sum_scores` and `terminated` states.
         """
-        # Do the rest of the propagation until we reach the root nodes.
+        # Do the propagation until we reach the root nodes.
         # We maintain a list of node to exclude so that we do not update
         # twice a root node.
         nodes = leafs
         filters = nodes != 0
 
-        scores = (
-            self.rewards[self.batch_range, leafs]
-            + self.gamma * self.values[self.batch_range, leafs]
-        )
-
         # While we did not update all root nodes.
         while not torch.all(~filters):
             # NOTE: root nodes are their own parents.
             nodes = self.parents[self.batch_range, nodes]
-            scores = self.rewards[self.batch_range, nodes] + self.gamma * scores
-            self.update_nodes_info(nodes, scores, filters)
+            self.update_nodes_info(nodes, filters)
 
             # Do not update twice a root node.
             filters = nodes != 0
