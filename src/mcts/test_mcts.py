@@ -477,13 +477,13 @@ def test_repeat_interleave():
             torch.LongTensor([0, 1]),
             torch.LongTensor(
                 [
-                    [0, 2, 1, 1, 1, 1, 0],
+                    [4, 2, 1, 1, 1, 1, 0],
                     [2, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [0.0000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [4.3000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
                     [3.1000, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
@@ -499,13 +499,13 @@ def test_repeat_interleave():
             torch.LongTensor(
                 [
                     [4, 2, 1, 1, 1, 1, 0],
-                    [0, 1, 1, 0, 0, 0, 0],
+                    [2, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
                     [4.1200, 1.8000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
-                    [0.0000, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    [3.1000, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -525,7 +525,6 @@ def test_backpropagate(
 ):
     tree = tree_mockup()
     tree.backpropagate(nodes)
-    print(tree.sum_scores)
 
     assert torch.all(tree.visits == updated_visits), "Wrong visits number"
     assert torch.allclose(
@@ -540,7 +539,7 @@ def test_all_terminated():
 
     tree = tree_mockup_small()
     tree.envs, tree.policy, tree.critic = env, policy, critic
-    tree.terminated[0] = True
+    tree.terminated[0, ...] = True
 
     actions_ = tree.actions.clone()
     childs_ = tree.childs.clone()
@@ -567,8 +566,6 @@ def test_all_terminated():
     assert torch.all(terminated_[to_ignore] == tree.terminated[to_ignore])
     assert torch.all(values_[to_ignore] == tree.values[to_ignore])
     assert torch.all(visits_[to_ignore] == tree.visits[to_ignore])
-
-    # TODO: Make sure the backprop is done correctly.
 
     # Make sure the step does not break.
     tree.step()

@@ -457,10 +457,11 @@ class MCTSTree:
         actions = self.actions.scatter(dim=1, index=childs_node_id, src=actions)
         self.actions[to_modify] = actions[to_modify]
 
-    def update_nodes_info(self, nodes: torch.Tensor, filters: torch.Tensor):
+    def update_nodes_info(self, nodes: torch.Tensor):
         """Update the information of the given nodes.
 
-        If a node is masked (filter is False), its value is not updated.
+        Note that this method can be called multiple times on the
+        same nodes as it won't change their values after the first call.
         """
         childs = self.childs[self.batch_range, nodes]
 
@@ -473,7 +474,7 @@ class MCTSTree:
         # Set the visits as the sum of the children visits.
         visits = torch.gather(self.visits, dim=1, index=childs)
         visits[childs == 0] = 0
-        self.visits[self.batch_range, nodes] = visits.sum(dim=1) * filters
+        self.visits[self.batch_range, nodes] = visits.sum(dim=1)
 
         # Same for `sum_scores`.
         sum_scores = torch.gather(self.sum_scores, dim=1, index=childs)
@@ -481,7 +482,7 @@ class MCTSTree:
         sum_scores[childs == 0] = 0.0
         rewards[childs == 0] = 0.0
         scores = rewards + self.gamma * sum_scores
-        self.sum_scores[self.batch_range, nodes] = scores.sum(dim=1) * filters
+        self.sum_scores[self.batch_range, nodes] = scores.sum(dim=1)
 
     def backpropagate(self, leafs: torch.Tensor):
         """Backpropagate the new value estimate from the given leafs to their parents.
@@ -493,16 +494,12 @@ class MCTSTree:
         # We maintain a list of node to exclude so that we do not update
         # twice a root node.
         nodes = leafs
-        filters = nodes != 0
 
         # While we did not update all root nodes.
-        while not torch.all(~filters):
+        while not torch.all(nodes == 0):
             # NOTE: root nodes are their own parents.
             nodes = self.parents[self.batch_range, nodes]
-            self.update_nodes_info(nodes, filters)
-
-            # Do not update twice a root node.
-            filters = nodes != 0
+            self.update_nodes_info(nodes)
 
     @property
     def tree_nodes(self) -> torch.Tensor:
