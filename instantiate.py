@@ -76,6 +76,11 @@ def init_ppo_loss(config: DictConfig) -> PPOLoss:
     )
 
 
+def init_mcts_loss(config: DictConfig) -> MCTSLoss:
+    loss = config.exp.loss
+    return MCTSLoss(loss.value_weight)
+
+
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
     """Initialize the optimizer."""
     optimizer_name = config.exp.optimizer.optimizer
@@ -181,6 +186,7 @@ def init_mcts_trainer(
     policy: Policy | DDP,
     critic: Critic | DDP,
     mcts: MCTSTree,
+    loss: MCTSLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
     policy_scheduler: optim.lr_scheduler.LRScheduler,
@@ -193,7 +199,7 @@ def init_mcts_trainer(
         policy,
         critic,
         mcts,
-        MCTSLoss(1.0, 0.0, 0.0),
+        loss,
         policy_optimizer,
         critic_optimizer,
         policy_scheduler,

@@ -7,13 +7,10 @@ from ..model import Critic, Policy
 
 
 class MCTSLoss(nn.Module):
-    def __init__(self, value_weight: float, entropy_weight: float, entropy_clip: float):
+    def __init__(self, value_weight: float):
         super().__init__()
 
         self.value_weight = value_weight
-        self.entropy_weight = entropy_weight
-        self.entropy_clip = entropy_clip
-
         self.mse = nn.MSELoss()
 
     def forward(

@@ -23,8 +23,8 @@ loss:
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
   value_weight: 1.0e-5
-  entropy_weight: 0.0e-2
-  entropy_clip: 0.0
+  entropy_weight: 1.0e-2
+  entropy_clip: 3.0
 
 trainer:
   episodes: 100

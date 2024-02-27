@@ -11,17 +11,18 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from instantiate import (
     init_env,
-    init_ppo_loss,
     init_mcts,
+    init_mcts_loss,
+    init_mcts_trainer,
     init_models,
     init_optimizer,
+    init_ppo_loss,
     init_ppo_trainer,
     init_replay_buffer,
     init_scheduler,
-    init_mcts_trainer,
 )
-from src.policy_gradient import PPOTrainer
 from src.mcts import MCTSTrainer
+from src.policy_gradient import PPOTrainer
 
 
 def setup_distributed(rank: int, world_size: int):
@@ -106,12 +107,14 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
             )
         case "mcts":
             mcts = init_mcts(config, env)
+            loss = init_mcts_loss(config)
             trainer = init_mcts_trainer(
                 config,
                 env,
                 policy,
                 critic,
                 mcts,
+                loss,
                 policy_optimizer,
                 critic_optimizer,
                 policy_scheduler,
