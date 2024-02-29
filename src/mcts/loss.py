@@ -11,6 +11,8 @@ class MCTSLoss(nn.Module):
         super().__init__()
 
         self.value_weight = value_weight
+        self.entropy_clip = 3.0
+        self.mse = nn.HuberLoss()
         self.mse = nn.MSELoss()
 
     def forward(
@@ -31,11 +33,21 @@ class MCTSLoss(nn.Module):
         )
         logprobs = rearrange(logprobs, "(b n) a -> b n a", n=n_actions)
 
-        metrics["loss/policy"] = -(batch["probs"] * logprobs.sum(dim=2)).mean()
+        metrics["loss/policy"] = (
+            -(batch["probs"] * logprobs.sum(dim=2)).sum(dim=1).mean()
+        )
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
+        entropy_penalty = torch.relu(self.entropy_clip - entropies.sum(dim=1)).mean()
+        metrics["loss/clipped-entropy"] = entropy_penalty
+
         metrics["loss/total"] = (
-            metrics["loss/weighted-policy"] + metrics["loss/weighted-critic"]
+            metrics["loss/weighted-policy"]
+            + metrics["loss/weighted-critic"]
+            + metrics["loss/clipped-entropy"]
         )
+
+        with torch.no_grad():
+            metrics["metrics/entropy"] = entropies.sum(dim=1).mean()
 
         return metrics

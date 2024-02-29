@@ -142,6 +142,10 @@ def mcts_rollout(
             disable_logs
         )
 
+        # Make sure there's no "nan" values.
+        assert torch.isfinite(sample["probs"]).all()
+        assert torch.isfinite(sample["values"]).all()
+
         action_ids = Policy.sample_actions(sample["probs"], mode="softmax")
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
         _, rewards, dones, truncated, _ = env.step(

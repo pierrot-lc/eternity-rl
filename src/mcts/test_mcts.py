@@ -1,5 +1,6 @@
-import pytest
 from copy import deepcopy
+
+import pytest
 import torch
 from einops import rearrange, repeat
 
@@ -275,17 +276,13 @@ def test_ucb(nodes: torch.Tensor):
         for ucb_index, node_id in enumerate(nodes[batch_id]):
             node_visits = tree.visits[batch_id, node_id]
 
-            if node_visits == 0:
-                ucb[batch_id, ucb_index] = torch.inf
-                continue
-
             parent_id = tree.parents[batch_id, node_id]
             parent_visits = tree.visits[batch_id, parent_id]
-            node_score = tree.sum_scores[batch_id, node_id] / node_visits
+            node_score = tree.sum_scores[batch_id, node_id] / (node_visits + 1)
             prior = tree.priors[batch_id, node_id]
-            ucb[batch_id, ucb_index] = (
-                node_score + prior * c * torch.sqrt(parent_visits) / node_visits
-            )
+            ucb[batch_id, ucb_index] = node_score + prior * c * torch.sqrt(
+                parent_visits + 1
+            ) / (node_visits + 1)
 
     assert torch.allclose(ucb, tree.ucb_scores(nodes)), "Wrong UCB scores"
 
@@ -402,7 +399,9 @@ def test_expand_nodes(nodes: torch.Tensor):
     policy, critic = models_mockup()
     tree.envs, tree.policy, tree.critic = env, policy, critic
 
-    actions, priors, rewards, values, terminated = tree.sample_nodes(tree.envs)
+    actions, priors, rewards, values, terminated = tree.sample_nodes(
+        tree.envs, sampling_mode="dirichlet"
+    )
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
     ), "Wrong actions shape"
@@ -437,12 +436,10 @@ def test_expand_nodes(nodes: torch.Tensor):
                 tree.values[batch_id, child_id] == values[batch_id, child_number]
             ), "Wrong children values"
             assert torch.all(
-                tree.sum_scores[batch_id, child_id]
-                == rewards[batch_id, child_number]
-                + tree.gamma * values[batch_id, child_number]
-            ), "Wrong children sum_scores"
+                tree.sum_scores[batch_id, child_id] == values[batch_id, child_number]
+            ), "Wrong children values"
             assert torch.all(
-                tree.visits[batch_id, child_id] == 1
+                tree.visits[batch_id, child_id] == 0
             ), "Wrong children visits"
             assert torch.all(
                 tree.terminated[batch_id, child_id]
@@ -478,13 +475,13 @@ def test_repeat_interleave():
             torch.LongTensor(
                 [
                     [4, 2, 1, 1, 1, 1, 0],
-                    [2, 1, 1, 0, 0, 0, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [4.3000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
-                    [3.1000, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    [3.0000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -498,14 +495,14 @@ def test_repeat_interleave():
             torch.LongTensor([5, 1]),
             torch.LongTensor(
                 [
-                    [4, 2, 1, 1, 1, 1, 0],
-                    [2, 1, 1, 0, 0, 0, 0],
+                    [5, 3, 1, 1, 1, 1, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [4.1200, 1.8000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
-                    [3.1000, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    [5.6200, 3.8000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -525,6 +522,7 @@ def test_backpropagate(
 ):
     tree = tree_mockup()
     tree.backpropagate(nodes)
+    print(tree.sum_scores)
 
     assert torch.all(tree.visits == updated_visits), "Wrong visits number"
     assert torch.allclose(
@@ -552,7 +550,9 @@ def test_all_terminated():
     visits_ = tree.visits.clone()
 
     leafs, envs = tree.select_leafs()
-    actions, priors, rewards, values, terminated = tree.sample_nodes(envs)
+    actions, priors, rewards, values, terminated = tree.sample_nodes(
+        envs, sampling_mode="dirichlet"
+    )
     to_ignore = torch.zeros(env.batch_size, dtype=torch.bool)
     to_ignore[0] = True
     tree.expand_nodes(leafs, actions, priors, rewards, values, terminated, to_ignore)

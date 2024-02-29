@@ -22,7 +22,7 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 1.0e-5
+  value_weight: 1.0e-0
   entropy_weight: 1.0e-2
   entropy_clip: 3.0
 
