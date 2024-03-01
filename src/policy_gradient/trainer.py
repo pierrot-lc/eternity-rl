@@ -17,7 +17,8 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
-from .rollout import exploit_rollout, rollout, split_reset_rollouts
+from .rollout import mcts_rollout, exploit_rollout, rollout, split_reset_rollouts
+from ..mcts import MCTSTree
 
 
 class PPOTrainer:
@@ -76,9 +77,9 @@ class PPOTrainer:
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
 
-        # A first rollout in greedy-mode, to exploit the model.
-        self.policy_module.eval()
-        exploit_rollout(self.env, self.policy_module, self.rollouts, disable_logs)
+        # # A first rollout in greedy-mode, to exploit the model.
+        # self.policy_module.eval()
+        # exploit_rollout(self.env, self.policy_module, self.rollouts, disable_logs)
 
         # Then we collect the rollouts with the current policy.
         self.policy_module.train()
@@ -214,6 +215,27 @@ class PPOTrainer:
 
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
+
+                if i % 100 == 0 and i != 0:
+                    self.policy.eval()
+                    self.critic.eval()
+                    mcts = MCTSTree(
+                        self.loss.gamma,
+                        n_simulations=100,
+                        n_childs=20,
+                        n_actions=len(self.env.action_space),
+                        batch_size=self.env.batch_size,
+                        device=self.device
+                    )
+                    mcts_rollout(
+                        self.env,
+                        self.policy_module,
+                        self.critic_module,
+                        mcts,
+                        steps=self.rollouts,
+                        disable_logs=disable_logs,
+                    )
+
 
                 if not disable_logs:
                     metrics = self.evaluate()

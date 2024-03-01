@@ -23,12 +23,12 @@ loss:
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
   value_weight: 1e-1
-  entropy_weight: 1.0e-1
+  entropy_weight: 1.0e-2
   entropy_clip: 3.0
 
 trainer:
   episodes: -1
-  epochs: 10
+  epochs: 3
   batch_size: 128
   rollouts: 50
   reset_proportion: 0.50

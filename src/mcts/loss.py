@@ -7,12 +7,12 @@ from ..model import Critic, Policy
 
 
 class MCTSLoss(nn.Module):
-    def __init__(self, value_weight: float):
+    def __init__(self, value_weight: float, entropy_weight: float):
         super().__init__()
 
         self.value_weight = value_weight
-        self.entropy_clip = 3.0
-        self.mse = nn.HuberLoss()
+        self.entropy_weight = entropy_weight
+
         self.mse = nn.MSELoss()
 
     def forward(
@@ -38,13 +38,13 @@ class MCTSLoss(nn.Module):
         )
         metrics["loss/weighted-policy"] = metrics["loss/policy"]
 
-        entropy_penalty = torch.relu(self.entropy_clip - entropies.sum(dim=1)).mean()
-        metrics["loss/clipped-entropy"] = entropy_penalty
+        metrics["loss/entropy"] = -entropies.sum(dim=1).mean()
+        metrics["loss/weighted-entropy"] = self.entropy_weight * metrics["loss/entropy"]
 
         metrics["loss/total"] = (
             metrics["loss/weighted-policy"]
             + metrics["loss/weighted-critic"]
-            + metrics["loss/clipped-entropy"]
+            + metrics["loss/weighted-entropy"]
         )
 
         with torch.no_grad():

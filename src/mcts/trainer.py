@@ -17,8 +17,8 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from ..policy_gradient.rollout import mcts_rollout
-from .tree import MCTSTree
 from .loss import MCTSLoss
+from .tree import MCTSTree
 
 
 class MCTSTrainer:
@@ -223,12 +223,15 @@ class MCTSTrainer:
         )
         metrics["matches/total-won"] = self.env.total_won
 
-        # Compute losses.
+        # Compute losses and other metrics.
         batch = self.replay_buffer.sample()
         batch = batch.to(self.device)
         metrics |= self.loss(batch, self.policy, self.critic)
         metrics["metrics/values"] = wandb.Histogram(batch["values"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        for action_id in range(batch["actions"].shape[2]):
+            actions = batch["actions"][:, :, action_id]
+            metrics[f"metrics/action-{action_id}"] = wandb.Histogram(actions.flatten().cpu())
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.

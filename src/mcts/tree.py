@@ -9,7 +9,7 @@ import torch
 from einops import rearrange, repeat
 from tqdm import tqdm
 
-from ..environment import N_SIDES, EternityEnv
+from ..environment import EternityEnv
 from ..model import Critic, Policy
 
 
@@ -152,13 +152,6 @@ class MCTSTree:
         childs = repeat(childs, "b c -> b c a", a=self.n_actions)
         actions = torch.gather(self.actions, dim=1, index=childs)
 
-        p = 0.2
-        n_actions = self.envs.n_pieces * self.envs.n_pieces * N_SIDES * N_SIDES
-        probs = (
-            p * probs + (1 - p) * 1 / n_actions
-        )  # Bias towards uniform distribution.
-        values = p * values + (1 - p) * self.values[:, 0]  # Bias towards root value.
-
         return probs, values, actions
 
     @torch.inference_mode()
@@ -169,10 +162,8 @@ class MCTSTree:
         terminated_leafs = self.terminated[self.batch_range, leafs]
 
         # 2. Sample new nodes to add to the tree.
-        sampling_mode = "dirichlet" if torch.all(leafs == 0) else "softmax"
-        sampling_mode = "dirichlet"
         actions, priors, rewards, values, terminated = self.sample_nodes(
-            envs, sampling_mode
+            envs, sampling_mode="dirichlet"
         )
 
         # 3. Add and expand the new nodes.
@@ -186,7 +177,7 @@ class MCTSTree:
             to_ignore=terminated_leafs,
         )
 
-        # 3.5
+        # 3.5 Add untouched values to terminated_leafs.
         if torch.any(terminated_leafs):
             self.visits[terminated_leafs, leafs[terminated_leafs]] += 1
             self.sum_scores[terminated_leafs, leafs[terminated_leafs]] += self.values[
