@@ -141,7 +141,7 @@ def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
     exp = config.exp
     max_size = exp.env.batch_size * exp.trainer.rollouts
     return TensorDictReplayBuffer(
-        storage=LazyTensorStorage(max_size=max_size, device=config.device),
+        storage=LazyTensorStorage(max_size=max_size * 5, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
         batch_size=exp.trainer.batch_size,
         pin_memory=True if config.device != "cpu" else False,

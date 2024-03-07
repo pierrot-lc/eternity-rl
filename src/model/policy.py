@@ -6,8 +6,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import (dirichlet_sampling, epsilon_greedy_sampling,
-                        epsilon_sampling)
+from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling
 from .backbones import GNNBackbone
 from .heads import SelectSide, SelectTile
 
@@ -149,11 +148,18 @@ class Policy(nn.Module):
                 action_ids = Categorical(logits=logits).sample()
             case "dirichlet":
                 # Do as if we saw 10% of each action.
-                # See https://stats.stackexchange.com/a/385139
+                # See https://stats.stackexchange.com/a/385139.
                 n_actions = probs.shape[-1]
                 concentration = 0.1 * n_actions / n_actions
                 action_ids = dirichlet_sampling(
                     probs, concentration=concentration, exploration=0.25
+                )
+            case "uniform":
+                action_ids = torch.randint(
+                    low=0,
+                    high=probs.shape[-1],
+                    size=probs.shape[:-1],
+                    device=probs.device,
                 )
             case _:
                 raise ValueError(f"Invalid mode: {mode}")

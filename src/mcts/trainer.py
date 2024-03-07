@@ -192,7 +192,7 @@ class MCTSTrainer:
                         disable=disable_logs,
                     ):
                         self.do_batch_update(
-                            batch, train_policy=True, train_critic=True
+                            batch, train_policy=False, train_critic=True
                         )
 
                 self.policy_scheduler.step()
@@ -230,8 +230,8 @@ class MCTSTrainer:
         metrics["metrics/values"] = wandb.Histogram(batch["values"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         for action_id in range(batch["actions"].shape[2]):
-            actions = batch["actions"][:, :, action_id]
-            metrics[f"metrics/action-{action_id}"] = wandb.Histogram(actions.flatten().cpu())
+            actions = batch["actions"][:, :, action_id].flatten().cpu()
+            metrics[f"metrics/action-{action_id}"] = wandb.Histogram(actions)
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.

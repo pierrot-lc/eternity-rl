@@ -146,6 +146,7 @@ def mcts_rollout(
         assert torch.isfinite(sample["probs"]).all()
         assert torch.isfinite(sample["values"]).all()
 
+        print(sample["probs"][0])
         action_ids = Policy.sample_actions(sample["probs"], mode="softmax")
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
         _, rewards, dones, truncated, _ = env.step(

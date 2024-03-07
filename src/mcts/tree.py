@@ -115,7 +115,7 @@ class MCTSTree:
             probs: The target policy to learn from the MCTS simulations.
                 Shape of [batch_size, n_childs].
             values: The target value to learn from the MCTS simulations.
-                Shape of [batch_size, ].
+                Shape of [batch_size,].
             actions: The corresponding actions sampled from the MCTS simulations.
                 Shape of [batch_size, n_childs, n_actions].
         """
@@ -143,10 +143,12 @@ class MCTSTree:
         childs = self.childs[:, 0]  # Root's children.
         visits = torch.gather(self.visits, dim=1, index=childs)
         scores = self.scores(childs)
+        rewards = torch.gather(self.rewards, dim=1, index=childs)
 
         probs = visits / torch.max(visits, dim=1, keepdim=True).values
         probs = probs / probs.sum(dim=1, keepdim=True)
-        values = visits * scores / visits.sum(dim=1, keepdim=True)
+        values = rewards + self.gamma * scores
+        values = visits * values / visits.sum(dim=1, keepdim=True)
         values = values.sum(dim=1)
 
         childs = repeat(childs, "b c -> b c a", a=self.n_actions)
@@ -163,7 +165,7 @@ class MCTSTree:
 
         # 2. Sample new nodes to add to the tree.
         actions, priors, rewards, values, terminated = self.sample_nodes(
-            envs, sampling_mode="dirichlet"
+            envs, sampling_mode="uniform"
         )
 
         # 3. Add and expand the new nodes.
@@ -225,6 +227,9 @@ class MCTSTree:
         priors = torch.gather(self.priors, dim=1, index=nodes)
 
         q_estimate = sum_scores / (node_visits + 1)
+        # u_estimate = (
+        #     priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
+        # )
         u_estimate = (
             priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
         )
@@ -236,7 +241,6 @@ class MCTSTree:
 
         This is used to evaluate the best node.
         Do not use it to explore the tree.
-        Unexplored nodes will be evaluated to '-inf'.
         """
         node_visits = torch.gather(self.visits, dim=1, index=nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
