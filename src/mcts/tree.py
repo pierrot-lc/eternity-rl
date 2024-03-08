@@ -35,7 +35,7 @@ class MCTSTree:
         ) + 1  # Add the root node (id '0').
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
-        self.c_puct = torch.FloatTensor([1.5]).to(self.device)
+        self.c_puct = torch.FloatTensor([0.01]).to(self.device)
 
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
@@ -231,7 +231,7 @@ class MCTSTree:
         #     priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
         # )
         u_estimate = (
-            priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
+            self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
         )
         ucb = q_estimate + u_estimate
         return ucb
@@ -472,9 +472,8 @@ class MCTSTree:
             filters: Whether to ignore the given nodes.
                 Shape of [batch_size, ].
         """
-        childs = self.childs[self.batch_range, nodes]
-
         # A parent is terminated if all its childs are terminated.
+        childs = self.childs[self.batch_range, nodes]
         terminated = torch.gather(self.terminated, dim=1, index=childs)
         terminated[childs == 0] = False  # Ignore fictive childs.
         terminated = terminated.sum(dim=1) == (childs != 0).sum(dim=1)
@@ -496,12 +495,10 @@ class MCTSTree:
         initialized the `sum_scores` and `terminated` states.
         """
         scores = self.values[self.batch_range, leafs]
-        filters = torch.zeros_like(leafs, dtype=torch.bool, device=self.device)
+        nodes = leafs
 
-        # Do the rest of the propagation until we reach the root nodes.
         # We maintain a list of node to exclude so that we do not update
         # twice a root node.
-        nodes = leafs
         filters = nodes == 0
 
         # While we did not update all root nodes.
