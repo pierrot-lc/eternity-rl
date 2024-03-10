@@ -88,11 +88,13 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
     policy_scheduler = init_scheduler(config, policy_optimizer)
     critic_scheduler = init_scheduler(config, critic_optimizer)
 
-    replay_buffer = init_replay_buffer(config)
-
     match config.training_mode:
         case "ppo":
+            exp = config.exp
+            max_size = exp.env.batch_size * exp.trainer.rollouts
+            replay_buffer = init_replay_buffer(config, max_size)
             loss = init_ppo_loss(config)
+
             trainer = init_ppo_trainer(
                 config,
                 env,
@@ -106,20 +108,29 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
                 replay_buffer,
             )
         case "mcts":
+            exp = config.exp
+            max_size = exp.env.batch_size * exp.trainer.rollouts
+            replay_buffer_ppo = init_replay_buffer(config, max_size)
+            replay_buffer_mcts = init_replay_buffer(config, max_size * 10)
+
             mcts = init_mcts(config, env)
-            loss = init_mcts_loss(config)
+
+            loss_ppo = init_ppo_loss(config)
+            loss_mcts = init_mcts_loss(config)
             trainer = init_mcts_trainer(
                 config,
                 env,
                 policy,
                 critic,
                 mcts,
-                loss,
+                loss_ppo,
+                loss_mcts,
                 policy_optimizer,
                 critic_optimizer,
                 policy_scheduler,
                 critic_scheduler,
-                replay_buffer,
+                replay_buffer_ppo,
+                replay_buffer_mcts,
             )
         case _:
             raise ValueError(f"Unknown training mode: {config.training_mode}")

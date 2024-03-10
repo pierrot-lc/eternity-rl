@@ -7,7 +7,7 @@ defaults:
 training_mode: mcts
 
 mcts:
-  simulations: 100
+  simulations: 1000
   childs: 5
 
 seed: 0

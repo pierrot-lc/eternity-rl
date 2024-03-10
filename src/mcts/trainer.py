@@ -16,9 +16,10 @@ import wandb
 
 from ..environment import EternityEnv
 from ..model import Critic, Policy
-from ..policy_gradient.rollout import mcts_rollout
+from ..policy_gradient.rollout import mcts_rollout, rollout, split_reset_rollouts
 from .loss import MCTSLoss
 from .tree import MCTSTree
+from ..policy_gradient.loss import PPOLoss
 
 
 class MCTSTrainer:
@@ -28,12 +29,14 @@ class MCTSTrainer:
         policy: Policy | DDP,
         critic: Critic | DDP,
         mcts: MCTSTree,
-        loss: MCTSLoss,
+        loss_ppo: PPOLoss,
+        loss_mcts: MCTSLoss,
         policy_optimizer: optim.Optimizer,
         critic_optimizer: optim.Optimizer,
         policy_scheduler: LRScheduler,
         critic_scheduler: LRScheduler,
-        replay_buffer: ReplayBuffer,
+        replay_buffer_ppo: ReplayBuffer,
+        replay_buffer_mcts: ReplayBuffer,
         clip_value: float,
         episodes: int,
         epochs: int,
@@ -44,12 +47,14 @@ class MCTSTrainer:
         self.policy = policy
         self.critic = critic
         self.mcts = mcts
-        self.loss = loss
+        self.loss_mcts = loss_mcts
+        self.loss_ppo = loss_ppo
         self.policy_optimizer = policy_optimizer
         self.critic_optimizer = critic_optimizer
         self.policy_scheduler = policy_scheduler
         self.critic_scheduler = critic_scheduler
-        self.replay_buffer = replay_buffer
+        self.replay_buffer_ppo = replay_buffer_ppo
+        self.replay_buffer_mcts = replay_buffer_mcts
         self.clip_value = clip_value
         self.episodes = episodes
         self.epochs = epochs
@@ -70,7 +75,7 @@ class MCTSTrainer:
         self.best_matches_found = 0
 
     @torch.inference_mode()
-    def do_rollouts(self, disable_logs: bool):
+    def do_mcts_rollouts(self, disable_logs: bool, sampling_mode: str):
         """Simulates a bunch of rollouts and adds them to the replay buffer."""
         total_resets = int(self.reset_proportion * self.env.batch_size)
         reset_ids = torch.randperm(
@@ -79,9 +84,9 @@ class MCTSTrainer:
         reset_ids = reset_ids[:total_resets]
         self.env.reset(reset_ids)
 
-        # Then we collect the rollouts with the current policy.
+        # We collect the rollouts with the current policy.
         self.policy_module.eval()
-        self.critic_module.eval()
+        self.critic_module.train()
         traces = mcts_rollout(
             self.env,
             self.policy_module,
@@ -89,6 +94,7 @@ class MCTSTrainer:
             self.mcts,
             self.rollouts,
             disable_logs,
+            sampling_mode=sampling_mode,
         )
 
         # Flatten the batch x steps dimensions and remove the masked steps.
@@ -99,10 +105,61 @@ class MCTSTrainer:
         samples = TensorDict(
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
-        self.replay_buffer.extend(samples)
+        self.replay_buffer_mcts.extend(samples)
+
+    @torch.inference_mode()
+    def do_ppo_rollouts(self, disable_logs: bool, sampling_mode: str):
+        total_resets = int(self.reset_proportion * self.env.batch_size)
+        reset_ids = torch.randperm(
+            self.env.batch_size, generator=self.rng, device=self.device
+        )
+        reset_ids = reset_ids[:total_resets]
+        self.env.reset(reset_ids)
+
+        # We collect the rollouts with the current policy.
+        self.policy_module.train()
+        self.critic_module.train()
+        traces = rollout(
+            self.env,
+            self.policy_module,
+            self.critic_module,
+            self.rollouts,
+            disable_logs,
+        )
+
+        traces = split_reset_rollouts(traces)
+        self.loss_ppo.advantages(traces)
+
+        assert torch.all(
+            traces["rewards"].sum(dim=1) <= 1 + 1e-4  # Account for small FP errors.
+        ), f"Some returns are > 1 ({traces['rewards'].sum(dim=1).max().item()})."
+        assert (
+            self.replay_buffer_ppo._storage.max_size
+            == traces["masks"].sum().item()
+            == self.env.batch_size * self.rollouts
+        ), "Some samples are missing."
+
+        # Flatten the batch x steps dimensions and remove the masked steps.
+        samples = dict()
+        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
+        for name, tensor in traces.items():
+            if name == "masks":
+                continue
+
+            tensor = einops.rearrange(tensor, "b d ... -> (b d) ...")
+            samples[name] = tensor[masks]
+
+        samples = TensorDict(
+            samples, batch_size=samples["states"].shape[0], device=self.device
+        )
+        self.replay_buffer_ppo.extend(samples)
 
     def do_batch_update(
-        self, batch: TensorDict, train_policy: bool, train_critic: bool
+        self,
+        batch: TensorDict,
+        loss: torch.nn.Module,
+        train_policy: bool,
+        train_critic: bool,
     ):
         """Performs a batch update on the model."""
         if train_policy:
@@ -114,7 +171,7 @@ class MCTSTrainer:
             self.critic_optimizer.zero_grad()
 
         batch = batch.to(self.device)
-        metrics = self.loss(batch, self.policy, self.critic)
+        metrics = loss(batch, self.policy, self.critic)
         metrics["loss/total"].backward()
 
         if train_policy:
@@ -179,21 +236,54 @@ class MCTSTrainer:
             iter = count(0) if self.episodes == -1 else range(self.episodes)
 
             for i in tqdm(iter, desc="Episode", disable=disable_logs):
-                self.do_rollouts(disable_logs=disable_logs)
+                self.do_mcts_rollouts(disable_logs=disable_logs, sampling_mode="greedy")
 
                 for _ in tqdm(
-                    range(self.epochs), desc="Epoch", leave=False, disable=disable_logs
+                    range(self.epochs * 5),
+                    desc="Epoch",
+                    leave=False,
+                    disable=disable_logs,
                 ):
                     for batch in tqdm(
-                        self.replay_buffer,
-                        total=len(self.replay_buffer) // self.replay_buffer._batch_size,
+                        self.replay_buffer_mcts,
+                        total=len(self.replay_buffer_mcts)
+                        // self.replay_buffer_mcts._batch_size,
                         desc="Batch",
                         leave=False,
                         disable=disable_logs,
                     ):
                         self.do_batch_update(
-                            batch, train_policy=False, train_critic=True
+                            batch,
+                            loss=self.loss_mcts,
+                            train_policy=False,
+                            train_critic=True,
                         )
+
+                for _ in tqdm(
+                    range(10), desc="PPO sub-epoch", leave=False, disable=disable_logs
+                ):
+                    self.do_ppo_rollouts(disable_logs, "softmax")
+
+                    for _ in tqdm(
+                        range(self.epochs),
+                        desc="Epoch",
+                        leave=False,
+                        disable=disable_logs,
+                    ):
+                        for batch in tqdm(
+                            self.replay_buffer_ppo,
+                            total=len(self.replay_buffer_ppo)
+                            // self.replay_buffer_ppo._batch_size,
+                            desc="Batch",
+                            leave=False,
+                            disable=disable_logs,
+                        ):
+                            self.do_batch_update(
+                                batch,
+                                loss=self.loss_ppo,
+                                train_policy=True,
+                                train_critic=False,
+                            )
 
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
@@ -224,9 +314,9 @@ class MCTSTrainer:
         metrics["matches/total-won"] = self.env.total_won
 
         # Compute losses and other metrics.
-        batch = self.replay_buffer.sample()
+        batch = self.replay_buffer_mcts.sample()
         batch = batch.to(self.device)
-        metrics |= self.loss(batch, self.policy, self.critic)
+        metrics |= self.loss_mcts(batch, self.policy, self.critic)
         metrics["metrics/values"] = wandb.Histogram(batch["values"].cpu())
         metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
         for action_id in range(batch["actions"].shape[2]):

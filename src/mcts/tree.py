@@ -132,13 +132,13 @@ class MCTSTree:
         self.values[:, 0] = self.critic(self.envs.render())
         self.sum_scores[:, 0] = self.values[:, 0]
 
-        for _ in tqdm(
+        for i in tqdm(
             range(self.n_simulations),
             desc="MCTS simulations",
             leave=False,
             disable=disable_logs,
         ):
-            self.step()
+            self.step("dirichlet" if i == 0 else "softmax")
 
         childs = self.childs[:, 0]  # Root's children.
         visits = torch.gather(self.visits, dim=1, index=childs)
@@ -157,7 +157,7 @@ class MCTSTree:
         return probs, values, actions
 
     @torch.inference_mode()
-    def step(self):
+    def step(self, sampling_mode: str = "softmax"):
         """Do a one step of the MCTS algorithm."""
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
@@ -165,7 +165,7 @@ class MCTSTree:
 
         # 2. Sample new nodes to add to the tree.
         actions, priors, rewards, values, terminated = self.sample_nodes(
-            envs, sampling_mode="uniform"
+            envs, sampling_mode=sampling_mode
         )
 
         # 3. Add and expand the new nodes.
@@ -230,9 +230,7 @@ class MCTSTree:
         # u_estimate = (
         #     priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
         # )
-        u_estimate = (
-            self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
-        )
+        u_estimate = self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
         ucb = q_estimate + u_estimate
         return ucb
 

@@ -112,6 +112,7 @@ def mcts_rollout(
     mcts: MCTSTree,
     steps: int,
     disable_logs: bool,
+    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps using a MCTS tree to look for the best
     move at each step.
@@ -147,7 +148,7 @@ def mcts_rollout(
         assert torch.isfinite(sample["values"]).all()
 
         print(sample["probs"][0])
-        action_ids = Policy.sample_actions(sample["probs"], mode="softmax")
+        action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
         _, rewards, dones, truncated, _ = env.step(
             sampled_actions

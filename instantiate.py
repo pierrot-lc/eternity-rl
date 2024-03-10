@@ -137,11 +137,10 @@ def init_scheduler(
     return optim.lr_scheduler.ChainedScheduler(schedulers)
 
 
-def init_replay_buffer(config: DictConfig) -> ReplayBuffer:
+def init_replay_buffer(config: DictConfig, max_size: int) -> ReplayBuffer:
     exp = config.exp
-    max_size = exp.env.batch_size * exp.trainer.rollouts
     return TensorDictReplayBuffer(
-        storage=LazyTensorStorage(max_size=max_size * 5, device=config.device),
+        storage=LazyTensorStorage(max_size=max_size, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
         batch_size=exp.trainer.batch_size,
         pin_memory=True if config.device != "cpu" else False,
@@ -186,12 +185,14 @@ def init_mcts_trainer(
     policy: Policy | DDP,
     critic: Critic | DDP,
     mcts: MCTSTree,
-    loss: MCTSLoss,
+    loss_ppo: PPOLoss,
+    loss_mcts: MCTSLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
     policy_scheduler: optim.lr_scheduler.LRScheduler,
     critic_scheduler: optim.lr_scheduler.LRScheduler,
-    replay_buffer: ReplayBuffer,
+    replay_buffer_ppo: ReplayBuffer,
+    replay_buffer_mcts: ReplayBuffer,
 ) -> MCTSTrainer:
     trainer = config.exp.trainer
     return MCTSTrainer(
@@ -199,12 +200,14 @@ def init_mcts_trainer(
         policy,
         critic,
         mcts,
-        loss,
+        loss_ppo,
+        loss_mcts,
         policy_optimizer,
         critic_optimizer,
         policy_scheduler,
         critic_scheduler,
-        replay_buffer,
+        replay_buffer_ppo,
+        replay_buffer_mcts,
         trainer.clip_value,
         trainer.episodes,
         trainer.epochs,

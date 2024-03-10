@@ -17,8 +17,7 @@ import wandb
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .loss import PPOLoss
-from .rollout import mcts_rollout, exploit_rollout, rollout, split_reset_rollouts
-from ..mcts import MCTSTree
+from .rollout import exploit_rollout, rollout, split_reset_rollouts
 
 
 class PPOTrainer:
@@ -215,27 +214,6 @@ class PPOTrainer:
 
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
-
-                if i % 100 == 0 and i != 0:
-                    self.policy.eval()
-                    self.critic.eval()
-                    mcts = MCTSTree(
-                        self.loss.gamma,
-                        n_simulations=100,
-                        n_childs=20,
-                        n_actions=len(self.env.action_space),
-                        batch_size=self.env.batch_size,
-                        device=self.device
-                    )
-                    mcts_rollout(
-                        self.env,
-                        self.policy_module,
-                        self.critic_module,
-                        mcts,
-                        steps=self.rollouts,
-                        disable_logs=disable_logs,
-                    )
-
 
                 if not disable_logs:
                     metrics = self.evaluate()
