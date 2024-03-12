@@ -7,7 +7,7 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
 from src.environment import EternityEnv
-from src.mcts import MCTSTree, MCTSTrainer, MCTSLoss
+from src.mcts import MCTSLoss, MCTSTrainer, MCTSTree
 from src.model import Critic, Policy
 from src.policy_gradient import PPOLoss, PPOTrainer
 
@@ -54,6 +54,7 @@ def init_models(config: DictConfig) -> tuple[Policy, Critic]:
 def init_mcts(config: DictConfig, env: EternityEnv) -> MCTSTree:
     mcts = config.mcts
     return MCTSTree(
+        mcts.c_puct,
         config.exp.loss.gamma,
         mcts.simulations,
         mcts.childs,

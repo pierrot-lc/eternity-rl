@@ -55,6 +55,7 @@ def tree_mockup() -> MCTSTree:
     """
     env = env_mockup()
     tree = MCTSTree(
+        c_puct=1.5,
         gamma=0.9,
         n_simulations=2,
         n_childs=3,
@@ -170,6 +171,7 @@ def tree_mockup_small() -> MCTSTree:
     """
     env = env_mockup()
     tree = MCTSTree(
+        c_puct=1.5,
         gamma=1.0,
         n_simulations=2,
         n_childs=3,
@@ -270,16 +272,22 @@ def tree_mockup_small() -> MCTSTree:
 )
 def test_ucb(nodes: torch.Tensor):
     tree = tree_mockup()
+    # Backprop some q minmax estimates to avoid having qmin/qmax = 0.
+    tree.update_q_minmax_estimates(nodes[:, 0])
+
     c = tree.c_puct
     ucb = torch.zeros_like(nodes, dtype=torch.float)
     for batch_id in range(nodes.shape[0]):
+        q_min = tree.q_estimate_min[batch_id]
+        q_max = tree.q_estimate_max[batch_id]
+
         for ucb_index, node_id in enumerate(nodes[batch_id]):
             node_visits = tree.visits[batch_id, node_id]
 
             parent_id = tree.parents[batch_id, node_id]
             parent_visits = tree.visits[batch_id, parent_id]
             node_score = tree.sum_scores[batch_id, node_id] / (node_visits + 1)
-            prior = tree.priors[batch_id, node_id]
+            node_score = (node_score - q_min) / (q_max - q_min + 1e-8)
             ucb[batch_id, ucb_index] = node_score + c * torch.sqrt(
                 parent_visits + 1
             ) / (node_visits + 1)
@@ -522,12 +530,49 @@ def test_backpropagate(
 ):
     tree = tree_mockup()
     tree.backpropagate(nodes)
-    print(tree.sum_scores)
 
     assert torch.all(tree.visits == updated_visits), "Wrong visits number"
     assert torch.allclose(
         tree.sum_scores, updated_sum_scores
     ), "Wrong sum scores number"
+
+
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        torch.LongTensor([3, 0]),
+        torch.LongTensor([1, 0]),
+    ],
+)
+def test_update_q_minmax_estimates(nodes: torch.Tensor):
+    tree = tree_mockup()
+    q_max = tree.q_estimate_max.clone()
+    q_min = tree.q_estimate_min.clone()
+
+    tree.update_q_minmax_estimates(nodes)
+
+    for batch_id in range(tree.batch_size):
+        node_id = nodes[batch_id]
+        while node_id != 0:
+            q_estimate = tree.sum_scores[batch_id, node_id] / (
+                tree.visits[batch_id, node_id] + 1
+            )
+
+            q_max[batch_id] = max(q_max[batch_id], q_estimate)
+            q_min[batch_id] = min(q_min[batch_id], q_estimate)
+
+            node_id = tree.parents[batch_id, node_id]
+
+        # Do a step for the root node as well.
+        q_estimate = tree.sum_scores[batch_id, node_id] / (
+            tree.visits[batch_id, node_id] + 1
+        )
+
+        q_max[batch_id] = max(q_max[batch_id], q_estimate)
+        q_min[batch_id] = min(q_min[batch_id], q_estimate)
+
+    assert torch.allclose(q_max, tree.q_estimate_max)
+    assert torch.allclose(q_min, tree.q_estimate_min)
 
 
 def test_all_terminated():

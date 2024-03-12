@@ -16,6 +16,7 @@ from ..model import Critic, Policy
 class MCTSTree:
     def __init__(
         self,
+        c_puct: float,
         gamma: float,
         n_simulations: int,
         n_childs: int,
@@ -35,7 +36,7 @@ class MCTSTree:
         ) + 1  # Add the root node (id '0').
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
-        self.c_puct = torch.FloatTensor([0.01]).to(self.device)
+        self.c_puct = torch.FloatTensor([c_puct]).to(self.device)
 
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
@@ -82,6 +83,16 @@ class MCTSTree:
             dtype=torch.bool,
             device=self.device,
         )
+        self.q_estimate_min = torch.zeros(
+            (self.batch_size,),
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.q_estimate_max = torch.zeros(
+            (self.batch_size,),
+            dtype=torch.float,
+            device=self.device,
+        )
 
     def reset(self, envs: EternityEnv, policy: Policy, critic: Critic):
         """Reset the overall object state.
@@ -105,6 +116,8 @@ class MCTSTree:
         self.sum_scores.zero_()
         self.priors.zero_()
         self.terminated.zero_()
+        self.q_estimate_max.zero_()
+        self.q_estimate_min.zero_()
 
     @torch.inference_mode()
     def evaluate(self, disable_logs: bool) -> tuple[torch.Tensor, torch.Tensor]:
@@ -115,7 +128,7 @@ class MCTSTree:
             probs: The target policy to learn from the MCTS simulations.
                 Shape of [batch_size, n_childs].
             values: The target value to learn from the MCTS simulations.
-                Shape of [batch_size,].
+                Shape of [batch_size, n_childs].
             actions: The corresponding actions sampled from the MCTS simulations.
                 Shape of [batch_size, n_childs, n_actions].
         """
@@ -130,7 +143,9 @@ class MCTSTree:
 
         # Init roots value.
         self.values[:, 0] = self.critic(self.envs.render())
-        self.sum_scores[:, 0] = self.values[:, 0]
+        self.sum_scores[:, 0] = self.values[:, 0].clone()
+        self.q_estimate_min = self.values[:, 0].clone()
+        self.q_estimate_max = self.values[:, 0].clone()
 
         for i in tqdm(
             range(self.n_simulations),
@@ -148,8 +163,6 @@ class MCTSTree:
         probs = visits / torch.max(visits, dim=1, keepdim=True).values
         probs = probs / probs.sum(dim=1, keepdim=True)
         values = rewards + self.gamma * scores
-        values = visits * values / visits.sum(dim=1, keepdim=True)
-        values = values.sum(dim=1)
 
         childs = repeat(childs, "b c -> b c a", a=self.n_actions)
         actions = torch.gather(self.actions, dim=1, index=childs)
@@ -190,6 +203,9 @@ class MCTSTree:
         childs = self.select_childs(leafs)
         self.backpropagate(childs)
 
+        # 5. Update q min/max estimates.
+        self.update_q_minmax_estimates(leafs)
+
     def best_actions(self) -> torch.Tensor:
         """Return the actions corresponding to the best child
         of the root node.
@@ -224,13 +240,14 @@ class MCTSTree:
         parent_nodes = torch.gather(self.parents, dim=1, index=nodes)
         parent_visits = torch.gather(self.visits, dim=1, index=parent_nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
-        priors = torch.gather(self.priors, dim=1, index=nodes)
 
+        q_min = self.q_estimate_min.unsqueeze(1)
+        q_max = self.q_estimate_max.unsqueeze(1)
         q_estimate = sum_scores / (node_visits + 1)
-        # u_estimate = (
-        #     priors * self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
-        # )
+        q_estimate = (q_estimate - q_min) / (q_max - q_min + 1e-8)
+
         u_estimate = self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
+
         ucb = q_estimate + u_estimate
         return ucb
 
@@ -440,7 +457,7 @@ class MCTSTree:
 
         values = self.values.scatter(dim=1, index=childs_node_id, src=values)
         self.values[to_modify] = values[to_modify]
-        self.sum_scores[to_modify] = values[to_modify]
+        self.sum_scores[to_modify] = values[to_modify].clone()
 
         visits = self.visits.scatter(dim=1, index=childs_node_id, src=visits)
         self.visits[to_modify] = visits[to_modify]
@@ -509,6 +526,41 @@ class MCTSTree:
             self.update_nodes_info(nodes, scores, filters)
 
             filters = nodes == 0
+
+    def update_q_minmax_estimates(self, nodes: torch.Tensor):
+        """Update the q min/max estimates with the q-estimates of the
+        given nodes and the nodes further up in the tree.
+
+        ---
+        Args:
+            nodes: Id of the node for each batch sample.
+                Shape of [batch_size,].
+        """
+        # While we did not reach the root nodes.
+        while not torch.all(nodes == 0):
+            sum_scores = self.sum_scores[self.batch_range, nodes]
+            visites = self.visits[self.batch_range, nodes]
+            scores = sum_scores / (visites + 1)
+
+            q_estimate_min = torch.stack((self.q_estimate_min, scores), dim=1)
+            self.q_estimate_min = q_estimate_min.min(dim=1).values
+
+            q_estimate_max = torch.stack((self.q_estimate_max, scores), dim=1)
+            self.q_estimate_max = q_estimate_max.max(dim=1).values
+
+            # NOTE: root nodes are their own parents.
+            nodes = self.parents[self.batch_range, nodes]
+
+        # Do a pass on the root nodes as well.
+        sum_scores = self.sum_scores[self.batch_range, nodes]
+        visites = self.visits[self.batch_range, nodes]
+        scores = sum_scores / (visites + 1)
+
+        q_estimate_min = torch.stack((self.q_estimate_min, scores), dim=1)
+        self.q_estimate_min = q_estimate_min.min(dim=1).values
+
+        q_estimate_max = torch.stack((self.q_estimate_max, scores), dim=1)
+        self.q_estimate_max = q_estimate_max.max(dim=1).values
 
     @property
     def tree_nodes(self) -> torch.Tensor:

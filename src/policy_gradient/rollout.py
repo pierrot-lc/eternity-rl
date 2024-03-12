@@ -148,7 +148,21 @@ def mcts_rollout(
         assert torch.isfinite(sample["values"]).all()
 
         print(sample["probs"][0])
-        action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
+        print(sample["values"][0])
+
+        match sampling_mode:
+            case "softmax":
+                action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
+                sample["values"] = (sample["values"] * sample["probs"]).sum(dim=1)
+            case "greedy":
+                action_ids = sample["values"].argmax(dim=1)
+                sample["values"] = sample["values"].max(dim=1).values
+            case "uniform":
+                action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
+                sample["values"] = sample["values"].mean(dim=1)
+            case _:
+                raise ValueError(f"Invalid sampling mode: {sampling_mode}")
+
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
         _, rewards, dones, truncated, _ = env.step(
             sampled_actions

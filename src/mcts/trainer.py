@@ -237,6 +237,10 @@ class MCTSTrainer:
 
             for i in tqdm(iter, desc="Episode", disable=disable_logs):
                 self.do_mcts_rollouts(disable_logs=disable_logs, sampling_mode="greedy")
+                print("\nFinal best matches:", self.env.best_matches, "\n\n")
+                print("Final matches:", self.env.matches, "\n\n")
+                print("\n\nBEST MATCHES:", self.env.best_matches_ever, "\n")
+                return
 
                 for _ in tqdm(
                     range(self.epochs * 5),
