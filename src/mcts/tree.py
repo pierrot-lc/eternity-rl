@@ -1,3 +1,10 @@
+"""A batched implementation of the MCTS algorithm.
+
+Thanks to:
+- https://github.com/tmoer/alphazero_singleplayer.
+- https://arxiv.org/pdf/1911.08265.pdf (notably, page 12).
+- royale for the fruitful conversations.
+"""
 import torch
 from einops import rearrange, repeat
 from tqdm import tqdm
@@ -9,25 +16,27 @@ from ..model import Critic, Policy
 class MCTSTree:
     def __init__(
         self,
-        envs: EternityEnv,
-        policy: Policy,
-        critic: Critic,
-        simulations: int,
-        childs: int,
+        c_puct: float,
+        gamma: float,
+        n_simulations: int,
+        n_childs: int,
+        n_actions: int,
+        batch_size: int,
+        device: torch.device,
     ):
-        self.envs = envs
-        self.policy = policy
-        self.critic = critic
-        self.n_simulations = simulations
-        self.n_childs = childs
+        self.gamma = gamma
+        self.n_simulations = n_simulations
+        self.n_childs = n_childs
+        self.n_actions = n_actions
+        self.batch_size = batch_size
+        self.device = device
+
         self.n_nodes = (
             self.n_simulations * self.n_childs
         ) + 1  # Add the root node (id '0').
-        self.batch_size = self.envs.batch_size
-        self.device = self.envs.device
 
         self.batch_range = torch.arange(self.batch_size, device=self.device)
-        self.c_ucb = torch.sqrt(torch.FloatTensor([2])).to(self.device)
+        self.c_puct = torch.FloatTensor([c_puct]).to(self.device)
 
         self.childs = torch.zeros(
             (self.batch_size, self.n_nodes, self.n_childs),
@@ -40,7 +49,7 @@ class MCTSTree:
             device=self.device,
         )
         self.actions = torch.zeros(
-            (self.batch_size, self.n_nodes, len(self.envs.action_space)),
+            (self.batch_size, self.n_nodes, n_actions),
             dtype=torch.long,
             device=self.device,
         )
@@ -49,7 +58,22 @@ class MCTSTree:
             dtype=torch.long,
             device=self.device,
         )
+        self.rewards = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.values = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
+            device=self.device,
+        )
         self.sum_scores = torch.zeros(
+            (self.batch_size, self.n_nodes),
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.priors = torch.zeros(
             (self.batch_size, self.n_nodes),
             dtype=torch.float,
             device=self.device,
@@ -57,6 +81,16 @@ class MCTSTree:
         self.terminated = torch.zeros(
             (self.batch_size, self.n_nodes),
             dtype=torch.bool,
+            device=self.device,
+        )
+        self.q_estimate_min = torch.zeros(
+            (self.batch_size,),
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.q_estimate_max = torch.zeros(
+            (self.batch_size,),
+            dtype=torch.float,
             device=self.device,
         )
 
@@ -77,71 +111,100 @@ class MCTSTree:
         self.parents.zero_()
         self.actions.zero_()
         self.visits.zero_()
+        self.rewards.zero_()
+        self.values.zero_()
         self.sum_scores.zero_()
+        self.priors.zero_()
         self.terminated.zero_()
+        self.q_estimate_max.zero_()
+        self.q_estimate_min.zero_()
 
     @torch.inference_mode()
-    def evaluate(self, disable_logs: bool) -> torch.Tensor:
+    def evaluate(self, disable_logs: bool) -> tuple[torch.Tensor, torch.Tensor]:
         """Do all the simulation steps of the MCTS algorithm.
 
         ---
         Returns:
-            The best actions to take from the root node based on the MCTS
-            simulations.
-                Shape of [batch_size, n_actions].
+            probs: The target policy to learn from the MCTS simulations.
+                Shape of [batch_size, n_childs].
+            values: The target value to learn from the MCTS simulations.
+                Shape of [batch_size, n_childs].
+            actions: The corresponding actions sampled from the MCTS simulations.
+                Shape of [batch_size, n_childs, n_actions].
         """
         assert torch.all(
             self.tree_nodes == 1
         ), "All trees should have the root node only."
+        assert (
+            hasattr(self, "envs")
+            and hasattr(self, "policy")
+            and hasattr(self, "critic")
+        ), "You should reset the MCTS before using it."
 
-        # An env is terminated if its root node is marked as terminated.
-        terminated_envs = torch.zeros(
-            self.batch_size, dtype=torch.bool, device=self.device
-        )
-        best_actions = torch.zeros(
-            (self.batch_size, self.actions.shape[2]),
-            dtype=torch.long,
-            device=self.device,
-        )
+        # Init roots value.
+        self.values[:, 0] = self.critic(self.envs.render())
+        self.sum_scores[:, 0] = self.values[:, 0].clone()
+        self.q_estimate_min = self.values[:, 0].clone()
+        self.q_estimate_max = self.values[:, 0].clone()
 
-        for _ in tqdm(
+        for i in tqdm(
             range(self.n_simulations),
             desc="MCTS simulations",
             leave=False,
             disable=disable_logs,
         ):
-            self.step()
+            self.step("dirichlet" if i == 0 else "softmax")
 
-            # Save the actions of the new terminated envs if there are some.
-            newly_terminated_envs = (~terminated_envs) & self.terminated[:, 0]
-            best_actions[newly_terminated_envs] = self.best_actions()[
-                newly_terminated_envs
-            ]
+        childs = self.childs[:, 0]  # Root's children.
+        visits = torch.gather(self.visits, dim=1, index=childs)
+        scores = self.scores(childs)
+        rewards = torch.gather(self.rewards, dim=1, index=childs)
 
-            terminated_envs = self.terminated[:, 0]
+        probs = visits / torch.max(visits, dim=1, keepdim=True).values
+        probs = probs / probs.sum(dim=1, keepdim=True)
+        values = rewards + self.gamma * scores
 
-        # Save the actions of the remaining envs.
-        best_actions[~terminated_envs] = self.best_actions()[~terminated_envs]
+        childs = repeat(childs, "b c -> b c a", a=self.n_actions)
+        actions = torch.gather(self.actions, dim=1, index=childs)
 
-        return best_actions
+        return probs, values, actions
 
     @torch.inference_mode()
-    def step(self):
+    def step(self, sampling_mode: str = "softmax"):
         """Do a one step of the MCTS algorithm."""
         # 1. Dive until we find a leaf.
         leafs, envs = self.select_leafs()
+        terminated_leafs = self.terminated[self.batch_range, leafs]
 
         # 2. Sample new nodes to add to the tree.
-        actions, values, terminated = self.sample_nodes(envs)
-        self.expand_nodes(leafs, actions, values, terminated)
+        actions, priors, rewards, values, terminated = self.sample_nodes(
+            envs, sampling_mode=sampling_mode
+        )
 
-        # 3. Backpropagate child values.
-        # NOTE: The new child is upadated here as well.
-        # Hence it will be visited two times already and have its score
-        # doubled.
+        # 3. Add and expand the new nodes.
+        self.expand_nodes(
+            leafs,
+            actions,
+            priors,
+            rewards,
+            values,
+            terminated,
+            to_ignore=terminated_leafs,
+        )
+
+        # 3.5 Add untouched values to terminated_leafs.
+        if torch.any(terminated_leafs):
+            self.visits[terminated_leafs, leafs[terminated_leafs]] += 1
+            self.sum_scores[terminated_leafs, leafs[terminated_leafs]] += self.values[
+                terminated_leafs, leafs[terminated_leafs]
+            ]
+
+        # 4. Backpropagate best child values.
         childs = self.select_childs(leafs)
-        values = self.sum_scores[self.batch_range, childs]
-        self.backpropagate(childs, values)
+        self.backpropagate(childs)
+
+        # 5. Update q min/max estimates.
+        self.update_q_minmax_estimates(leafs)
 
     def best_actions(self) -> torch.Tensor:
         """Return the actions corresponding to the best child
@@ -178,13 +241,14 @@ class MCTSTree:
         parent_visits = torch.gather(self.visits, dim=1, index=parent_nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
 
-        corrected_node_visits = node_visits.clone()
-        corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
+        q_min = self.q_estimate_min.unsqueeze(1)
+        q_max = self.q_estimate_max.unsqueeze(1)
+        q_estimate = sum_scores / (node_visits + 1)
+        q_estimate = (q_estimate - q_min) / (q_max - q_min + 1e-8)
 
-        ucb = sum_scores / corrected_node_visits + self.c_ucb * torch.sqrt(
-            torch.log(parent_visits) / corrected_node_visits
-        )
-        ucb[node_visits == 0] = torch.inf
+        u_estimate = self.c_puct * torch.sqrt(parent_visits + 1) / (node_visits + 1)
+
+        ucb = q_estimate + u_estimate
         return ucb
 
     def scores(self, nodes: torch.Tensor) -> torch.Tensor:
@@ -192,21 +256,18 @@ class MCTSTree:
 
         This is used to evaluate the best node.
         Do not use it to explore the tree.
-        Unexplored nodes will be evaluated to '-inf'.
         """
         node_visits = torch.gather(self.visits, dim=1, index=nodes)
         sum_scores = torch.gather(self.sum_scores, dim=1, index=nodes)
 
-        corrected_node_visits = node_visits.clone()
-        corrected_node_visits[node_visits == 0] = 1  # Avoid division by 0.
-
-        scores = sum_scores / corrected_node_visits
-        scores[node_visits == 0] = -torch.inf
+        scores = sum_scores / (node_visits + 1)
         return scores
 
     def select_childs(self, nodes: torch.Tensor) -> torch.Tensor:
         """Dive one step into the tree following the UCB score.
         Do not change the id of a node that has no child.
+
+        NOTE: It is possible to select a terminated node!
 
         ---
         Args:
@@ -222,9 +283,8 @@ class MCTSTree:
         childs = self.childs[self.batch_range, nodes]
         ucb = self.ucb_scores(childs)
 
-        # Ignore terminated or fictive childs.
-        terminated = torch.gather(self.terminated, dim=1, index=childs)
-        ucb[terminated | (childs == 0)] = -torch.inf
+        # Ignore fictive childs.
+        ucb[childs == 0] = -torch.inf
 
         best_childs = childs[self.batch_range, torch.argmax(ucb, dim=1)]
 
@@ -264,7 +324,9 @@ class MCTSTree:
 
         return nodes, envs
 
-    def sample_nodes(self, envs: EternityEnv) -> torch.Tensor:
+    def sample_nodes(
+        self, envs: EternityEnv, sampling_mode: str
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Use the policy to sample new actions from the given environments.
         Also evaluate the new childs directly using the critic.
 
@@ -274,45 +336,60 @@ class MCTSTree:
         ---
         Args:
             envs: The environments to use to sample the childs.
+            sampling_mode: The sampling mode of the actions.
 
         ---
         Returns:
             actions: The sampled actions.
                 Shape of [batch_size, n_childs, n_actions].
+            priors: The priors of the corresponding childs.
+                Shape of [batch_size, n_childs].
+            rewards: The rewards obtained when arriving in
+                the corresponding child states.
+                Shape of [batch_size, n_childs].
             values: The estimated values of the corresponding childs.
                 Shape of [batch_size, n_childs].
             terminated: The terminated childs.
                 Shape of [batch_size, n_childs].
         """
         envs = EternityEnv.duplicate_interleave(envs, self.n_childs)
-        actions, *_ = self.policy(envs.render(), sampling_mode="softmax")
-        boards, _, dones, truncated, _ = envs.step(actions)
+        actions, logprobs, _ = self.policy(envs.render(), sampling_mode=sampling_mode)
+
+        # NOTE: We should technically ignore the potentially already terminated envs
+        # here. But it is not a big deal as the envs won't crash if we try to step them.
+        boards, rewards, dones, truncated, _ = envs.step(actions)
         values = self.critic(boards)
 
-        # If an env is done, we take the value of the final board instead of
-        # the prediction of the critic.
-        # WARNING: How to properly decide the value of a terminated env?
-        values = (
-            dones * envs.best_matches / envs.best_possible_matches + ~dones * values
-        )
+        # If an env is done, we ignore the predicted value from the critic.
+        values *= (~dones).float()
 
+        # Compute priors.
+        logprobs = logprobs.sum(dim=1)
+        priors = torch.exp(logprobs)
+
+        # Reshape outputs.
         actions = rearrange(actions, "(b c) a -> b c a", c=self.n_childs)
+        priors = rearrange(priors, "(b c) -> b c", c=self.n_childs)
+        rewards = rearrange(rewards, "(b c) -> b c", c=self.n_childs)
         values = rearrange(values, "(b c) -> b c", c=self.n_childs)
         terminated = rearrange(dones | truncated, "(b c) -> b c", c=self.n_childs)
 
-        # Save the best board if necessary.
+        # Save the best board if any.
         if self.envs.best_matches_ever < envs.best_matches_ever:
             self.envs.best_matches_ever = envs.best_matches_ever
             self.envs.best_board_ever = envs.best_board_ever
 
-        return actions, values, terminated
+        return actions, priors, rewards, values, terminated
 
     def expand_nodes(
         self,
         nodes: torch.Tensor,
         actions: torch.Tensor,
+        priors: torch.Tensor,
+        rewards: torch.Tensor,
         values: torch.Tensor,
         terminated: torch.Tensor,
+        to_ignore: torch.Tensor,
     ):
         """Sample childs from the current nodes and add them
         to the trees.
@@ -329,18 +406,26 @@ class MCTSTree:
                 Shape of [batch_size,].
             actions: The actions to add to the tree.
                 Shape of [batch_size, n_childs, n_actions].
+            priors: The priors of the corresponding childs.
+                Shape of [batch_size, n_childs].
+            rewards: The rewards obtained when arriving in
+                the corresponding child states.
+                Shape of [batch_size, n_childs].
             values: Initial values of the childs.
                 Shape of [batch_size, n_childs].
             terminated: Whether the childs are terminated.
                 Shape of [batch_size, n_childs].
+            to_ignore: Whether to ignore the given nodes (e.g.
+                terminal nodes).
+                Shape of [batch_size, ].
         """
         assert torch.any(
             self.tree_nodes + self.n_childs <= self.n_nodes
-        ), "A tree has run out of nodes!"
+        ), "Some tree to expand has run out of nodes!"
 
         assert torch.any(
             self.childs[self.batch_range, nodes] == 0
-        ), "A node already has childs!"
+        ), "Some node to expand already has childs!"
 
         # Compute the node id of each child.
         arange = torch.arange(self.n_childs, device=self.device)
@@ -348,34 +433,60 @@ class MCTSTree:
         childs_node_id = self.tree_nodes.unsqueeze(1) + arange
         # Shape of [batch_size, n_childs].
 
+        parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
+        visits = torch.zeros_like(childs_node_id, device=self.device, dtype=torch.long)
+
+        # This is a filter to modify only the non-terminated nodes.
+        to_modify = ~to_ignore
+
         # Add the childs to their parent childs.
-        self.childs[self.batch_range, nodes] = childs_node_id
+        self.childs[self.batch_range[to_modify], nodes[to_modify]] = childs_node_id[
+            to_modify
+        ]
 
         # Add the parents.
-        parents_id = repeat(nodes, "b -> b c", c=self.n_childs)
-        self.parents.scatter_(dim=1, index=childs_node_id, src=parents_id)
+        parents = self.parents.scatter(dim=1, index=childs_node_id, src=parents_id)
+        self.parents[to_modify] = parents[to_modify]
 
         # Add the values, initial visits and terminated states.
-        self.sum_scores.scatter_(dim=1, index=childs_node_id, src=values)
-        ones = torch.ones_like(childs_node_id, device=self.device, dtype=torch.long)
-        self.visits.scatter_(dim=1, index=childs_node_id, src=ones)
-        self.terminated.scatter_(dim=1, index=childs_node_id, src=terminated)
+        priors = self.priors.scatter(dim=1, index=childs_node_id, src=priors)
+        self.priors[to_modify] = priors[to_modify]
 
-        # Add the actions.
+        rewards = self.rewards.scatter(dim=1, index=childs_node_id, src=rewards)
+        self.rewards[to_modify] = rewards[to_modify]
+
+        values = self.values.scatter(dim=1, index=childs_node_id, src=values)
+        self.values[to_modify] = values[to_modify]
+        self.sum_scores[to_modify] = values[to_modify].clone()
+
+        visits = self.visits.scatter(dim=1, index=childs_node_id, src=visits)
+        self.visits[to_modify] = visits[to_modify]
+
+        terminated = self.terminated.scatter(
+            dim=1, index=childs_node_id, src=terminated
+        )
+        self.terminated[to_modify] = terminated[to_modify]
+
         childs_node_id = repeat(childs_node_id, "b c -> b c a", a=actions.shape[2])
-        self.actions.scatter_(dim=1, index=childs_node_id, src=actions)
+        actions = self.actions.scatter(dim=1, index=childs_node_id, src=actions)
+        self.actions[to_modify] = actions[to_modify]
 
     def update_nodes_info(
-        self, nodes: torch.Tensor, values: torch.Tensor, filters: torch.Tensor
+        self, nodes: torch.Tensor, scores: torch.Tensor, filters: torch.Tensor
     ):
         """Update the information of the given nodes.
 
-        If a node is masked (filter is False), its value is not updated.
-        """
-        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
-        self.visits[self.batch_range, nodes] += ones * filters
-        self.sum_scores[self.batch_range, nodes] += values * filters
+        Do not update the nodes that are marked as filtered (when True).
 
+        ---
+        Args:
+            nodes: Id of the node for each batch sample.
+                Shape of [batch_size,].
+            scores: The scores to add to the sum_scores.
+                Shape of [batch_size,].
+            filters: Whether to ignore the given nodes.
+                Shape of [batch_size, ].
+        """
         # A parent is terminated if all its childs are terminated.
         childs = self.childs[self.batch_range, nodes]
         terminated = torch.gather(self.terminated, dim=1, index=childs)
@@ -383,22 +494,73 @@ class MCTSTree:
         terminated = terminated.sum(dim=1) == (childs != 0).sum(dim=1)
         self.terminated[self.batch_range, nodes] = terminated
 
-    def backpropagate(self, nodes: torch.Tensor, values: torch.Tensor):
-        """Backpropagate the given values to the given nodes and their parents."""
-        filters = torch.ones(self.batch_size, dtype=torch.bool, device=self.device)
-        self.update_nodes_info(nodes, values, filters)
+        # Increment the number of visits.
+        ones = torch.ones(self.batch_size, dtype=torch.long, device=self.device)
+        ones[filters] = 0
+        self.visits[self.batch_range, nodes] += ones
 
-        # Do not update twice a root node.
-        filters = nodes != 0
+        # Add scores to `sum_scores`.
+        scores[filters] = 0
+        self.sum_scores[self.batch_range, nodes] += scores
+
+    def backpropagate(self, leafs: torch.Tensor):
+        """Backpropagate the new value estimate from the given leafs to their parents.
+
+        The leafs themselves are not updated as their initial expansion has already
+        initialized the `sum_scores` and `terminated` states.
+        """
+        scores = self.values[self.batch_range, leafs]
+        nodes = leafs
+
+        # We maintain a list of node to exclude so that we do not update
+        # twice a root node.
+        filters = nodes == 0
 
         # While we did not update all root nodes.
-        while not torch.all(~filters):
-            # Root nodes are their own parents.
-            nodes = self.parents[self.batch_range, nodes]
-            self.update_nodes_info(nodes, values, filters)
+        while not torch.all(filters):
+            rewards = self.rewards[self.batch_range, nodes]
+            scores = rewards + self.gamma * scores
 
-            # Do not update twice a root node.
-            filters = nodes != 0
+            # NOTE: root nodes are their own parents.
+            nodes = self.parents[self.batch_range, nodes]
+            self.update_nodes_info(nodes, scores, filters)
+
+            filters = nodes == 0
+
+    def update_q_minmax_estimates(self, nodes: torch.Tensor):
+        """Update the q min/max estimates with the q-estimates of the
+        given nodes and the nodes further up in the tree.
+
+        ---
+        Args:
+            nodes: Id of the node for each batch sample.
+                Shape of [batch_size,].
+        """
+        # While we did not reach the root nodes.
+        while not torch.all(nodes == 0):
+            sum_scores = self.sum_scores[self.batch_range, nodes]
+            visites = self.visits[self.batch_range, nodes]
+            scores = sum_scores / (visites + 1)
+
+            q_estimate_min = torch.stack((self.q_estimate_min, scores), dim=1)
+            self.q_estimate_min = q_estimate_min.min(dim=1).values
+
+            q_estimate_max = torch.stack((self.q_estimate_max, scores), dim=1)
+            self.q_estimate_max = q_estimate_max.max(dim=1).values
+
+            # NOTE: root nodes are their own parents.
+            nodes = self.parents[self.batch_range, nodes]
+
+        # Do a pass on the root nodes as well.
+        sum_scores = self.sum_scores[self.batch_range, nodes]
+        visites = self.visits[self.batch_range, nodes]
+        scores = sum_scores / (visites + 1)
+
+        q_estimate_min = torch.stack((self.q_estimate_min, scores), dim=1)
+        self.q_estimate_min = q_estimate_min.min(dim=1).values
+
+        q_estimate_max = torch.stack((self.q_estimate_max, scores), dim=1)
+        self.q_estimate_max = q_estimate_max.max(dim=1).values
 
     @property
     def tree_nodes(self) -> torch.Tensor:

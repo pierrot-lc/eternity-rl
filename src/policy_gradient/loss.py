@@ -115,7 +115,7 @@ class PPOLoss(nn.Module):
         metrics = dict()
 
         _, logprobs, entropies = policy(
-            batch["states"], None, batch["actions"]
+            batch["states"], sampling_mode=None, sampled_actions=batch["actions"]
         )
         values = critic(batch["states"])
 

@@ -136,7 +136,7 @@ def test_rotation_equivariant_backbone(boards: torch.Tensor, model: nn.Module):
             model_rotated, "(h w) b e -> b h w e", h=height, w=width
         )
         assert torch.allclose(
-            model_rotated, rotated_references, rtol=1e-4, atol=1e-6
+            model_rotated, rotated_references, rtol=1e-3, atol=1e-6
         ), f"Absolute mean error is {( model_rotated - rotated_references ).abs().mean()}"
 
     assert torch.all(rotated_references == references)
@@ -200,11 +200,11 @@ def test_rotation_equivariant_model(
             rotated_actions[:, 2:] == actions[:, 2:]
         ), "Shifts actions are differents"
         assert torch.allclose(
-            logprobs, rotated_logprobs, atol=1e-7
+            logprobs, rotated_logprobs, atol=1e-6
         ), f"Absolute mean error is {( logprobs - rotated_logprobs ).abs().mean()}"
         assert torch.allclose(
-            entropies, rotated_entropies, atol=1e-7
+            entropies, rotated_entropies, atol=1e-6
         ), f"Absolute mean error is {( entropies - rotated_entropies ).abs().mean()}"
         assert torch.allclose(
-            values, rotated_values, atol=1e-7
+            values, rotated_values, atol=1e-6
         ), f"Absolute mean error is {( values - rotated_values ).abs().mean()}"

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 import torch
 from einops import rearrange, repeat
@@ -5,11 +7,6 @@ from einops import rearrange, repeat
 from ..environment import EternityEnv
 from ..model import Critic, Policy
 from .tree import MCTSTree
-
-# WARNING: The MCTS is not maintained for now. Changes made to the models is not
-# reflected in the MCTS. Moreover, the MCTS is wrongly implemented.
-# See ./notes/todo.norg for more.
-pytest.skip("MCTS Ignored, it is not ready yet (see @todo).", allow_module_level=True)
 
 
 def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv:
@@ -22,10 +19,8 @@ def env_mockup(instance_path: str = "./instances/eternity_A.txt") -> EternityEnv
     )
 
 
-def models_mockup(env: EternityEnv) -> tuple[Policy, Critic]:
+def models_mockup() -> tuple[Policy, Critic]:
     policy = Policy(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
@@ -33,8 +28,6 @@ def models_mockup(env: EternityEnv) -> tuple[Policy, Critic]:
         dropout=0.0,
     )
     critic = Critic(
-        board_width=env.board_size,
-        board_height=env.board_size,
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
@@ -61,8 +54,15 @@ def tree_mockup() -> MCTSTree:
         └── 2
     """
     env = env_mockup()
-    policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
+    tree = MCTSTree(
+        c_puct=1.5,
+        gamma=0.9,
+        n_simulations=2,
+        n_childs=3,
+        n_actions=len(env.action_space),
+        batch_size=env.batch_size,
+        device=env.device,
+    )
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -122,6 +122,24 @@ def tree_mockup() -> MCTSTree:
             [2, 1, 1, 0, 0, 0, 0],
         ]
     )
+    tree.rewards = torch.FloatTensor(
+        [
+            [0.0, 1.0, 0.4, 0.2, 0.0, 0.0, 0.0],
+            [0.0, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+        ]
+    )
+    tree.values = torch.FloatTensor(
+        [
+            [0.0, 1.1, 0.8, 0.1, 0.1, 2.0, 0.0],
+            [0.0, 0.4, 1.2, 0.2, 1.0, 1.0, 0.0],
+        ]
+    )
+    tree.priors = torch.FloatTensor(
+        [
+            [0.0, 1.0, 0.8, 0.1, 0.1, 0.4, 0.3],
+            [0.0, 0.4, 0.7, 0.2, 1.0, 1.0, 0.0],
+        ]
+    )
     tree.sum_scores = torch.FloatTensor(
         [
             [3.0, 2.0, 0.6, 0.4, 1.0, 1.0, 0.0],
@@ -152,8 +170,15 @@ def tree_mockup_small() -> MCTSTree:
         └
     """
     env = env_mockup()
-    policy, critic = models_mockup(env)
-    tree = MCTSTree(env, policy, critic, simulations=2, childs=3)
+    tree = MCTSTree(
+        c_puct=1.5,
+        gamma=1.0,
+        n_simulations=2,
+        n_childs=3,
+        n_actions=len(env.action_space),
+        batch_size=env.batch_size,
+        device=env.device,
+    )
     assert tree.n_nodes == 7
     tree.childs = torch.LongTensor(
         [
@@ -247,22 +272,25 @@ def tree_mockup_small() -> MCTSTree:
 )
 def test_ucb(nodes: torch.Tensor):
     tree = tree_mockup()
-    c = torch.sqrt(torch.Tensor([2]))
+    # Backprop some q minmax estimates to avoid having qmin/qmax = 0.
+    tree.update_q_minmax_estimates(nodes[:, 0])
+
+    c = tree.c_puct
     ucb = torch.zeros_like(nodes, dtype=torch.float)
     for batch_id in range(nodes.shape[0]):
+        q_min = tree.q_estimate_min[batch_id]
+        q_max = tree.q_estimate_max[batch_id]
+
         for ucb_index, node_id in enumerate(nodes[batch_id]):
             node_visits = tree.visits[batch_id, node_id]
 
-            if node_visits == 0:
-                ucb[batch_id, ucb_index] = torch.inf
-                continue
-
             parent_id = tree.parents[batch_id, node_id]
             parent_visits = tree.visits[batch_id, parent_id]
-            node_score = tree.sum_scores[batch_id, node_id] / node_visits
+            node_score = tree.sum_scores[batch_id, node_id] / (node_visits + 1)
+            node_score = (node_score - q_min) / (q_max - q_min + 1e-8)
             ucb[batch_id, ucb_index] = node_score + c * torch.sqrt(
-                torch.log(parent_visits) / node_visits
-            )
+                parent_visits + 1
+            ) / (node_visits + 1)
 
     assert torch.allclose(ucb, tree.ucb_scores(nodes)), "Wrong UCB scores"
 
@@ -292,7 +320,6 @@ def test_select_childs(nodes: torch.Tensor):
 
     ucb = tree.ucb_scores(childs)
     ucb[childs == 0] = -torch.inf
-    ucb[terminated] = -torch.inf
     best_childs_ids = torch.argmax(ucb, dim=1)
     best_childs = torch.stack(
         [
@@ -319,6 +346,9 @@ def test_select_childs(nodes: torch.Tensor):
     ],
 )
 def test_select_leafs(tree: MCTSTree):
+    env = env_mockup()
+    policy, critic = models_mockup()
+    tree.envs, tree.policy, tree.critic = env, policy, critic
     leafs, envs = tree.select_leafs()
 
     assert torch.all(
@@ -373,8 +403,13 @@ def test_select_leafs(tree: MCTSTree):
 )
 def test_expand_nodes(nodes: torch.Tensor):
     tree = tree_mockup_small()
+    env = env_mockup()
+    policy, critic = models_mockup()
+    tree.envs, tree.policy, tree.critic = env, policy, critic
 
-    actions, values, terminated = tree.sample_nodes(tree.envs)
+    actions, priors, rewards, values, terminated = tree.sample_nodes(
+        tree.envs, sampling_mode="dirichlet"
+    )
     assert actions.shape == torch.Size(
         (tree.batch_size, tree.n_childs, 4)
     ), "Wrong actions shape"
@@ -384,7 +419,8 @@ def test_expand_nodes(nodes: torch.Tensor):
 
     original_tree_nodes = tree.tree_nodes.clone()
 
-    tree.expand_nodes(nodes, actions, values, terminated)
+    to_ignore = torch.zeros(tree.batch_size, dtype=torch.bool)
+    tree.expand_nodes(nodes, actions, priors, rewards, values, terminated, to_ignore)
 
     for batch_id, node_id in enumerate(nodes):
         childs = tree.childs[batch_id, node_id]
@@ -397,15 +433,26 @@ def test_expand_nodes(nodes: torch.Tensor):
 
             assert torch.all(
                 tree.actions[batch_id, child_id] == actions[batch_id, child_number]
-            ), "Wrong child actions"
+            ), "Wrong children actions"
+            assert torch.all(
+                tree.priors[batch_id, child_id] == priors[batch_id, child_number]
+            ), "Wrong children priors"
+            assert torch.all(
+                tree.rewards[batch_id, child_id] == rewards[batch_id, child_number]
+            ), "Wrong children rewards"
+            assert torch.all(
+                tree.values[batch_id, child_id] == values[batch_id, child_number]
+            ), "Wrong children values"
             assert torch.all(
                 tree.sum_scores[batch_id, child_id] == values[batch_id, child_number]
-            ), "Wrong child values"
-            assert torch.all(tree.visits[batch_id, child_id] == 1), "Wrong child visits"
+            ), "Wrong children values"
+            assert torch.all(
+                tree.visits[batch_id, child_id] == 0
+            ), "Wrong children visits"
             assert torch.all(
                 tree.terminated[batch_id, child_id]
                 == terminated[batch_id, child_number]
-            ), "Wrong child terminated"
+            ), "Wrong children terminated"
 
     assert torch.all(tree.tree_nodes == original_tree_nodes + tree.n_childs)
 
@@ -429,21 +476,20 @@ def test_repeat_interleave():
 
 
 @pytest.mark.parametrize(
-    "nodes, values, updated_visits, updated_sum_scores, updated_terminated",
+    "nodes, updated_visits, updated_sum_scores, updated_terminated",
     [
         (
             torch.LongTensor([0, 1]),
-            torch.FloatTensor([0.5, 0.3]),
             torch.LongTensor(
                 [
-                    [5, 2, 1, 1, 1, 1, 0],
-                    [3, 2, 1, 0, 0, 0, 0],
+                    [4, 2, 1, 1, 1, 1, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [3.5, 2.0, 0.6, 0.4, 1.0, 1.0, 0.0],
-                    [2.3, 1.4, 0.9, 0.0, 0.0, 0.0, 0.0],
+                    [3.0000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -455,17 +501,16 @@ def test_repeat_interleave():
         ),
         (
             torch.LongTensor([5, 1]),
-            torch.FloatTensor([0.6, 0.4]),
             torch.LongTensor(
                 [
-                    [5, 3, 1, 1, 1, 2, 0],
-                    [3, 2, 1, 0, 0, 0, 0],
+                    [5, 3, 1, 1, 1, 1, 0],
+                    [3, 1, 1, 0, 0, 0, 0],
                 ]
             ),
             torch.FloatTensor(
                 [
-                    [3.6, 2.6, 0.6, 0.4, 1.0, 1.6, 0.0],
-                    [2.4, 1.5, 0.9, 0.0, 0.0, 0.0, 0.0],
+                    [5.6200, 3.8000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
+                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
                 ]
             ),
             torch.BoolTensor(
@@ -479,13 +524,12 @@ def test_repeat_interleave():
 )
 def test_backpropagate(
     nodes: torch.Tensor,
-    values: torch.Tensor,
     updated_visits: torch.Tensor,
     updated_sum_scores: torch.Tensor,
     updated_terminated: torch.Tensor,
 ):
     tree = tree_mockup()
-    tree.backpropagate(nodes, values)
+    tree.backpropagate(nodes)
 
     assert torch.all(tree.visits == updated_visits), "Wrong visits number"
     assert torch.allclose(
@@ -493,12 +537,80 @@ def test_backpropagate(
     ), "Wrong sum scores number"
 
 
+@pytest.mark.parametrize(
+    "nodes",
+    [
+        torch.LongTensor([3, 0]),
+        torch.LongTensor([1, 0]),
+    ],
+)
+def test_update_q_minmax_estimates(nodes: torch.Tensor):
+    tree = tree_mockup()
+    q_max = tree.q_estimate_max.clone()
+    q_min = tree.q_estimate_min.clone()
+
+    tree.update_q_minmax_estimates(nodes)
+
+    for batch_id in range(tree.batch_size):
+        node_id = nodes[batch_id]
+        while node_id != 0:
+            q_estimate = tree.sum_scores[batch_id, node_id] / (
+                tree.visits[batch_id, node_id] + 1
+            )
+
+            q_max[batch_id] = max(q_max[batch_id], q_estimate)
+            q_min[batch_id] = min(q_min[batch_id], q_estimate)
+
+            node_id = tree.parents[batch_id, node_id]
+
+        # Do a step for the root node as well.
+        q_estimate = tree.sum_scores[batch_id, node_id] / (
+            tree.visits[batch_id, node_id] + 1
+        )
+
+        q_max[batch_id] = max(q_max[batch_id], q_estimate)
+        q_min[batch_id] = min(q_min[batch_id], q_estimate)
+
+    assert torch.allclose(q_max, tree.q_estimate_max)
+    assert torch.allclose(q_min, tree.q_estimate_min)
+
+
 def test_all_terminated():
     """When all the tree is terminated, the tree.step() should not break."""
+    env = env_mockup()
+    policy, critic = models_mockup()
+
     tree = tree_mockup_small()
-    tree.terminated = torch.ones_like(
-        tree.terminated, dtype=torch.bool, device=tree.device
+    tree.envs, tree.policy, tree.critic = env, policy, critic
+    tree.terminated[0, ...] = True
+
+    actions_ = tree.actions.clone()
+    childs_ = tree.childs.clone()
+    parents_ = tree.parents.clone()
+    priors_ = tree.priors.clone()
+    rewards_ = tree.rewards.clone()
+    sum_scores_ = tree.sum_scores.clone()
+    terminated_ = tree.terminated.clone()
+    values_ = tree.values.clone()
+    visits_ = tree.visits.clone()
+
+    leafs, envs = tree.select_leafs()
+    actions, priors, rewards, values, terminated = tree.sample_nodes(
+        envs, sampling_mode="dirichlet"
     )
+    to_ignore = torch.zeros(env.batch_size, dtype=torch.bool)
+    to_ignore[0] = True
+    tree.expand_nodes(leafs, actions, priors, rewards, values, terminated, to_ignore)
+
+    assert torch.all(actions_[to_ignore] == tree.actions[to_ignore])
+    assert torch.all(childs_[to_ignore] == tree.childs[to_ignore])
+    assert torch.all(parents_[to_ignore] == tree.parents[to_ignore])
+    assert torch.all(priors_[to_ignore] == tree.priors[to_ignore])
+    assert torch.all(rewards_[to_ignore] == tree.rewards[to_ignore])
+    assert torch.all(sum_scores_[to_ignore] == tree.sum_scores[to_ignore])
+    assert torch.all(terminated_[to_ignore] == tree.terminated[to_ignore])
+    assert torch.all(values_[to_ignore] == tree.values[to_ignore])
+    assert torch.all(visits_[to_ignore] == tree.visits[to_ignore])
 
     # Make sure the step does not break.
     tree.step()

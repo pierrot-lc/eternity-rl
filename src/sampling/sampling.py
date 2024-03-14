@@ -4,7 +4,7 @@ Those methods are useful to control the exploration and exploitation tradeoff.
 """
 
 import torch
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Dirichlet
 
 
 def nucleus_distributions(distributions: torch.Tensor, top_p: float) -> torch.Tensor:
@@ -144,6 +144,45 @@ def epsilon_sampling(distributions: torch.Tensor, epsilon: float) -> torch.Tenso
             Shape [batch_size,].
     """
     distributions = epsilon_distributions(distributions, epsilon)
+    categorical = Categorical(probs=distributions)
+    sampled_actions = categorical.sample()
+
+    return sampled_actions
+
+
+def dirichlet_distributions(
+    distributions: torch.Tensor, concentration: float, exploration: float
+) -> torch.Tensor:
+    """Compute the dirichlet distributions from the given distributions."""
+    batch_size, n_actions = distributions.shape
+
+    concentration_tensor = torch.ones_like(distributions)
+    concentration_tensor.fill_(concentration)
+    exploration_distribution = Dirichlet(concentration_tensor).sample()
+
+    return (1 - exploration) * distributions + exploration * exploration_distribution
+
+
+def dirichlet_sampling(
+    distributions: torch.Tensor, concentration: float, exploration: float
+) -> torch.Tensor:
+    """Sample actions from the given distributions using
+    the dirichlet method. It samples using the given distribution
+    with probability 1 - exploration and samples a random action otherwise.
+
+    ---
+    Args:
+        distributions: The distributions of the actions.
+            Shape of [batch_size, n_actions].
+        concentration: The concentration of the dirichlet distribution.
+        exploration: The probability of sampling a random action.
+
+    ---
+    Returns:
+        The sampled actions.
+            Shape [batch_size,].
+    """
+    distributions = dirichlet_distributions(distributions, concentration, exploration)
     categorical = Categorical(probs=distributions)
     sampled_actions = categorical.sample()
 

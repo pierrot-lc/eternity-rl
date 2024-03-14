@@ -3,7 +3,7 @@ title: todo
 authors: pierrotlc
 categories: notes
 created: 2023-03-08
-updated: 2024-01-03T17:53:48+0100
+updated: 2024-02-29T23:39:33+0100
 @end
 
 * TODO
@@ -14,10 +14,13 @@ updated: 2024-01-03T17:53:48+0100
   -- ( ) CNN backbone encoder
   - ( ) Checker https://arxiv.org/abs/2110.00641
   - ( ) Regarder s'il est possible d'optimiser l'env batché
+  - ( ) Restart of the value network training from time to time.
+  - ( ) Use random envs. Start from optimal env, scramble with random
+        actions, with a random number of actions. Do scramble the original
+        env as well. This is akin to local search with some noise added
+        from time to time.
 
 * MCTS
-  - ( ) S'inspirer d'AlphaZero pour l'évaluation des candidats. Notamment prendre
-        en compte la probabilité de chaque node.
   - ( ) Ajouter des métriques pour mieux visualiser le parcours des arbres. Avoir
         un moyen de voir la quantité d'exploration et d'exploitation.
   -- ( ) Tree depth
@@ -25,11 +28,11 @@ updated: 2024-01-03T17:53:48+0100
   -- ( ) Average node value vs average node ucb score
   -- ( ) Same-node count
 
-  - Regarder pour améliorer le MCTS avec rewards intermédiaires:
-  -- Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
-  -- Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
-  -- Ajouter aussi le produit gamma.
-  -- Voir https://github.com/tmoer/alphazero_singleplayer.
+  - (x) Regarder pour améliorer le MCTS avec rewards intermédiaires:
+  -- (x) Le score d'un noeud devrait être la reward pour arriver à ce noeud + valeur du critique.
+  -- (x) Lors de la backprop, il faut prendre la valeur du noeud enfant + la somme des rewards de la trajectoire.
+  -- (x) Ajouter aussi le produit gamma.
+  -- (x) Voir https://github.com/tmoer/alphazero_singleplayer.
 
   - Ajouter la normalisation MinMax des scores pour ne pas avoir à tuner la constante d'exploration.
     Voir https://arxiv.org/pdf/1911.08265.pdf page 12.
@@ -50,8 +53,7 @@ updated: 2024-01-03T17:53:48+0100
     This would allow for better credit assignment.
 
 * Enhancements
-  - (x) Rotation and symmetry invariant.
-  - 2D RoPE.
+  - ( ) {https://arxiv.org/abs/2403.03950}[HL-Gauss classification]
 
 * Questions
   - Is the model better with conv layers, transfo layers, or little bit of both?

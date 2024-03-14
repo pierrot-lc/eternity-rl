@@ -4,6 +4,13 @@ defaults:
   - exp: trivial
   - model: medium
 
+training_mode: mcts
+
+mcts:
+  c_puct: 0.001
+  simulations: 1000
+  childs: 10
+
 seed: 0
 device: auto
 distributed: []

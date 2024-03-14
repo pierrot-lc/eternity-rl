@@ -104,6 +104,7 @@ def exploit_rollout(
             env.reset(reset_ids)
 
 
+@torch.inference_mode()
 def mcts_rollout(
     env: EternityEnv,
     policy: Policy,
@@ -111,6 +112,7 @@ def mcts_rollout(
     mcts: MCTSTree,
     steps: int,
     disable_logs: bool,
+    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps using a MCTS tree to look for the best
     move at each step.
@@ -136,29 +138,39 @@ def mcts_rollout(
         sample = dict()
         mcts.reset(env, policy, critic)
 
-        sample["actions"] = mcts.evaluate(disable_logs)
         sample["states"] = env.render()
-
-        _, sample["log-probs"], _ = policy(
-            sample["states"], sampled_actions=sample["actions"]
-        )
-        sample["values"] = critic(sample["states"])
-
-        _, sample["rewards"], sample["dones"], sample["truncated"], _ = env.step(
-            sample["actions"]
+        sample["probs"], sample["values"], sample["actions"] = mcts.evaluate(
+            disable_logs
         )
 
-        sample["next-values"] = critic(
-            env.render(),
-            env.best_boards,
-            env.n_steps,
+        # Make sure there's no "nan" values.
+        assert torch.isfinite(sample["probs"]).all()
+        assert torch.isfinite(sample["values"]).all()
+
+        print(sample["probs"][0])
+        print(sample["values"][0])
+
+        match sampling_mode:
+            case "softmax":
+                action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
+                sample["values"] = (sample["values"] * sample["probs"]).sum(dim=1)
+            case "greedy":
+                action_ids = sample["values"].argmax(dim=1)
+                sample["values"] = sample["values"].max(dim=1).values
+            case "uniform":
+                action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
+                sample["values"] = sample["values"].mean(dim=1)
+            case _:
+                raise ValueError(f"Invalid sampling mode: {sampling_mode}")
+
+        sampled_actions = sample["actions"][mcts.batch_range, action_ids]
+        _, rewards, dones, truncated, _ = env.step(
+            sampled_actions
         )
 
-        sample["next-values"] *= (~sample["dones"]).float()
-
-        if (sample["dones"] | sample["truncated"]).sum() > 0:
+        if (dones | truncated).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)
-            reset_ids = reset_ids[sample["dones"] | sample["truncated"]]
+            reset_ids = reset_ids[dones | truncated]
             env.reset(reset_ids)
 
         # BUG: There's an issue with cuda that hallucinates values when stacking
