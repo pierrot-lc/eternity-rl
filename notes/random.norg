@@ -310,9 +310,38 @@ version: 1.1.1
   - Of course, since everything is done with tensor operations, those
     operations are done on GPU and can be done with the standard multi-GPU
     distributed training.
+  - Since the nodes are not fully expanded, I have to allow terminated
+    nodes to be visited again. This is because otherwise the visit count
+    will not reflect the value of those nodes.
 
   Because the maximum number of nodes is known, I can stack all trees
   together inside tensors.
 
-  Needless to say, a beam search would have been much easier to implement.
-  But I wanted to try this out.
+  Needless to say, a beam search would have been much easier to implement,
+  but I wanted to try this out.
+
+** What I learns from the MCTS implementation
+
+   It turns out it is not easy to implement a MCTS properly, especially
+   with my ideas of doing a partial batched MCTS. The fact that not all
+   nodes are sampled and that my env is fully reversible makes the tree
+   search really difficult.
+
+   First, I ended up convinced that it is not possible to learn a policy
+   if the tree is only partially expanded. This is because the policy is
+   used for both sampling the new nodes and learning which node to sample.
+   It collapse easily and learn to sample the same node over and over
+   again and so that it is never wrong.
+
+   Secondly, I think the fact that the env is fully reversible is a bi
+   problem. It makes the tree search really hard there is no bad state to
+   reach that is not recoverable later on. This tends to make the nodes
+   all have the same average estimated value. I have tried to use a very
+   low `gamma` and to maximize the exploitation but whatever my values was
+   the search looked like it was not able to find the really good actions.
+
+   Finally, I'm not even sure that my implementation is correct. It is
+   really hard to find good resources on the subject. I have shared what
+   I have found online in the code. Moreover in my case I have only
+   a partially expanded MCTS so maybe this whole thing can't work without
+   some heavy modifications.
