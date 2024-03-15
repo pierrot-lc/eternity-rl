@@ -476,65 +476,44 @@ def test_repeat_interleave():
 
 
 @pytest.mark.parametrize(
-    "nodes, updated_visits, updated_sum_scores, updated_terminated",
+    "nodes",
     [
-        (
-            torch.LongTensor([0, 1]),
-            torch.LongTensor(
-                [
-                    [4, 2, 1, 1, 1, 1, 0],
-                    [3, 1, 1, 0, 0, 0, 0],
-                ]
-            ),
-            torch.FloatTensor(
-                [
-                    [3.0000, 2.0000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
-                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
-                ]
-            ),
-            torch.BoolTensor(
-                [
-                    [False, False, False, False, True, False, False],
-                    [True, True, True, False, False, False, False],
-                ]
-            ),
-        ),
-        (
-            torch.LongTensor([5, 1]),
-            torch.LongTensor(
-                [
-                    [5, 3, 1, 1, 1, 1, 0],
-                    [3, 1, 1, 0, 0, 0, 0],
-                ]
-            ),
-            torch.FloatTensor(
-                [
-                    [5.6200, 3.8000, 0.6000, 0.4000, 1.0000, 1.0000, 0.0000],
-                    [2.7600, 1.1000, 0.9000, 0.0000, 0.0000, 0.0000, 0.0000],
-                ]
-            ),
-            torch.BoolTensor(
-                [
-                    [False, False, False, False, True, False, False],
-                    [True, True, True, False, False, False, False],
-                ]
-            ),
-        ),
+        torch.LongTensor([0, 1]),
+        torch.LongTensor([5, 1]),
     ],
 )
-def test_backpropagate(
-    nodes: torch.Tensor,
-    updated_visits: torch.Tensor,
-    updated_sum_scores: torch.Tensor,
-    updated_terminated: torch.Tensor,
-):
+def test_backpropagate(nodes: torch.Tensor):
     tree = tree_mockup()
+
+    sum_scores = tree.sum_scores.clone()
+    visits = tree.visits.clone()
+    terminated = tree.terminated.clone()
+
+    for batch_id in range(tree.batch_size):
+        node_id = nodes[batch_id]
+        scores = tree.values[batch_id, node_id]
+
+        while node_id != 0:
+            rewards = tree.rewards[batch_id, node_id]
+            scores = rewards + tree.gamma * scores
+
+            node_id = tree.parents[batch_id, node_id]
+
+            # Terminated is True if all non-fictive childs are terminated.
+            all_terminated = True
+            for child_id in tree.childs[batch_id, node_id]:
+                if child_id != 0 and not tree.terminated[batch_id, child_id]:
+                    all_terminated = False
+
+            sum_scores[batch_id, node_id] += scores
+            visits[batch_id, node_id] += 1
+            terminated[batch_id, node_id] = all_terminated
+
     tree.backpropagate(nodes)
 
-    assert torch.all(tree.visits == updated_visits), "Wrong visits number"
-    assert torch.allclose(
-        tree.sum_scores, updated_sum_scores
-    ), "Wrong sum scores number"
+    assert torch.allclose(sum_scores, tree.sum_scores)
+    assert torch.allclose(visits, tree.visits)
+    assert torch.allclose(terminated, tree.terminated)
 
 
 @pytest.mark.parametrize(
