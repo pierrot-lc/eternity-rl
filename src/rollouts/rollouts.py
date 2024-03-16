@@ -11,7 +11,7 @@ from ..mcts import MCTSTree
 from ..model import Critic, Policy
 
 
-def rollout(
+def policy_rollouts(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
@@ -37,7 +37,7 @@ def rollout(
     traces = defaultdict(list)
 
     for step_id in tqdm(
-        range(steps), desc="Rollout", leave=False, disable=disable_logs
+        range(steps), desc="Policy rollouts", leave=False, disable=disable_logs
     ):
         sample = dict()
         sample["states"] = env.render()
@@ -74,7 +74,7 @@ def rollout(
 
 
 @torch.inference_mode()
-def exploit_rollout(
+def exploit_rollouts(
     env: EternityEnv,
     policy: Policy,
     steps: int,
@@ -92,7 +92,7 @@ def exploit_rollout(
         sampling_mode: The sampling mode to use for the policy.
     """
     for step_id in tqdm(
-        range(steps), desc="Exploit rollout", leave=False, disable=disable_logs
+        range(steps), desc="Exploit rollouts", leave=False, disable=disable_logs
     ):
         actions, *_ = policy(env.render(), sampling_mode=sampling_mode)
 
@@ -105,14 +105,14 @@ def exploit_rollout(
 
 
 @torch.inference_mode()
-def mcts_rollout(
+def mcts_rollouts(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
     mcts: MCTSTree,
     steps: int,
+    sampling_mode: str,
     disable_logs: bool,
-    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps using a MCTS tree to look for the best
     move at each step.
@@ -124,6 +124,7 @@ def mcts_rollout(
         critic: The critic to use.
         mcts: The MCTS tree to use.
         steps: The number of steps to play.
+        sampling_mode: The sampling mode to use for the action selection.
         disable_logs: Whether to disable the logs.
 
     ---
@@ -133,7 +134,7 @@ def mcts_rollout(
     traces = defaultdict(list)
 
     for step_id in tqdm(
-        range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
+        range(steps), desc="MCTS rollouts", leave=False, disable=disable_logs
     ):
         sample = dict()
         mcts.reset(env, policy, critic)

@@ -2,7 +2,7 @@ import pytest
 import torch
 from tensordict import TensorDict
 
-from .rollout import cumulative_decay_return, mask_reset_rollouts, split_reset_rollouts
+from .rollouts import cumulative_decay_return, mask_reset_rollouts, split_reset_rollouts
 
 
 @pytest.mark.parametrize(
