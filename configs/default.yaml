@@ -1,15 +1,30 @@
 ---
 defaults:
   - _self_
-  - exp: trivial
+  - env: trivial
   - model: medium
+  - ppo: default
+  - mcts: default
 
-training_mode: mcts
+gamma: 0.99
 
-mcts:
-  c_puct: 0.001
-  simulations: 1000
-  childs: 10
+optimizer:
+  optimizer: adamw
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-2
+
+scheduler:
+  warmup_steps: 0
+  cosine_t0: 0
+  cosine_tmult: 1
+  eta_min: 1.0e-6
+
+trainer:
+  episodes: -1
+  reset_proportion: 0.50
+  clip_value: 1.0
+
+checkpoint:
 
 seed: 0
 device: auto

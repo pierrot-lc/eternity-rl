@@ -11,7 +11,7 @@ from ..mcts import MCTSTree
 from ..model import Critic, Policy
 
 
-def rollout(
+def policy_rollouts(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
@@ -74,7 +74,7 @@ def rollout(
 
 
 @torch.inference_mode()
-def exploit_rollout(
+def exploit_rollouts(
     env: EternityEnv,
     policy: Policy,
     steps: int,
@@ -105,14 +105,14 @@ def exploit_rollout(
 
 
 @torch.inference_mode()
-def mcts_rollout(
+def mcts_rollouts(
     env: EternityEnv,
     policy: Policy,
     critic: Critic,
     mcts: MCTSTree,
     steps: int,
+    sampling_mode: str,
     disable_logs: bool,
-    sampling_mode: str = "softmax",
 ) -> TensorDictBase:
     """Play some steps using a MCTS tree to look for the best
     move at each step.
@@ -124,6 +124,7 @@ def mcts_rollout(
         critic: The critic to use.
         mcts: The MCTS tree to use.
         steps: The number of steps to play.
+        sampling_mode: The sampling mode to use for the action selection.
         disable_logs: Whether to disable the logs.
 
     ---

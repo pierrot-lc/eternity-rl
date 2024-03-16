@@ -7,25 +7,26 @@ from torchrl.data import LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 
 from src.environment import EternityEnv
-from src.mcts import MCTSLoss, MCTSTrainer, MCTSTree
+from src.mcts import MCTSConfig, MCTSLoss
 from src.model import Critic, Policy
-from src.policy_gradient import PPOLoss, PPOTrainer
+from src.policy_gradient import PPOLoss
+from src.trainer import Trainer, TrainerConfig
 
 
-def init_env(config: DictConfig) -> EternityEnv:
+def init_env(config: DictConfig, batch_size: int) -> EternityEnv:
     """Initialize the environment."""
-    env = config.exp.env
+    env = config.env
     if not isinstance(env.episode_length, int):
         assert env.episode_length in {
             "inf",
             "+inf",
         }, "Provide either an integer or 'inf'."
-        env.episode_length = float(env.episode_length)
+        episode_length = float(env.episode_length)
 
     return EternityEnv.from_file(
         env.path,
-        env.episode_length,
-        env.batch_size,
+        episode_length,
+        batch_size,
         config.device,
         config.seed,
     )
@@ -51,26 +52,20 @@ def init_models(config: DictConfig) -> tuple[Policy, Critic]:
     return policy, critic
 
 
-def init_mcts(config: DictConfig, env: EternityEnv) -> MCTSTree:
+def init_mcts_config(config: DictConfig) -> MCTSConfig:
     mcts = config.mcts
-    return MCTSTree(
-        mcts.c_puct,
-        config.exp.loss.gamma,
-        mcts.simulations,
-        mcts.childs,
-        len(env.action_space),
-        env.batch_size,
-        env.device,
+    return MCTSConfig(
+        mcts.search.c_puct, config.gamma, mcts.search.simulations, mcts.search.childs
     )
 
 
 def init_ppo_loss(config: DictConfig) -> PPOLoss:
-    loss = config.exp.loss
+    loss = config.ppo.loss
     return PPOLoss(
         loss.value_weight,
         loss.entropy_weight,
         loss.entropy_clip,
-        loss.gamma,
+        config.gamma,
         loss.gae_lambda,
         loss.ppo_clip_ac,
         loss.ppo_clip_vf,
@@ -78,15 +73,16 @@ def init_ppo_loss(config: DictConfig) -> PPOLoss:
 
 
 def init_mcts_loss(config: DictConfig) -> MCTSLoss:
-    loss = config.exp.loss
+    loss = config.mcts.loss
     return MCTSLoss(loss.value_weight, loss.entropy_weight)
 
 
 def init_optimizer(config: DictConfig, model: nn.Module) -> optim.Optimizer:
     """Initialize the optimizer."""
-    optimizer_name = config.exp.optimizer.optimizer
-    lr = config.exp.optimizer.learning_rate
-    weight_decay = config.exp.optimizer.weight_decay
+    optimizer = config.optimizer
+    optimizer_name = optimizer.optimizer
+    lr = optimizer.learning_rate
+    weight_decay = optimizer.weight_decay
     optimizers = {
         "adamw": optim.AdamW,
         "adam": optim.Adam,
@@ -105,7 +101,7 @@ def init_scheduler(
     config: DictConfig, optimizer: optim.Optimizer
 ) -> optim.lr_scheduler.LRScheduler:
     """Initialize the scheduler."""
-    scheduler = config.exp.scheduler
+    scheduler = config.scheduler
     schedulers = []
 
     if scheduler.warmup_steps > 0:
@@ -138,80 +134,59 @@ def init_scheduler(
     return optim.lr_scheduler.ChainedScheduler(schedulers)
 
 
-def init_replay_buffer(config: DictConfig, max_size: int) -> ReplayBuffer:
-    exp = config.exp
+def init_replay_buffer(
+    config: DictConfig, batch_size: int, max_size: int
+) -> ReplayBuffer:
     return TensorDictReplayBuffer(
         storage=LazyTensorStorage(max_size=max_size, device=config.device),
         sampler=SamplerWithoutReplacement(drop_last=True),
-        batch_size=exp.trainer.batch_size,
+        batch_size=batch_size,
         pin_memory=True if config.device != "cpu" else False,
     )
 
 
-def init_ppo_trainer(
-    config: DictConfig,
+def init_trainer_config(
+    trainer_config: DictConfig,
     env: EternityEnv,
-    policy: Policy | DDP,
-    critic: Critic | DDP,
-    loss: PPOLoss,
-    policy_optimizer: optim.Optimizer,
-    critic_optimizer: optim.Optimizer,
-    policy_scheduler: optim.lr_scheduler.LRScheduler,
-    critic_scheduler: optim.lr_scheduler.LRScheduler,
+    loss: PPOLoss | MCTSLoss,
     replay_buffer: ReplayBuffer,
-) -> PPOTrainer:
-    """Initialize the trainer."""
-    trainer = config.exp.trainer
-    return PPOTrainer(
-        env,
-        policy,
-        critic,
-        loss,
-        policy_optimizer,
-        critic_optimizer,
-        policy_scheduler,
-        critic_scheduler,
-        replay_buffer,
-        trainer.clip_value,
-        trainer.episodes,
-        trainer.epochs,
-        trainer.rollouts,
-        trainer.reset_proportion,
+) -> TrainerConfig:
+    return TrainerConfig(
+        env=env,
+        loss=loss,
+        replay_buffer=replay_buffer,
+        epochs=trainer_config.epochs,
+        rollouts=trainer_config.rollouts,
+        train_policy=trainer_config.train_policy,
+        train_critic=trainer_config.train_critic,
     )
 
 
-def init_mcts_trainer(
+def init_trainer(
     config: DictConfig,
-    env: EternityEnv,
     policy: Policy | DDP,
     critic: Critic | DDP,
-    mcts: MCTSTree,
-    loss_ppo: PPOLoss,
-    loss_mcts: MCTSLoss,
     policy_optimizer: optim.Optimizer,
     critic_optimizer: optim.Optimizer,
     policy_scheduler: optim.lr_scheduler.LRScheduler,
     critic_scheduler: optim.lr_scheduler.LRScheduler,
-    replay_buffer_ppo: ReplayBuffer,
-    replay_buffer_mcts: ReplayBuffer,
-) -> MCTSTrainer:
-    trainer = config.exp.trainer
-    return MCTSTrainer(
-        env,
+    ppo_trainer: TrainerConfig,
+    mcts_trainer: TrainerConfig,
+    mcts_config: MCTSConfig,
+) -> Trainer:
+    """Initialize the trainer."""
+    trainer = config.trainer
+    return Trainer(
         policy,
         critic,
-        mcts,
-        loss_ppo,
-        loss_mcts,
         policy_optimizer,
         critic_optimizer,
         policy_scheduler,
         critic_scheduler,
-        replay_buffer_ppo,
-        replay_buffer_mcts,
-        trainer.clip_value,
+        ppo_trainer,
+        mcts_trainer,
+        mcts_config,
         trainer.episodes,
-        trainer.epochs,
-        trainer.rollouts,
+        trainer.clip_value,
         trainer.reset_proportion,
     )
