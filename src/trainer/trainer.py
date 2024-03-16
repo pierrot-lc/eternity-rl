@@ -289,8 +289,8 @@ class Trainer:
                 self.critic_scheduler.step()
 
                 if not disable_logs:
-                    # metrics = self.evaluate()
-                    # run.log(metrics)
+                    metrics = self.evaluate()
+                    run.log(metrics)
 
                     if i % save_every == 0:
                         self.save_checkpoint("checkpoint.pt")
@@ -304,22 +304,22 @@ class Trainer:
         self.policy.eval()
         self.critic.eval()
 
-        matches = self.env.matches / self.env.best_possible_matches
+        matches = self.ppo_env.matches / self.ppo_env.best_possible_matches
         metrics["matches/mean"] = matches.mean()
         metrics["matches/best"] = (
-            self.env.best_matches_ever / self.env.best_possible_matches
+            self.ppo_env.best_matches_ever / self.ppo_env.best_possible_matches
         )
         metrics["matches/rolling"] = (
-            self.env.rolling_matches / self.env.best_possible_matches
+            self.ppo_env.rolling_matches / self.ppo_env.best_possible_matches
         )
-        metrics["matches/total-won"] = self.env.total_won
+        metrics["matches/total-won"] = self.ppo_env.total_won
 
         # Compute losses.
-        batch = self.replay_buffer_ppo.sample()
+        batch = self.ppo_trainer.replay_buffer.sample()
         batch = batch.to(self.device)
-        metrics |= self.loss_ppo(batch, self.policy, self.critic)
+        metrics |= self.ppo_trainer.loss(batch, self.policy, self.critic)
         metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
-        metrics["metrics/n-steps"] = wandb.Histogram(self.env.n_steps.cpu())
+        metrics["metrics/n-steps"] = wandb.Histogram(self.ppo_env.n_steps.cpu())
 
         # Compute the gradient mean and maximum values.
         # Also computes the weight absolute mean and maximum values.
@@ -352,10 +352,10 @@ class Trainer:
             if isinstance(value, torch.Tensor):
                 metrics[name] = value.item()
 
-        if self.best_matches_found < self.env.best_matches_ever:
-            self.best_matches_found = self.env.best_matches_ever
+        if self.best_matches_found < self.ppo_env.best_matches_ever:
+            self.best_matches_found = self.ppo_env.best_matches_ever
 
-            self.env.save_best_env("board.png")
+            self.ppo_env.save_best_env("board.png")
             metrics["best-board"] = wandb.Image("board.png")
 
         return metrics

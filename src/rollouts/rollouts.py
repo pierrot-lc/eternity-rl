@@ -37,7 +37,7 @@ def policy_rollouts(
     traces = defaultdict(list)
 
     for step_id in tqdm(
-        range(steps), desc="Rollout", leave=False, disable=disable_logs
+        range(steps), desc="Policy rollouts", leave=False, disable=disable_logs
     ):
         sample = dict()
         sample["states"] = env.render()
@@ -92,7 +92,7 @@ def exploit_rollouts(
         sampling_mode: The sampling mode to use for the policy.
     """
     for step_id in tqdm(
-        range(steps), desc="Exploit rollout", leave=False, disable=disable_logs
+        range(steps), desc="Exploit rollouts", leave=False, disable=disable_logs
     ):
         actions, *_ = policy(env.render(), sampling_mode=sampling_mode)
 
@@ -134,7 +134,7 @@ def mcts_rollouts(
     traces = defaultdict(list)
 
     for step_id in tqdm(
-        range(steps), desc="MCTS Rollout", leave=False, disable=disable_logs
+        range(steps), desc="MCTS rollouts", leave=False, disable=disable_logs
     ):
         sample = dict()
         mcts.reset(env, policy, critic)
