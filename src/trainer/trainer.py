@@ -16,11 +16,7 @@ from ..environment import EternityEnv
 from ..mcts import MCTSConfig, MCTSLoss, MCTSTree
 from ..model import Critic, Policy
 from ..policy_gradient import PPOLoss
-from ..rollouts import (
-    mcts_rollouts,
-    policy_rollouts,
-    split_reset_rollouts,
-)
+from ..rollouts import mcts_rollouts, policy_rollouts, split_reset_rollouts
 from .config import TrainerConfig
 from .evaluator import Evaluator
 
@@ -55,7 +51,9 @@ class Trainer:
         self.reset_proportion = reset_proportion
 
         self.ppo_env = self.ppo_trainer.env
+        self.ppo_greedy_env = EternityEnv.from_env(self.ppo_env)
         self.mcts_env = self.mcts_trainer.env
+        self.mcts_greedy_env = EternityEnv.from_env(self.mcts_env)
 
         self.policy_module = (
             self.policy.module if isinstance(self.policy, DDP) else self.policy
@@ -229,7 +227,9 @@ class Trainer:
             self.critic.to(self.device)
 
             self.ppo_env.reset()
-            self.mcts_trainer.env.reset()
+            self.ppo_greedy_env.reset()
+            self.mcts_env.reset()
+            self.mcts_greedy_env.reset()
 
             self.best_matches_found = 0  # Reset.
 
@@ -376,21 +376,11 @@ class Trainer:
         metrics |= self.evaluator.env_metrics(self.mcts_env, "mcts")
 
         # Greedy rollouts, only evaluate the envs.
-        env = EternityEnv(
-            self.ppo_env.instances,
-            self.ppo_env.episode_length,
-            self.device,
-        )
-        self.collect_ppo_rollouts(env, "greedy", disable_logs)
-        metrics |= self.evaluator.env_metrics(env, "ppo-greedy")
+        self.collect_ppo_rollouts(self.ppo_greedy_env, "greedy", disable_logs)
+        metrics |= self.evaluator.env_metrics(self.ppo_greedy_env, "ppo-greedy")
 
-        env = EternityEnv(
-            self.mcts_env.instances,
-            self.mcts_env.episode_length,
-            self.device,
-        )
-        self.collect_mcts_rollouts(env, "greedy", disable_logs)
-        metrics |= self.evaluator.env_metrics(env, "mcts-greedy")
+        self.collect_mcts_rollouts(self.mcts_greedy_env, "greedy", disable_logs)
+        metrics |= self.evaluator.env_metrics(self.mcts_greedy_env, "mcts-greedy")
 
         return metrics
 
