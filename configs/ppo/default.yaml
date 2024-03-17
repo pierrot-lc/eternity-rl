@@ -3,7 +3,7 @@ batch_size: 256
 
 trainer:
   epochs: 3
-  rollouts: 50
+  rollouts: 32
   train_policy: true
   train_critic: true
 
@@ -11,6 +11,6 @@ loss:
   gae_lambda: 0.95
   ppo_clip_ac: 0.20
   ppo_clip_vf: 0.20
-  value_weight: 1e-1
+  value_weight: 1e-6
   entropy_weight: 1.0e-2
   entropy_clip: 3.0
