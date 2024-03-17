@@ -25,12 +25,12 @@ class Evaluator:
         metrics = dict()
 
         matches = env.matches / env.best_possible_matches
-        metrics[f"env-{suffix}/mean"] = matches.mean().item()
-        metrics[f"env-{suffix}/best"] = (
+        metrics[f"env/{suffix}-mean"] = matches.mean().item()
+        metrics[f"env/{suffix}-best"] = (
             env.best_matches_ever / env.best_possible_matches
         )
-        metrics[f"env-{suffix}/total-won"] = env.total_won
-        metrics[f"env-{suffix}/n-steps"] = Histogram(env.n_steps.cpu())
+        metrics[f"env/{suffix}-total-won"] = env.total_won
+        metrics[f"env/{suffix}-n-steps"] = Histogram(env.n_steps.cpu())
 
         if self.best_matches_found < env.best_matches_ever:
             self.best_matches_found = env.best_matches_ever
@@ -41,12 +41,42 @@ class Evaluator:
         return metrics
 
     @staticmethod
+    def batch_metrics(
+        batch: TensorDictBase,
+        policy: Policy,
+        critic: Critic,
+        loss: PPOLoss | MCTSLoss,
+        metrics_prefix: str,
+    ) -> dict[str, Any]:
+        metrics = dict()
+        policy.zero_grad()
+        critic.zero_grad()
+
+        loss_metrics = loss(batch, policy, critic)
+        loss_metrics["loss/total"].backward()
+        for model, model_name in [(policy, "policy"), (critic, "critic")]:
+            grads = [
+                param.grad.data.abs().mean().item()
+                for param in model.parameters()
+                if param.grad is not None
+            ]
+            metrics[f"{model_name}/gradients"] = Histogram(grads)
+
+        for metric_name, metric_value in loss_metrics.items():
+            metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
+            metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
+            metrics[metric_name] = metric_value.item()
+
+        return metrics
+
+    @staticmethod
     def policy_rollouts_metrics(
         traces: TensorDictBase,
         replay_buffer: ReplayBuffer,
         loss: PPOLoss,
         policy: Policy,
         critic: Critic,
+        metrics_prefix: str,
     ) -> dict[str, Any]:
         """Main metrics for the policy rollouts. Also estimate the gradients
         for the policy and the critic.
@@ -61,13 +91,13 @@ class Evaluator:
         advantages = advantages[masks]
         actions = actions[masks]
 
-        metrics["policy-rollouts/sum-rewards"] = Histogram(
+        metrics[f"{metrics_prefix}/sum-rewards"] = Histogram(
             traces["rewards"].sum(dim=1).cpu()
         )
-        metrics["policy-rollouts/value-targets"] = Histogram(value_targets.cpu())
-        metrics["policy-rollouts/advantages"] = Histogram(advantages.cpu())
+        metrics[f"{metrics_prefix}/value-targets"] = Histogram(value_targets.cpu())
+        metrics[f"{metrics_prefix}/advantages"] = Histogram(advantages.cpu())
         for action_id in range(actions.shape[1]):
-            metrics[f"policy-rollouts/action-{action_id+1}"] = Histogram(
+            metrics[f"{metrics_prefix}/action-{action_id+1}"] = Histogram(
                 actions[:, action_id].cpu()
             )
 
@@ -79,7 +109,7 @@ class Evaluator:
             policy.zero_grad()
             critic.zero_grad()
 
-            loss_metrics = loss(batch.to(masks.device), policy, critic)
+            loss_metrics = loss(batch, policy, critic)
 
             loss_metrics["loss/total"].backward()
             for model, grads in [(policy, grads_policy), (critic, grads_critic)]:
@@ -90,12 +120,12 @@ class Evaluator:
                 ]
 
             for metric_name, metric_value in loss_metrics.items():
-                metric_name = metric_name.replace("loss/", "ppo-loss/")
-                metric_name = metric_name.replace("metrics/", "policy-rollouts/")
+                metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
+                metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
                 losses[metric_name].append(metric_value.item())
 
-        metrics["policy-rollouts/grads-policy"] = Histogram(grads_policy)
-        metrics["policy-rollouts/grads-critic"] = Histogram(grads_critic)
+        metrics["policy/gradients"] = Histogram(grads_policy)
+        metrics["critic/gradients"] = Histogram(grads_critic)
 
         for metric_name, metric_values in losses.items():
             metrics[metric_name] = sum(metric_values) / len(metric_values)
@@ -109,6 +139,7 @@ class Evaluator:
         loss: MCTSLoss,
         policy: Policy,
         critic: Critic,
+        metrics_prefix: str,
     ) -> dict[str, Any]:
         """Main metrics for the MCTS rollouts. Also estimate the gradients
         for the policy and the critic.
@@ -119,13 +150,13 @@ class Evaluator:
             for name, tensor in traces.items()
         }
 
-        metrics["mcts-rollouts/values"] = Histogram(samples["values"].cpu())
-        metrics["mcts-rollouts/child-values"] = Histogram(
+        metrics[f"{metrics_prefix}/values"] = Histogram(samples["values"].cpu())
+        metrics[f"{metrics_prefix}/child-values"] = Histogram(
             samples["child-values"].flatten().cpu()
         )
-        metrics["mcts-rollouts/probs"] = Histogram(samples["probs"].cpu())
+        metrics[f"{metrics_prefix}/probs"] = Histogram(samples["probs"].cpu())
         for action_id in range(samples["actions"].shape[2]):
-            metrics[f"mcts-rollouts/action-{action_id+1}"] = Histogram(
+            metrics[f"{metrics_prefix}/action-{action_id+1}"] = Histogram(
                 samples["actions"][:, :, action_id].flatten().cpu()
             )
 
@@ -137,7 +168,7 @@ class Evaluator:
             policy.zero_grad()
             critic.zero_grad()
 
-            loss_metrics = loss(batch.to(samples["values"].device), policy, critic)
+            loss_metrics = loss(batch, policy, critic)
 
             loss_metrics["loss/total"].backward()
             for model, grads in [(policy, grads_policy), (critic, grads_critic)]:
@@ -148,12 +179,12 @@ class Evaluator:
                 ]
 
             for metric_name, metric_value in loss_metrics.items():
-                metric_name = metric_name.replace("loss/", "mcts-loss/")
-                metric_name = metric_name.replace("metrics/", "mcts-rollouts/")
+                metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
+                metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
                 losses[metric_name].append(metric_value.item())
 
-        metrics["mcts-rollouts/grads-policy"] = Histogram(grads_policy)
-        metrics["mcts-rollouts/grads-critic"] = Histogram(grads_critic)
+        metrics["policy/gradients"] = Histogram(grads_policy)
+        metrics["critic/gradients"] = Histogram(grads_critic)
 
         for metric_name, metric_values in losses.items():
             metrics[metric_name] = sum(metric_values) / len(metric_values)

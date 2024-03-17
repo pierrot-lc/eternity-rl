@@ -150,6 +150,7 @@ def init_trainer_config(
     env: EternityEnv,
     loss: PPOLoss | MCTSLoss,
     replay_buffer: ReplayBuffer,
+    name: str,
 ) -> TrainerConfig:
     return TrainerConfig(
         env=env,
@@ -159,6 +160,7 @@ def init_trainer_config(
         rollouts=trainer_config.rollouts,
         train_policy=trainer_config.train_policy,
         train_critic=trainer_config.train_critic,
+        name=name,
     )
 
 

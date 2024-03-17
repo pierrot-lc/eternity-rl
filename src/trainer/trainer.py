@@ -311,6 +311,13 @@ class Trainer:
                         metrics |= self.evaluator.env_metrics(
                             method_config.env, method_name.lower()
                         )
+                        metrics |= self.evaluator.batch_metrics(
+                            method_config.replay_buffer.sample(),
+                            self.policy,
+                            self.critic,
+                            method_config.loss,
+                            method_config.name,
+                        )
 
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
@@ -340,7 +347,9 @@ class Trainer:
             metrics |= self.evaluator.models_metrics(model, scheduler, model_name)
 
         # Normal rollouts, evaluate the losses as well as the envs.
-        traces, samples = self.collect_ppo_rollouts(self.ppo_env, "softmax", disable_logs)
+        traces, samples = self.collect_ppo_rollouts(
+            self.ppo_env, "softmax", disable_logs
+        )
         self.ppo_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.policy_rollouts_metrics(
             traces,
@@ -348,10 +357,13 @@ class Trainer:
             self.ppo_trainer.loss,
             self.policy,
             self.critic,
+            self.ppo_trainer.name,
         )
         metrics |= self.evaluator.env_metrics(self.ppo_env, "ppo")
 
-        traces, samples = self.collect_mcts_rollouts(self.mcts_env, "softmax", disable_logs)
+        traces, samples = self.collect_mcts_rollouts(
+            self.mcts_env, "softmax", disable_logs
+        )
         self.mcts_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.mcts_rollouts_metrics(
             traces,
@@ -359,6 +371,7 @@ class Trainer:
             self.mcts_trainer.loss,
             self.policy,
             self.critic,
+            self.mcts_trainer.name,
         )
         metrics |= self.evaluator.env_metrics(self.mcts_env, "mcts")
 

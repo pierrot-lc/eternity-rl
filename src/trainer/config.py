@@ -16,3 +16,4 @@ class TrainerConfig:
     rollouts: int
     train_policy: bool
     train_critic: bool
+    name: str
