@@ -4,21 +4,25 @@ from typing import Any
 
 import einops
 import torch
-import torch.optim as optim
+import wandb
 from tensordict import TensorDict
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
 
-import wandb
-
 from ..environment import EternityEnv
-from ..mcts import MCTSLoss, MCTSTree, MCTSConfig
+from ..mcts import MCTSConfig, MCTSLoss, MCTSTree
 from ..model import Critic, Policy
 from ..policy_gradient import PPOLoss
-from ..rollouts import exploit_rollouts, mcts_rollouts, policy_rollouts, split_reset_rollouts
+from ..rollouts import (
+    mcts_rollouts,
+    policy_rollouts,
+    split_reset_rollouts,
+)
 from .config import TrainerConfig
+from .evaluator import Evaluator
 
 
 class Trainer:
@@ -26,8 +30,8 @@ class Trainer:
         self,
         policy: Policy | DDP,
         critic: Critic | DDP,
-        policy_optimizer: optim.Optimizer,
-        critic_optimizer: optim.Optimizer,
+        policy_optimizer: Optimizer,
+        critic_optimizer: Optimizer,
         policy_scheduler: LRScheduler,
         critic_scheduler: LRScheduler,
         ppo_trainer: TrainerConfig,
@@ -60,11 +64,9 @@ class Trainer:
             self.critic.module if isinstance(self.critic, DDP) else self.critic
         )
 
+        self.evaluator = Evaluator()
         self.device = ppo_trainer.env.device
         self.rng = ppo_trainer.env.rng
-
-        # Dynamic infos.
-        self.best_matches_found = 0
 
     def reset_envs(self, env: EternityEnv):
         """Randomly reset some of the environments."""
@@ -76,7 +78,9 @@ class Trainer:
         env.reset(reset_ids)
 
     @torch.inference_mode()
-    def collect_ppo_rollouts(self, disable_logs: bool):
+    def collect_ppo_rollouts(
+        self, sampling_mode: str, disable_logs: bool
+    ) -> TensorDict:
         """Simulates standard rollouts and adds them to the PPO replay buffer."""
         self.reset_envs(self.ppo_env)
 
@@ -88,7 +92,8 @@ class Trainer:
             self.policy_module,
             self.critic_module,
             self.ppo_trainer.rollouts,
-            disable_logs,
+            sampling_mode=sampling_mode,
+            disable_logs=disable_logs,
         )
 
         traces = split_reset_rollouts(traces)
@@ -118,8 +123,12 @@ class Trainer:
         )
         self.ppo_trainer.replay_buffer.extend(samples)
 
+        return traces
+
     @torch.inference_mode()
-    def collect_mcts_rollouts(self, disable_logs: bool, sampling_mode: str):
+    def collect_mcts_rollouts(
+        self, sampling_mode: str, disable_logs: bool
+    ) -> TensorDict:
         """Simulates MCTS rollouts and adds them to the MCTS replay buffer."""
         self.reset_envs(self.mcts_env)
 
@@ -142,8 +151,8 @@ class Trainer:
             self.critic_module,
             mcts_tree,
             self.mcts_trainer.rollouts,
-            sampling_mode,
-            disable_logs,
+            sampling_mode=sampling_mode,
+            disable_logs=disable_logs,
         )
 
         # Flatten the batch x steps dimensions and remove the masked steps.
@@ -155,6 +164,8 @@ class Trainer:
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
         self.mcts_trainer.replay_buffer.extend(samples)
+
+        return traces
 
     def do_batch_update(
         self,
@@ -189,6 +200,7 @@ class Trainer:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
+        evaluate_every: int = 100,
         save_every: int = 500,
     ):
         """Launches the training loop.
@@ -245,13 +257,15 @@ class Trainer:
                     "MCTS",
                     self.mcts_trainer,
                     lambda: self.collect_mcts_rollouts(
-                        disable_logs=disable_logs, sampling_mode="softmax"
+                        sampling_mode="softmax", disable_logs=disable_logs
                     ),
                 ),
                 (
                     "PPO",
                     self.ppo_trainer,
-                    lambda: self.collect_ppo_rollouts(disable_logs=disable_logs),
+                    lambda: self.collect_ppo_rollouts(
+                        sampling_mode="softmax", disable_logs=disable_logs
+                    ),
                 ),
             ]
 
@@ -288,77 +302,51 @@ class Trainer:
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
 
-                if not disable_logs:
-                    metrics = self.evaluate()
+                if not disable_logs and i % evaluate_every == 0 and i != 0:
+                    metrics = dict()
+
+                    for model, scheduler, model_name in [
+                        (self.policy, self.policy_scheduler, "policy"),
+                        (self.critic, self.critic_scheduler, "critic"),
+                    ]:
+                        metrics |= self.evaluator.models_metrics(
+                            model, scheduler, model_name
+                        )
+
+                    # Normal rollouts, evaluate the losses as well as the envs.
+                    traces = self.collect_ppo_rollouts("softmax", disable_logs)
+                    metrics |= self.evaluator.policy_rollouts_metrics(
+                        traces,
+                        self.ppo_trainer.replay_buffer,
+                        self.ppo_trainer.loss,
+                        self.policy,
+                        self.critic,
+                    )
+                    metrics |= self.evaluator.env_metrics(self.ppo_env, "ppo")
+
+                    traces = self.collect_mcts_rollouts("softmax", disable_logs)
+                    metrics |= self.evaluator.mcts_rollouts_metrics(
+                        traces,
+                        self.mcts_trainer.replay_buffer,
+                        self.mcts_trainer.loss,
+                        self.policy,
+                        self.critic,
+                    )
+                    metrics |= self.evaluator.env_metrics(self.mcts_env, "mcts")
+
+                    # Greedy rollouts, only evaluate the envs.
+                    self.collect_ppo_rollouts("greedy", disable_logs)
+                    metrics |= self.evaluator.env_metrics(self.ppo_env, "ppo-greedy")
+
+                    self.collect_mcts_rollouts("greedy", disable_logs)
+                    metrics |= self.evaluator.env_metrics(self.mcts_env, "mcts-greedy")
+
                     run.log(metrics)
 
-                    if i % save_every == 0:
-                        self.save_checkpoint("checkpoint.pt")
-                        self.ppo_env.save_sample("ppo-sample.gif")
-                        self.mcts_env.save_sample("mcts-sample.gif")
-
-    def evaluate(self) -> dict[str, Any]:
-        """Evaluates the model and returns some computed metrics."""
-        metrics = dict()
-
-        self.policy.eval()
-        self.critic.eval()
-
-        matches = self.ppo_env.matches / self.ppo_env.best_possible_matches
-        metrics["matches/mean"] = matches.mean()
-        metrics["matches/best"] = (
-            self.ppo_env.best_matches_ever / self.ppo_env.best_possible_matches
-        )
-        metrics["matches/rolling"] = (
-            self.ppo_env.rolling_matches / self.ppo_env.best_possible_matches
-        )
-        metrics["matches/total-won"] = self.ppo_env.total_won
-
-        # Compute losses.
-        batch = self.ppo_trainer.replay_buffer.sample()
-        batch = batch.to(self.device)
-        metrics |= self.ppo_trainer.loss(batch, self.policy, self.critic)
-        metrics["metrics/value-targets"] = wandb.Histogram(batch["value-targets"].cpu())
-        metrics["metrics/n-steps"] = wandb.Histogram(self.ppo_env.n_steps.cpu())
-
-        # Compute the gradient mean and maximum values.
-        # Also computes the weight absolute mean and maximum values.
-        self.policy.zero_grad()
-        self.critic.zero_grad()
-
-        metrics["loss/total"].backward()
-        weights, grads = [], []
-        for p in chain(self.policy.parameters(), self.critic.parameters()):
-            weights.append(p.data.abs().mean().item())
-
-            if p.grad is not None:
-                grads.append(p.grad.data.abs().mean().item())
-
-        metrics["lr/policy"] = self.policy_scheduler.get_last_lr()[0]
-        metrics["lr/critic"] = self.critic_scheduler.get_last_lr()[0]
-
-        metrics["global-weights/mean"] = sum(weights) / (len(weights) + 1)
-        metrics["global-weights/max"] = max(weights)
-        metrics["global-weights/hist"] = wandb.Histogram(weights)
-
-        metrics["global-gradients/mean"] = sum(grads) / (len(grads) + 1)
-        metrics["global-gradients/max"] = max(grads)
-        metrics["global-gradients/hist"] = wandb.Histogram(grads)
-
-        self.policy.zero_grad()
-        self.critic.zero_grad()
-
-        for name, value in metrics.items():
-            if isinstance(value, torch.Tensor):
-                metrics[name] = value.item()
-
-        if self.best_matches_found < self.ppo_env.best_matches_ever:
-            self.best_matches_found = self.ppo_env.best_matches_ever
-
-            self.ppo_env.save_best_env("board.png")
-            metrics["best-board"] = wandb.Image("board.png")
-
-        return metrics
+                if not disable_logs and i % save_every == 0 and i != 0:
+                    self.save_checkpoint("checkpoint.pt")
+                    self.ppo_env.save_sample("ppo-sample.gif")
+                    self.mcts_env.save_sample("mcts-sample.gif")
 
     def save_checkpoint(self, filepath: Path | str):
         torch.save(

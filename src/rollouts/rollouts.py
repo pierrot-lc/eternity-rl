@@ -1,4 +1,5 @@
 """Play some steps."""
+
 from collections import defaultdict
 
 import einops
@@ -140,34 +141,29 @@ def mcts_rollouts(
         mcts.reset(env, policy, critic)
 
         sample["states"] = env.render()
-        sample["probs"], sample["values"], sample["actions"] = mcts.evaluate(
+        sample["probs"], sample["child-values"], sample["actions"] = mcts.evaluate(
             disable_logs
         )
 
         # Make sure there's no "nan" values.
         assert torch.isfinite(sample["probs"]).all()
-        assert torch.isfinite(sample["values"]).all()
-
-        print(sample["probs"][0])
-        print(sample["values"][0])
+        assert torch.isfinite(sample["child-values"]).all()
 
         match sampling_mode:
             case "softmax":
                 action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
-                sample["values"] = (sample["values"] * sample["probs"]).sum(dim=1)
+                sample["values"] = (sample["child-values"] * sample["probs"]).sum(dim=1)
             case "greedy":
-                action_ids = sample["values"].argmax(dim=1)
-                sample["values"] = sample["values"].max(dim=1).values
+                action_ids = sample["child-values"].argmax(dim=1)
+                sample["values"] = sample["child-values"].max(dim=1).values
             case "uniform":
                 action_ids = Policy.sample_actions(sample["probs"], mode=sampling_mode)
-                sample["values"] = sample["values"].mean(dim=1)
+                sample["values"] = sample["chid-values"].mean(dim=1)
             case _:
                 raise ValueError(f"Invalid sampling mode: {sampling_mode}")
 
         sampled_actions = sample["actions"][mcts.batch_range, action_ids]
-        _, rewards, dones, truncated, _ = env.step(
-            sampled_actions
-        )
+        _, rewards, dones, truncated, _ = env.step(sampled_actions)
 
         if (dones | truncated).sum() > 0:
             reset_ids = torch.arange(0, env.batch_size, device=env.device)

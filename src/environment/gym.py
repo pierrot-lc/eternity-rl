@@ -99,7 +99,6 @@ class EternityEnv(gym.Env):
             self.batch_size, dtype=torch.long, device=device
         )
         self.best_boards = self.instances.clone()
-        self.rolling_matches = torch.zeros(1, dtype=torch.float, device=device)
         self.n_steps = torch.zeros(self.batch_size, dtype=torch.long, device=device)
         self.best_board_ever = torch.zeros(
             (N_SIDES, self.board_size, self.board_size), dtype=torch.long
@@ -211,9 +210,6 @@ class EternityEnv(gym.Env):
         self.best_boards[diff_matches > 0] = self.instances[diff_matches > 0].clone()
         self.best_matches[diff_matches > 0] = matches[diff_matches > 0]
 
-        self.rolling_matches = (
-            0.99 * self.rolling_matches + 0.01 * matches.float().mean()
-        )
         self.total_won += just_won.sum().cpu().item()
 
         self.update_best_env()

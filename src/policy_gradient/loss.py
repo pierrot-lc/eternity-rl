@@ -179,6 +179,5 @@ class PPOLoss(nn.Module):
             metrics["metrics/value-clip-frac"] = (
                 ((values - old_values).abs() > self.ppo_clip_vf).float().mean()
             )
-            metrics["metrics/entropy"] = entropies.mean()
 
         return metrics

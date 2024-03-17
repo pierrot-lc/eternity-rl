@@ -4,14 +4,14 @@ batch_size: 32
 trainer:
   # Total replay buffer size is `replay_buffer_factor * rollouts * batch_size`.
   replay_buffer_factor: 5
-  epochs: 1  # Use `0` deactivate MCTS training.
+  epochs: 0  # Use `0` deactivate MCTS training.
   rollouts: 25
   train_policy: false
   train_critic: true
 
 search:
   c_puct: 0.001
-  simulations: 500
+  simulations: 10
   childs: 5
 
 loss:

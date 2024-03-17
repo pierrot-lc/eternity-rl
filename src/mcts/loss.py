@@ -47,7 +47,4 @@ class MCTSLoss(nn.Module):
             + metrics["loss/weighted-entropy"]
         )
 
-        with torch.no_grad():
-            metrics["metrics/entropy"] = entropies.sum(dim=1).mean()
-
         return metrics
