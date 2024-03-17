@@ -3,7 +3,7 @@ batch_size: 256
 
 trainer:
   epochs: 3
-  rollouts: 32
+  rollouts: 64
   train_policy: true
   train_critic: true
 

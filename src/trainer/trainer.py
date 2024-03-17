@@ -198,7 +198,7 @@ class Trainer:
         group: str,
         config: dict[str, Any],
         mode: str = "online",
-        evaluate_every: int = 1,
+        evaluate_every: int = 100,
         save_every: int = 500,
     ):
         """Launches the training loop.
@@ -340,7 +340,8 @@ class Trainer:
             metrics |= self.evaluator.models_metrics(model, scheduler, model_name)
 
         # Normal rollouts, evaluate the losses as well as the envs.
-        traces, _ = self.collect_ppo_rollouts(self.ppo_env, "softmax", disable_logs)
+        traces, samples = self.collect_ppo_rollouts(self.ppo_env, "softmax", disable_logs)
+        self.ppo_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.policy_rollouts_metrics(
             traces,
             self.ppo_trainer.replay_buffer,
@@ -350,7 +351,8 @@ class Trainer:
         )
         metrics |= self.evaluator.env_metrics(self.ppo_env, "ppo")
 
-        traces, _ = self.collect_mcts_rollouts(self.mcts_env, "softmax", disable_logs)
+        traces, samples = self.collect_mcts_rollouts(self.mcts_env, "softmax", disable_logs)
+        self.mcts_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.mcts_rollouts_metrics(
             traces,
             self.mcts_trainer.replay_buffer,
