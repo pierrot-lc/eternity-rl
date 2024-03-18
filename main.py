@@ -82,7 +82,7 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
         config, ppo.batch_size, max_size=ppo.batch_size * ppo.trainer.rollouts
     )
     ppo_trainer_config = init_trainer_config(
-        ppo.trainer, env, loss, replay_buffer, "policy-gradient"
+        ppo.trainer, env, loss, replay_buffer, "PPO"
     )
 
     # Init MCTS config.
@@ -97,7 +97,7 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
         * mcts.trainer.replay_buffer_factor,
     )
     mcts_trainer_config = init_trainer_config(
-        mcts.trainer, env, loss, replay_buffer, "mcts"
+        mcts.trainer, env, loss, replay_buffer, "MCTS"
     )
     mcts_config = init_mcts_config(config)
 
@@ -132,7 +132,11 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
 
     try:
         trainer.launch_training(
-            config.env.group, OmegaConf.to_container(config), config.mode
+            config.env.group,
+            OmegaConf.to_container(config),
+            config.mode,
+            config.trainer.eval_every,
+            config.trainer.save_every,
         )
     except KeyboardInterrupt:
         print("Caught KeyboardInterrupt.")

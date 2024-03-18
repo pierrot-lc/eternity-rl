@@ -23,6 +23,8 @@ trainer:
   episodes: -1
   reset_proportion: 0.50
   clip_value: 1.0
+  eval_every: 10
+  save_every: 500
 
 checkpoint:
 

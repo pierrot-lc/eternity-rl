@@ -1,12 +1,9 @@
-from collections import defaultdict
 from typing import Any
 
-import einops
 import torch
 import wandb
 from tensordict import TensorDictBase
 from torch.optim.lr_scheduler import LRScheduler
-from torchrl.data import ReplayBuffer
 from wandb import Histogram
 
 from ..environment import EternityEnv
@@ -41,6 +38,13 @@ class Evaluator:
         return metrics
 
     @staticmethod
+    def rollout_metrics(metrics: dict[str, Any], prefix: str) -> dict[str, Any]:
+        return {
+            metric_name.replace("metrics/", f"{prefix}/"): metric_value
+            for metric_name, metric_value in metrics.items()
+        }
+
+    @staticmethod
     def batch_metrics(
         batch: TensorDictBase,
         policy: Policy,
@@ -60,134 +64,12 @@ class Evaluator:
                 for param in model.parameters()
                 if param.grad is not None
             ]
-            metrics[f"{model_name}/gradients"] = Histogram(grads)
+            metrics[f"{model_name}/{metrics_prefix}-gradients"] = Histogram(grads)
 
         for metric_name, metric_value in loss_metrics.items():
-            metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
+            metric_name = metric_name.replace("loss/", f"{metrics_prefix}/loss-")
             metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
             metrics[metric_name] = metric_value.item()
-
-        return metrics
-
-    @staticmethod
-    def policy_rollouts_metrics(
-        traces: TensorDictBase,
-        replay_buffer: ReplayBuffer,
-        loss: PPOLoss,
-        policy: Policy,
-        critic: Critic,
-        metrics_prefix: str,
-    ) -> dict[str, Any]:
-        """Main metrics for the policy rollouts. Also estimate the gradients
-        for the policy and the critic.
-        """
-        metrics = dict()
-        masks = einops.rearrange(traces["masks"], "b d -> (b d)")
-        value_targets = einops.rearrange(traces["value-targets"], "b d -> (b d)")
-        advantages = einops.rearrange(traces["advantages"], "b d -> (b d)")
-        actions = einops.rearrange(traces["actions"], "b d a -> (b d) a")
-
-        value_targets = value_targets[masks]
-        advantages = advantages[masks]
-        actions = actions[masks]
-
-        metrics[f"{metrics_prefix}/sum-rewards"] = Histogram(
-            traces["rewards"].sum(dim=1).cpu()
-        )
-        metrics[f"{metrics_prefix}/value-targets"] = Histogram(value_targets.cpu())
-        metrics[f"{metrics_prefix}/advantages"] = Histogram(advantages.cpu())
-        for action_id in range(actions.shape[1]):
-            metrics[f"{metrics_prefix}/action-{action_id+1}"] = Histogram(
-                actions[:, action_id].cpu()
-            )
-
-        policy.train()
-        critic.train()
-        grads_policy, grads_critic = [], []
-        losses = defaultdict(list)
-        for batch in replay_buffer:
-            policy.zero_grad()
-            critic.zero_grad()
-
-            loss_metrics = loss(batch, policy, critic)
-
-            loss_metrics["loss/total"].backward()
-            for model, grads in [(policy, grads_policy), (critic, grads_critic)]:
-                grads += [
-                    param.grad.data.abs().mean().item()
-                    for param in model.parameters()
-                    if param.grad is not None
-                ]
-
-            for metric_name, metric_value in loss_metrics.items():
-                metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
-                metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
-                losses[metric_name].append(metric_value.item())
-
-        metrics["policy/gradients"] = Histogram(grads_policy)
-        metrics["critic/gradients"] = Histogram(grads_critic)
-
-        for metric_name, metric_values in losses.items():
-            metrics[metric_name] = sum(metric_values) / len(metric_values)
-
-        return metrics
-
-    @staticmethod
-    def mcts_rollouts_metrics(
-        traces: TensorDictBase,
-        replay_buffer: ReplayBuffer,
-        loss: MCTSLoss,
-        policy: Policy,
-        critic: Critic,
-        metrics_prefix: str,
-    ) -> dict[str, Any]:
-        """Main metrics for the MCTS rollouts. Also estimate the gradients
-        for the policy and the critic.
-        """
-        metrics = dict()
-        samples = {
-            name: einops.rearrange(tensor, "b d ... -> (b d) ...")
-            for name, tensor in traces.items()
-        }
-
-        metrics[f"{metrics_prefix}/values"] = Histogram(samples["values"].cpu())
-        metrics[f"{metrics_prefix}/child-values"] = Histogram(
-            samples["child-values"].flatten().cpu()
-        )
-        metrics[f"{metrics_prefix}/probs"] = Histogram(samples["probs"].cpu())
-        for action_id in range(samples["actions"].shape[2]):
-            metrics[f"{metrics_prefix}/action-{action_id+1}"] = Histogram(
-                samples["actions"][:, :, action_id].flatten().cpu()
-            )
-
-        policy.train()
-        critic.train()
-        grads_policy, grads_critic = [], []
-        losses = defaultdict(list)
-        for batch in replay_buffer:
-            policy.zero_grad()
-            critic.zero_grad()
-
-            loss_metrics = loss(batch, policy, critic)
-
-            loss_metrics["loss/total"].backward()
-            for model, grads in [(policy, grads_policy), (critic, grads_critic)]:
-                grads += [
-                    param.grad.data.abs().mean().item()
-                    for param in model.parameters()
-                    if param.grad is not None
-                ]
-
-            for metric_name, metric_value in loss_metrics.items():
-                metric_name = metric_name.replace("loss/", f"{metrics_prefix}/")
-                metric_name = metric_name.replace("metrics/", f"{metrics_prefix}/")
-                losses[metric_name].append(metric_value.item())
-
-        metrics["policy/gradients"] = Histogram(grads_policy)
-        metrics["critic/gradients"] = Histogram(grads_critic)
-
-        for metric_name, metric_values in losses.items():
-            metrics[metric_name] = sum(metric_values) / len(metric_values)
 
         return metrics
 
