@@ -348,7 +348,7 @@ class Trainer:
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
 
-                if not disable_logs and i % evaluate_every == 0 and i != 0:
+                if not disable_logs and i % evaluate_every == 0:
                     metrics |= self.compute_metrics(disable_logs)
 
                 if not disable_logs:
@@ -416,7 +416,7 @@ class Trainer:
             self.ppo_greedy_env, f"{self.ppo_trainer.name}-greedy"
         )
 
-        _, rollout_metric = self.collect_mcts_rollouts(
+        _, rollout_metrics = self.collect_mcts_rollouts(
             self.mcts_greedy_env, "greedy", disable_logs
         )
         metrics |= self.evaluator.rollout_metrics(
