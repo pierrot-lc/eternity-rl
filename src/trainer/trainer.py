@@ -300,7 +300,7 @@ class Trainer:
                         continue  # Ignore the method.
 
                     # Fill the rollout buffer.
-                    samples, rollout_metrics = method_rollout()
+                    samples, metrics_ = method_rollout()
                     samples = samples.clone()  # Avoid in-place operations.
                     method_config.replay_buffer.extend(samples)
 
@@ -330,7 +330,7 @@ class Trainer:
                         # It is important to evaluate the batch metrics after the epochs.
                         # Otherwise we would not be able to see the final approx-kl, and clip-frac.
                         metrics |= self.evaluator.rollout_metrics(
-                            rollout_metrics,
+                            metrics_,
                             method_config.name,
                         )
                         metrics |= self.evaluator.env_metrics(
@@ -373,12 +373,12 @@ class Trainer:
             metrics |= self.evaluator.models_metrics(model, scheduler, model_name)
 
         # Normal rollouts, evaluate the losses as well as the envs.
-        samples, rollout_metrics = self.collect_ppo_rollouts(
+        samples, metrics_ = self.collect_ppo_rollouts(
             self.ppo_env, "softmax", disable_logs
         )
         self.ppo_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.rollout_metrics(
-            rollout_metrics, self.ppo_trainer.name
+            metrics_, self.ppo_trainer.name
         )
         metrics |= self.evaluator.env_metrics(self.ppo_env, self.ppo_trainer.name)
         metrics |= self.evaluator.batch_metrics(
@@ -389,12 +389,12 @@ class Trainer:
             self.ppo_trainer.name,
         )
 
-        samples, rollout_metrics = self.collect_mcts_rollouts(
+        samples, metrics_ = self.collect_mcts_rollouts(
             self.mcts_env, "softmax", disable_logs
         )
         self.mcts_trainer.replay_buffer.extend(samples.clone())
         metrics |= self.evaluator.rollout_metrics(
-            rollout_metrics, self.mcts_trainer.name
+            metrics_, self.mcts_trainer.name
         )
         metrics |= self.evaluator.env_metrics(self.mcts_env, self.mcts_trainer.name)
         metrics |= self.evaluator.batch_metrics(
@@ -406,21 +406,21 @@ class Trainer:
         )
 
         # Greedy rollouts, only evaluate the envs.
-        _, rollout_metrics = self.collect_ppo_rollouts(
+        _, metrics_ = self.collect_ppo_rollouts(
             self.ppo_greedy_env, "greedy", disable_logs
         )
         metrics |= self.evaluator.rollout_metrics(
-            rollout_metrics, f"{self.ppo_trainer.name}-greedy"
+            metrics_, f"{self.ppo_trainer.name}-greedy"
         )
         metrics |= self.evaluator.env_metrics(
             self.ppo_greedy_env, f"{self.ppo_trainer.name}-greedy"
         )
 
-        _, rollout_metrics = self.collect_mcts_rollouts(
+        _, metrics_ = self.collect_mcts_rollouts(
             self.mcts_greedy_env, "greedy", disable_logs
         )
         metrics |= self.evaluator.rollout_metrics(
-            rollout_metrics, f"{self.mcts_trainer.name}-greedy"
+            metrics_, f"{self.mcts_trainer.name}-greedy"
         )
         metrics |= self.evaluator.env_metrics(
             self.mcts_greedy_env, f"{self.mcts_trainer.name}-greedy"

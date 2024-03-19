@@ -345,3 +345,23 @@ version: 1.1.1
    I have found online in the code. Moreover in my case I have only
    a partially expanded MCTS so maybe this whole thing can't work without
    some heavy modifications.
+
+* On the difficulty of extrem exploration
+
+  Solving the puzzle necessarily requires deep exploration. Even for the
+  simple 4x4 puzzle, the model tends to be stuck in a local minimum. This
+  is why I use some very aggressive entropy regularization. Along with
+  this, I use a very low learning rate for the critic. This is because the
+  critic tends to overfit the actor and to guide it to the mean
+  performance.
+
+  This is a very hard problem to solve. The model needs to exploit the
+  good actions is has found while still being able to explore. Even the
+  MCTS does not work here, as the environment is fully reversible (at
+  least that's my understanding of it).
+
+  Here are some untested ideas that could help:
+  - Reset the critic weights from time to time so that it can start over.
+  - Add some noises in the critic and policy weights during training.
+  - Add penalization to commonly predicted actions in the rollouts.
+  - Use randomly generated problems.
