@@ -79,11 +79,9 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
     env = init_env(config, ppo.batch_size)
     loss = init_ppo_loss(config)
     replay_buffer = init_replay_buffer(
-        config, ppo.batch_size, max_size=ppo.batch_size * ppo.trainer.rollouts
+        config, ppo.batch_size, max_size=ppo.batch_size * ppo.rollouts
     )
-    ppo_trainer_config = init_trainer_config(
-        ppo.trainer, env, loss, replay_buffer, "PPO"
-    )
+    ppo_trainer_config = init_trainer_config(ppo, env, loss, replay_buffer, "PPO")
 
     # Init MCTS config.
     mcts = config.mcts
@@ -92,13 +90,9 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
     replay_buffer = init_replay_buffer(
         config,
         mcts.batch_size,
-        max_size=mcts.batch_size
-        * mcts.trainer.rollouts
-        * mcts.trainer.replay_buffer_factor,
+        max_size=mcts.batch_size * mcts.rollouts * mcts.replay_buffer_factor,
     )
-    mcts_trainer_config = init_trainer_config(
-        mcts.trainer, env, loss, replay_buffer, "MCTS"
-    )
+    mcts_trainer_config = init_trainer_config(mcts, env, loss, replay_buffer, "MCTS")
     mcts_config = init_mcts_config(config)
 
     # Use the same RNG for both envs.
