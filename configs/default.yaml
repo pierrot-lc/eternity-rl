@@ -8,7 +8,7 @@ gamma: 0.99
 
 ppo:
   batch_size: 256
-  epochs: 3
+  epochs: 1
   rollouts: 64
   train_policy: true
   train_critic: true
@@ -17,8 +17,8 @@ ppo:
     gae_lambda: 0.95
     ppo_clip_ac: 0.20
     ppo_clip_vf: 0.20
-    value_weight: 1e-0
-    entropy_weight: 1.0e-2
+    value_weight: 1e-5
+    entropy_weight: 1.0e-1
     entropy_clip: 3.0
 
 mcts:
@@ -40,7 +40,7 @@ mcts:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-5
+  learning_rate: 1.0e-4
   weight_decay: 1.0e-2
 
 scheduler:
@@ -51,7 +51,7 @@ scheduler:
 
 trainer:
   episodes: -1
-  reset_proportion: 0.80
+  reset_proportion: 0.10
   clip_value: 1.0
   eval_every: 100
   save_every: 500
