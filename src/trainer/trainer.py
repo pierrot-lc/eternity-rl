@@ -11,16 +11,13 @@ from torch.nn.utils import clip_grad
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
+from wandb import Histogram
 
 from ..environment import EternityEnv
 from ..mcts import MCTSConfig, MCTSLoss, MCTSTree
 from ..model import Critic, Policy
 from ..policy_gradient import PPOLoss
-from ..rollouts import (
-    mcts_rollouts,
-    policy_rollouts,
-    split_reset_rollouts,
-)
+from ..rollouts import mcts_rollouts, policy_rollouts, split_reset_rollouts
 from .config import TrainerConfig
 from .evaluator import Evaluator
 
@@ -55,7 +52,9 @@ class Trainer:
         self.reset_proportion = reset_proportion
 
         self.ppo_env = self.ppo_trainer.env
+        self.ppo_greedy_env = EternityEnv.from_env(self.ppo_env)
         self.mcts_env = self.mcts_trainer.env
+        self.mcts_greedy_env = EternityEnv.from_env(self.mcts_env)
 
         self.policy_module = (
             self.policy.module if isinstance(self.policy, DDP) else self.policy
@@ -80,8 +79,10 @@ class Trainer:
     @torch.inference_mode()
     def collect_ppo_rollouts(
         self, env: EternityEnv, sampling_mode: str, disable_logs: bool
-    ) -> tuple[TensorDict, TensorDict]:
+    ) -> tuple[TensorDict, dict[str, Any]]:
         """Simulates standard rollouts and adds them to the PPO replay buffer."""
+        metrics = dict()
+
         self.reset_envs(env)
 
         # Collect the rollouts.
@@ -108,6 +109,8 @@ class Trainer:
             == self.ppo_env.batch_size * self.ppo_trainer.rollouts
         ), "Some samples are missing."
 
+        metrics["metrics/sum-rewards"] = Histogram(traces["rewards"].sum(dim=1).cpu())
+
         # Flatten the batch x steps dimensions and remove the masked steps.
         samples = dict()
         masks = einops.rearrange(traces["masks"], "b d -> (b d)")
@@ -122,13 +125,21 @@ class Trainer:
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
 
-        return traces, samples
+        metrics["metrics/value-targets"] = Histogram(samples["value-targets"].cpu())
+        metrics["metrics/advantages"] = Histogram(samples["advantages"].cpu())
+        for action_id in range(samples["actions"].shape[1]):
+            actions = samples["actions"][:, action_id].cpu()
+            metrics[f"metrics/action-{action_id+1}"] = Histogram(actions)
+
+        return samples, metrics
 
     @torch.inference_mode()
     def collect_mcts_rollouts(
         self, env: EternityEnv, sampling_mode: str, disable_logs: bool
-    ) -> tuple[TensorDict, TensorDict]:
+    ) -> tuple[TensorDict, dict[str, Any]]:
         """Simulates MCTS rollouts and adds them to the MCTS replay buffer."""
+        metrics = dict()
+
         self.reset_envs(env)
 
         mcts_tree = MCTSTree(
@@ -163,7 +174,17 @@ class Trainer:
             samples, batch_size=samples["states"].shape[0], device=self.device
         )
 
-        return traces, samples
+        metrics["metrics/values"] = Histogram(samples["values"].cpu())
+        metrics["metrics/child-values"] = Histogram(
+            samples["child-values"].flatten().cpu()
+        )
+        metrics["metrics/probs"] = Histogram(samples["probs"].cpu())
+
+        for action_id in range(samples["actions"].shape[2]):
+            actions = samples["actions"][:, :, action_id].flatten().cpu()
+            metrics[f"metrics/action-{action_id+1}"] = Histogram(actions)
+
+        return samples, metrics
 
     def do_batch_update(
         self,
@@ -214,7 +235,8 @@ class Trainer:
                 - "offline": The run is logged offline to W&B.
                 - "disabled": The run does not produce any output.
                     Useful for multi-GPU training.
-            eval_every: The number of rollouts between each evaluation.
+            evaluate_every: The number of rollouts between each evaluation.
+            save_every: The number of rollouts between each checkpoint.
         """
         disable_logs = mode == "disabled"
 
@@ -229,9 +251,9 @@ class Trainer:
             self.critic.to(self.device)
 
             self.ppo_env.reset()
-            self.mcts_trainer.env.reset()
-
-            self.best_matches_found = 0  # Reset.
+            self.ppo_greedy_env.reset()
+            self.mcts_env.reset()
+            self.mcts_greedy_env.reset()
 
             if not disable_logs:
                 self.policy_module.summary(
@@ -249,10 +271,9 @@ class Trainer:
             # Infinite loop if n_batches is -1.
             iter = count(0) if self.episodes == -1 else range(self.episodes)
 
-            # Tuples of (method_name, method_config, method_rollout).
+            # Tuples of (method_config, method_rollout).
             methods = [
                 (
-                    "MCTS",
                     self.mcts_trainer,
                     lambda: self.collect_mcts_rollouts(
                         self.mcts_env,
@@ -261,7 +282,6 @@ class Trainer:
                     ),
                 ),
                 (
-                    "PPO",
                     self.ppo_trainer,
                     lambda: self.collect_ppo_rollouts(
                         self.ppo_env,
@@ -275,19 +295,19 @@ class Trainer:
                 if not disable_logs:
                     metrics = dict()
 
-                for method_name, method_config, method_rollout in methods:
+                for method_config, method_rollout in methods:
                     if method_config.epochs == 0:
                         continue  # Ignore the method.
 
                     # Fill the rollout buffer.
-                    _, samples = method_rollout()
+                    samples, metrics_ = method_rollout()
                     samples = samples.clone()  # Avoid in-place operations.
                     method_config.replay_buffer.extend(samples)
 
                     # Train the models.
                     for _ in tqdm(
                         range(method_config.epochs),
-                        desc=f"Epoch {method_name}",
+                        desc=f"Epoch {method_config.name}",
                         leave=False,
                         disable=disable_logs,
                     ):
@@ -306,10 +326,16 @@ class Trainer:
                                 train_critic=method_config.train_critic,
                             )
 
-                    # Save some basic metrics.
                     if not disable_logs:
+                        # It is important to evaluate the batch metrics after the epochs.
+                        # Otherwise we would not be able to see the final approx-kl, and clip-frac.
+                        metrics |= self.evaluator.rollout_metrics(
+                            metrics_,
+                            method_config.name,
+                        )
                         metrics |= self.evaluator.env_metrics(
-                            method_config.env, method_name.lower()
+                            method_config.env,
+                            method_config.name,
                         )
                         metrics |= self.evaluator.batch_metrics(
                             method_config.replay_buffer.sample(),
@@ -322,7 +348,7 @@ class Trainer:
                 self.policy_scheduler.step()
                 self.critic_scheduler.step()
 
-                if not disable_logs and i % evaluate_every == 0 and i != 0:
+                if not disable_logs and i % evaluate_every == 0:
                     metrics |= self.compute_metrics(disable_logs)
 
                 if not disable_logs:
@@ -347,50 +373,58 @@ class Trainer:
             metrics |= self.evaluator.models_metrics(model, scheduler, model_name)
 
         # Normal rollouts, evaluate the losses as well as the envs.
-        traces, samples = self.collect_ppo_rollouts(
+        samples, metrics_ = self.collect_ppo_rollouts(
             self.ppo_env, "softmax", disable_logs
         )
         self.ppo_trainer.replay_buffer.extend(samples.clone())
-        metrics |= self.evaluator.policy_rollouts_metrics(
-            traces,
-            self.ppo_trainer.replay_buffer,
-            self.ppo_trainer.loss,
+        metrics |= self.evaluator.rollout_metrics(
+            metrics_, self.ppo_trainer.name
+        )
+        metrics |= self.evaluator.env_metrics(self.ppo_env, self.ppo_trainer.name)
+        metrics |= self.evaluator.batch_metrics(
+            self.ppo_trainer.replay_buffer.sample(),
             self.policy,
             self.critic,
+            self.ppo_trainer.loss,
             self.ppo_trainer.name,
         )
-        metrics |= self.evaluator.env_metrics(self.ppo_env, "ppo")
 
-        traces, samples = self.collect_mcts_rollouts(
+        samples, metrics_ = self.collect_mcts_rollouts(
             self.mcts_env, "softmax", disable_logs
         )
         self.mcts_trainer.replay_buffer.extend(samples.clone())
-        metrics |= self.evaluator.mcts_rollouts_metrics(
-            traces,
-            self.mcts_trainer.replay_buffer,
-            self.mcts_trainer.loss,
+        metrics |= self.evaluator.rollout_metrics(
+            metrics_, self.mcts_trainer.name
+        )
+        metrics |= self.evaluator.env_metrics(self.mcts_env, self.mcts_trainer.name)
+        metrics |= self.evaluator.batch_metrics(
+            self.mcts_trainer.replay_buffer.sample(),
             self.policy,
             self.critic,
+            self.mcts_trainer.loss,
             self.mcts_trainer.name,
         )
-        metrics |= self.evaluator.env_metrics(self.mcts_env, "mcts")
 
         # Greedy rollouts, only evaluate the envs.
-        env = EternityEnv(
-            self.ppo_env.instances,
-            self.ppo_env.episode_length,
-            self.device,
+        _, metrics_ = self.collect_ppo_rollouts(
+            self.ppo_greedy_env, "greedy", disable_logs
         )
-        self.collect_ppo_rollouts(env, "greedy", disable_logs)
-        metrics |= self.evaluator.env_metrics(env, "ppo-greedy")
+        metrics |= self.evaluator.rollout_metrics(
+            metrics_, f"{self.ppo_trainer.name}-greedy"
+        )
+        metrics |= self.evaluator.env_metrics(
+            self.ppo_greedy_env, f"{self.ppo_trainer.name}-greedy"
+        )
 
-        env = EternityEnv(
-            self.mcts_env.instances,
-            self.mcts_env.episode_length,
-            self.device,
+        _, metrics_ = self.collect_mcts_rollouts(
+            self.mcts_greedy_env, "greedy", disable_logs
         )
-        self.collect_mcts_rollouts(env, "greedy", disable_logs)
-        metrics |= self.evaluator.env_metrics(env, "mcts-greedy")
+        metrics |= self.evaluator.rollout_metrics(
+            metrics_, f"{self.mcts_trainer.name}-greedy"
+        )
+        metrics |= self.evaluator.env_metrics(
+            self.mcts_greedy_env, f"{self.mcts_trainer.name}-greedy"
+        )
 
         return metrics
 

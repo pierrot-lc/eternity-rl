@@ -153,7 +153,7 @@ class MCTSTree:
             leave=False,
             disable=disable_logs,
         ):
-            self.step("dirichlet" if i == 0 else "softmax")
+            self.step("dirichlet")
 
         childs = self.childs[:, 0]  # Root's children.
         visits = torch.gather(self.visits, dim=1, index=childs)
