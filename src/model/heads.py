@@ -27,7 +27,6 @@ class SelectTile(nn.Module):
             bias=False,
             batch_first=False,
         )
-        self.norm = nn.LayerNorm(embedding_dim)
 
         # Deactivate these parameters, as they're not used (DDP).
         self.attention_layer.out_proj.requires_grad_(False)
@@ -50,7 +49,6 @@ class SelectTile(nn.Module):
         """
         query = query.unsqueeze(0)
         query = self.decoder(query, tiles)
-        query = self.norm(query)
         _, node_distributions = self.attention_layer(
             query,
             tiles,
@@ -58,7 +56,7 @@ class SelectTile(nn.Module):
             need_weights=True,
             average_attn_weights=True,
         )
-        return node_distributions.squeeze(1)
+        return query.squeeze(0), node_distributions.squeeze(1)
 
 
 class SelectSide(nn.Module):
@@ -77,7 +75,6 @@ class SelectSide(nn.Module):
             num_layers=n_layers,
         )
         self.predict_side = nn.Sequential(
-            nn.LayerNorm(embedding_dim),
             nn.Linear(embedding_dim, N_SIDES),
             nn.Softmax(dim=-1),
         )

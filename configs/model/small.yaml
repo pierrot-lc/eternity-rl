@@ -2,5 +2,5 @@
 embedding_dim: 8
 n_heads: 1
 backbone_layers: 4
-decoder_layers: 1
+decoder_layers: 2
 dropout: 0.00
