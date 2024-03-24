@@ -4,7 +4,7 @@ defaults:
   - env: trivial_B
   - model: medium
 
-gamma: 0.90
+gamma: 0.99
 
 ppo:
   batch_size: 256
@@ -17,8 +17,8 @@ ppo:
     gae_lambda: 0.95
     ppo_clip_ac: 0.20
     ppo_clip_vf: 0.20
-    value_weight: 1e-3
-    entropy_weight: 1.0e-2
+    value_weight: 1e-5
+    entropy_weight: 1.0e-1
     entropy_clip: 0.0
 
 mcts:
@@ -40,7 +40,7 @@ mcts:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-4
+  learning_rate: 1.0e-3
   weight_decay: 1.0e-2
 
 scheduler:
