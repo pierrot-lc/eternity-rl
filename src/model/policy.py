@@ -7,8 +7,8 @@ from torchinfo import summary
 
 from ..environment import N_SIDES
 from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling
-from .backbones import GNNBackbone, TransformerBackbone, EquivariantTransformerBackbone
-from .heads import SelectSide, SelectTile
+from .backbones import TransformerBackbone
+from .heads import SelectTile
 
 
 class Policy(nn.Module):
@@ -22,10 +22,6 @@ class Policy(nn.Module):
     ):
         super().__init__()
 
-        self.backbone = GNNBackbone(embedding_dim, backbone_layers)
-        self.backbone = EquivariantTransformerBackbone(
-            embedding_dim, n_heads, backbone_layers, dropout
-        )
         self.backbone = TransformerBackbone(
             embedding_dim, n_heads, backbone_layers, dropout
         )
