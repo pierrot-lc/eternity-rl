@@ -22,17 +22,17 @@ class Policy(nn.Module):
     ):
         super().__init__()
 
-        self.backbone = TransformerBackbone(
-            embedding_dim, n_heads, backbone_layers, dropout
-        )
         self.backbone = GNNBackbone(embedding_dim, backbone_layers)
         self.backbone = EquivariantTransformerBackbone(
+            embedding_dim, n_heads, backbone_layers, dropout
+        )
+        self.backbone = TransformerBackbone(
             embedding_dim, n_heads, backbone_layers, dropout
         )
 
         self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
         self.select_side = nn.Sequential(
-            nn.Linear(embedding_dim, N_SIDES, bias=False),
+            nn.Linear(2 * embedding_dim, N_SIDES, bias=False),
             nn.Softmax(dim=1),
         )
 
@@ -126,7 +126,11 @@ class Policy(nn.Module):
 
         # Side selections.
         for side_number in range(2):
-            probs = self.select_side(selected_tiles[side_number])
+            side_embeddings = torch.concat(
+                (selected_tiles[side_number], selected_tiles[1 - side_number]),
+                dim=1,
+            )
+            probs = self.select_side(side_embeddings)
 
             sampled_sides = (
                 self.sample_actions(probs, sampling_mode)

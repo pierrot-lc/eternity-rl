@@ -76,7 +76,10 @@ class MessagePassingInter(nn.Module):
         super().__init__()
 
         self.self_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
-        self.other_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.other_linears = nn.ModuleList(
+            [nn.Linear(embedding_dim, embedding_dim, bias=False) for _ in range(3)]
+        )
+        # self.other_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
         self.activation = nn.Sequential(
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
@@ -96,11 +99,11 @@ class MessagePassingInter(nn.Module):
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         """
         self_tokens = self.self_linear(tokens)
-        other_tokens = (
-            torch.roll(tokens, shifts=-1, dims=3) / 2
-            + torch.roll(tokens, shifts=1, dims=3) / 2
-        )
-        other_tokens = self.other_linear(other_tokens)
+
+        other_tokens = 0
+        for shift, linear in zip(range(3), self.other_linears):
+            shifted_tokens = torch.roll(tokens, shifts=shift, dims=3)
+            other_tokens = other_tokens + linear(shifted_tokens) / 3
         messages = self.activation(self_tokens + other_tokens)
         return messages
 

@@ -19,11 +19,11 @@ class Critic(nn.Module):
     ):
         super().__init__()
 
-        self.backbone = TransformerBackbone(
-            embedding_dim, n_heads, backbone_layers, dropout
-        )
         self.backbone = GNNBackbone(embedding_dim, backbone_layers)
         self.backbone = EquivariantTransformerBackbone(
+            embedding_dim, n_heads, backbone_layers, dropout
+        )
+        self.backbone = TransformerBackbone(
             embedding_dim, n_heads, backbone_layers, dropout
         )
 
