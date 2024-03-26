@@ -32,3 +32,6 @@ build-backend = "pdm.backend"
 test = [
     "pytest>=7.3.1, <=8.0.2",
 ]
+
+[tool.ruff]
+src = ["src"]
