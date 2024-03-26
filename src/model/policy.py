@@ -102,11 +102,10 @@ class Policy(nn.Module):
         actions, logprobs, entropies = [], [], []
 
         # Node selections.
-        queries = torch.zeros((batch_size, tiles.shape[2]), device=tiles.device)
         selected_tiles = []
         for node_number in range(2):
             # Probabilities of selection for all tiles.
-            queries, probs = self.select_tile(tiles, queries)
+            tiles, probs = self.select_tile(tiles)
 
             # Sample the action (if required), compute the corresponding logprobs and entropies.
             sampled_tiles = (
@@ -122,7 +121,6 @@ class Policy(nn.Module):
 
             # Mark the selected tile so that further prediction can take into account this fact.
             selected_tiles.append(tiles[sampled_tiles, batch_range])
-            queries = queries + selected_tiles[-1]
             selected_embedding = self.tiles_embeddings[node_number]
             selected_embedding = repeat(selected_embedding, "e -> b e", b=batch_size)
             tiles = Policy.selective_add(tiles, selected_embedding, sampled_tiles)
