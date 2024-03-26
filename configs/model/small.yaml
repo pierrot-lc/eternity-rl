@@ -2,5 +2,6 @@
 embedding_dim: 8
 n_heads: 1
 backbone_layers: 4
+backbone_type: gnn
 decoder_layers: 2
 dropout: 0.00

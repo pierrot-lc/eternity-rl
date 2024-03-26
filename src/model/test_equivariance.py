@@ -6,10 +6,9 @@ import torch.nn as nn
 
 from ..environment import EternityEnv
 from ..environment.constants import EAST, NORTH, SOUTH, WEST
-
 from .backbones.gnn import GNNBackbone
-from .policy import Policy
 from .critic import Critic
+from .policy import Policy
 
 
 def instanciate_boards(instance_path: str) -> torch.Tensor:
@@ -149,13 +148,13 @@ def test_rotation_equivariant_backbone(boards: torch.Tensor, model: nn.Module):
     [
         (
             instanciate_boards("./instances/eternity_trivial_A.txt"),
-            Policy(32, 2, 3, 2, 0.0),
-            Critic(32, 2, 3, 2, 0.0),
+            Policy(32, 2, 3, "gnn", 2, 0.0),
+            Critic(32, 2, 3, "gnn", 2, 0.0),
         ),
         (
             instanciate_boards("./instances/eternity_A.txt"),
-            Policy(32, 2, 3, 2, 0.0),
-            Critic(32, 2, 3, 2, 0.0),
+            Policy(32, 2, 3, "gnn", 2, 0.0),
+            Critic(32, 2, 3, "gnn", 2, 0.0),
         ),
     ],
 )

@@ -39,6 +39,7 @@ def init_models(config: DictConfig) -> tuple[Policy, Critic]:
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
+        backbone_type=model.backbone_type,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
     )
@@ -46,6 +47,7 @@ def init_models(config: DictConfig) -> tuple[Policy, Critic]:
         embedding_dim=model.embedding_dim,
         n_heads=model.n_heads,
         backbone_layers=model.backbone_layers,
+        backbone_type=model.backbone_type,
         decoder_layers=model.decoder_layers,
         dropout=model.dropout,
     )
