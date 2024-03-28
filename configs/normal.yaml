@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - env: normal
-  - model: big
+  - model: medium
 
 gamma: 0.99
 

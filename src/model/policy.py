@@ -39,11 +39,7 @@ class Policy(nn.Module):
             nn.Softmax(dim=1),
         )
 
-        self.tile_query = nn.Parameter(torch.randn(embedding_dim))
-        self.side_query = nn.Parameter(torch.randn(embedding_dim))
-
         self.tiles_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
-        self.sides_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
     def dummy_input(
         self, board_height: int, board_width: int, device: str
