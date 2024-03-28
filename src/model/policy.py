@@ -6,7 +6,7 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling
+from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling, nucleus_sampling
 from .backbones import GNNBackbone, TransformerBackbone
 from .heads import SelectTile
 
@@ -169,6 +169,8 @@ class Policy(nn.Module):
                 action_ids = dirichlet_sampling(
                     probs, concentration=concentration, exploration=0.25
                 )
+            case "nucleus":
+                action_ids = nucleus_sampling(probs, top_p=0.25)
             case "uniform":
                 action_ids = torch.randint(
                     low=0,

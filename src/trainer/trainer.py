@@ -407,7 +407,7 @@ class Trainer:
 
         # Greedy rollouts, only evaluate the envs.
         _, metrics_ = self.collect_ppo_rollouts(
-            self.ppo_greedy_env, "greedy", disable_logs
+            self.ppo_greedy_env, "nucleus", disable_logs
         )
         metrics |= self.evaluator.rollout_metrics(
             metrics_, f"{self.ppo_trainer.name}-greedy"
