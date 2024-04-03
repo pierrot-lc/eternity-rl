@@ -6,9 +6,9 @@ from torch.distributions import Categorical
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling
-from .backbones import GNNBackbone
-from .heads import SelectSide, SelectTile
+from ..sampling import dirichlet_sampling, epsilon_greedy_sampling, epsilon_sampling, nucleus_sampling
+from .backbones import GNNBackbone, TransformerBackbone
+from .heads import SelectTile
 
 
 class Policy(nn.Module):
@@ -17,21 +17,29 @@ class Policy(nn.Module):
         embedding_dim: int,
         n_heads: int,
         backbone_layers: int,
+        backbone_type: str,
         decoder_layers: int,
         dropout: float,
     ):
         super().__init__()
 
-        self.backbone = GNNBackbone(embedding_dim, backbone_layers)
+        match backbone_type:
+            case "gnn":
+                self.backbone = GNNBackbone(embedding_dim, backbone_layers)
+            case "transformer":
+                self.backbone = TransformerBackbone(
+                    embedding_dim, n_heads, backbone_layers, dropout
+                )
+            case _:
+                raise ValueError(f"Invalid backbone type: {backbone_type}")
 
         self.select_tile = SelectTile(embedding_dim, n_heads, decoder_layers, dropout)
-        self.select_side = SelectSide(embedding_dim, n_heads, decoder_layers, dropout)
-
-        self.tile_query = nn.Parameter(torch.randn(embedding_dim))
-        self.side_query = nn.Parameter(torch.randn(embedding_dim))
+        self.select_side = nn.Sequential(
+            nn.Linear(2 * embedding_dim, N_SIDES, bias=False),
+            nn.Softmax(dim=1),
+        )
 
         self.tiles_embeddings = nn.Parameter(torch.randn(2, embedding_dim))
-        self.sides_embeddings = nn.Parameter(torch.randn(N_SIDES, embedding_dim))
 
     def dummy_input(
         self, board_height: int, board_width: int, device: str
@@ -84,46 +92,53 @@ class Policy(nn.Module):
             sampling_mode is None and sampled_actions is None
         ), "Either sampling_mode or sampled_actions must be given."
         batch_size = tiles.shape[0]
+        batch_range = torch.arange(0, batch_size, device=tiles.device)
 
         tiles = self.backbone(tiles)
         actions, logprobs, entropies = [], [], []
 
         # Node selections.
+        selected_tiles = []
         for node_number in range(2):
-            queries = repeat(self.tile_query, "e -> b e", b=batch_size)
-            probs = self.select_tile(tiles, queries)
+            # Probabilities of selection for all tiles.
+            tiles, probs = self.select_tile(tiles)
 
-            if sampled_actions is None:
-                sampled_tiles = self.sample_actions(probs, sampling_mode)
-            else:
-                sampled_tiles = sampled_actions[:, node_number]
+            # Sample the action (if required), compute the corresponding logprobs and entropies.
+            sampled_tiles = (
+                self.sample_actions(probs, sampling_mode)
+                if sampled_actions is None
+                else sampled_actions[:, node_number]
+            )
             actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_tiles)
 
             actions.append(sampled_tiles)
             logprobs.append(actions_logprob)
             entropies.append(actions_entropy)
 
+            # Mark the selected tile so that further prediction can take into account this fact.
+            selected_tiles.append(tiles[sampled_tiles, batch_range])
             selected_embedding = self.tiles_embeddings[node_number]
             selected_embedding = repeat(selected_embedding, "e -> b e", b=batch_size)
             tiles = Policy.selective_add(tiles, selected_embedding, sampled_tiles)
 
         # Side selections.
         for side_number in range(2):
-            queries = repeat(self.side_query, "e -> b e", b=batch_size)
-            probs = self.select_side(tiles, queries)
+            side_embeddings = torch.concat(
+                (selected_tiles[side_number], selected_tiles[1 - side_number]),
+                dim=1,
+            )
+            probs = self.select_side(side_embeddings)
 
-            if sampled_actions is None:
-                sampled_sides = self.sample_actions(probs, sampling_mode)
-            else:
-                sampled_sides = sampled_actions[:, side_number + 2]
+            sampled_sides = (
+                self.sample_actions(probs, sampling_mode)
+                if sampled_actions is None
+                else sampled_actions[:, side_number + 2]
+            )
             actions_logprob, actions_entropy = Policy.logprobs(probs, sampled_sides)
 
             actions.append(sampled_sides)
             logprobs.append(actions_logprob)
             entropies.append(actions_entropy)
-
-            side_embedding = self.sides_embeddings[sampled_sides]
-            tiles = Policy.selective_add(tiles, side_embedding, actions[side_number])
 
         actions = torch.stack(actions, dim=1)
         logprobs = torch.stack(logprobs, dim=1)
@@ -154,6 +169,8 @@ class Policy(nn.Module):
                 action_ids = dirichlet_sampling(
                     probs, concentration=concentration, exploration=0.25
                 )
+            case "nucleus":
+                action_ids = nucleus_sampling(probs, top_p=0.25)
             case "uniform":
                 action_ids = torch.randint(
                     low=0,

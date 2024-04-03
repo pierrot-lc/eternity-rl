@@ -2,5 +2,6 @@
 embedding_dim: 16
 n_heads: 1
 backbone_layers: 4
+backbone_type: transformer
 decoder_layers: 2
 dropout: 0.00

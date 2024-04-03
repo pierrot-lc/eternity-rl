@@ -4,7 +4,7 @@ from einops import repeat
 from torchinfo import summary
 
 from ..environment import N_SIDES
-from .backbones import GNNBackbone
+from .backbones import GNNBackbone, TransformerBackbone
 from .heads import EstimateValue
 
 
@@ -14,12 +14,21 @@ class Critic(nn.Module):
         embedding_dim: int,
         n_heads: int,
         backbone_layers: int,
+        backbone_type: str,
         decoder_layers: int,
         dropout: float,
     ):
         super().__init__()
 
-        self.backbone = GNNBackbone(embedding_dim, backbone_layers)
+        match backbone_type:
+            case "gnn":
+                self.backbone = GNNBackbone(embedding_dim, backbone_layers)
+            case "transformer":
+                self.backbone = TransformerBackbone(
+                    embedding_dim, n_heads, backbone_layers, dropout
+                )
+            case _:
+                raise ValueError(f"Invalid backbone type: {backbone_type}")
 
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout

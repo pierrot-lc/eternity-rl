@@ -1,4 +1,5 @@
 """Graph Neural Network backbone."""
+
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange, Reduce
@@ -17,8 +18,8 @@ class MessagePassingExter(nn.Module):
 
     def __init__(self, embedding_dim):
         super().__init__()
-        self.self_linear = nn.Linear(embedding_dim, embedding_dim)
-        self.other_linear = nn.Linear(embedding_dim, embedding_dim)
+        self.self_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.other_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
         self.activation = nn.Sequential(
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
@@ -74,21 +75,23 @@ class MessagePassingInter(nn.Module):
         assert embedding_dim % N_SIDES == 0
         super().__init__()
 
-        self.self_linear = nn.Linear(embedding_dim, embedding_dim)
-        self.other_linear = nn.Linear(embedding_dim, embedding_dim)
+        self.self_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.other_linears = nn.ModuleList(
+            [nn.Linear(embedding_dim, embedding_dim, bias=False) for _ in range(3)]
+        )
+        # self.other_linear = nn.Linear(embedding_dim, embedding_dim, bias=False)
         self.activation = nn.Sequential(
             nn.ReLU(),
             nn.LayerNorm(embedding_dim),
         )
 
-    def forward(self, tokens: torch.Tensor, shift: int) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """Do the message passing inter-tokens.
 
         ---
         Args:
             tokens: The current tokens embeddings.
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
-            shift: The direction to pass the message. It can be 1 (right) or -1 (left).
 
         ---
         Returns:
@@ -96,8 +99,11 @@ class MessagePassingInter(nn.Module):
                 Shape of [batch_size, board_height, board_width, N_SIDES, embedding_dim].
         """
         self_tokens = self.self_linear(tokens)
-        other_tokens = self.other_linear(tokens)
-        other_tokens = torch.roll(other_tokens, shifts=shift, dims=3)
+
+        other_tokens = 0
+        for shift, linear in zip(range(3), self.other_linears):
+            shifted_tokens = torch.roll(tokens, shifts=shift, dims=3)
+            other_tokens = other_tokens + linear(shifted_tokens) / 3
         messages = self.activation(self_tokens + other_tokens)
         return messages
 
@@ -156,8 +162,7 @@ class GNNBackbone(nn.Module):
             self.inter_layers, self.exter_layers, self.mlp_layers
         ):
             tokens = exter(tokens) + tokens
-            tokens = inter(tokens, shift=1) + tokens
-            tokens = inter(tokens, shift=-1) + tokens
+            tokens = inter(tokens) + tokens
             tokens = mlp(tokens) + tokens
 
         return self.to_sequence(tokens)

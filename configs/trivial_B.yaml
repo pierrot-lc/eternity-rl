@@ -1,7 +1,7 @@
 ---
 defaults:
   - _self_
-  - env: trivial
+  - env: trivial_B
   - model: medium
 
 gamma: 0.99
@@ -9,7 +9,7 @@ gamma: 0.99
 ppo:
   batch_size: 256
   epochs: 1
-  rollouts: 64
+  rollouts: 24
   train_policy: true
   train_critic: true
 
@@ -25,7 +25,7 @@ mcts:
   batch_size: 32
   replay_buffer_factor: 5 # Total replay buffer size is `replay_buffer_factor * rollouts * batch_size`.
   epochs: 0  # Use `0` to deactivate training.
-  rollouts: 16
+  rollouts: 8
   train_policy: false
   train_critic: true
 
@@ -41,7 +41,7 @@ mcts:
 optimizer:
   optimizer: adamw
   learning_rate: 1.0e-4
-  weight_decay: 1.0e-2
+  weight_decay: 0.0e-2
 
 scheduler:
   warmup_steps: 0
@@ -50,10 +50,10 @@ scheduler:
   eta_min: 1.0e-6
 
 trainer:
-  episodes: -1
+  episodes: 2001
   reset_proportion: 0.10
   clip_value: 1.0
-  eval_every: 1000
+  eval_every: 500
   save_every: 500
 
 checkpoint:

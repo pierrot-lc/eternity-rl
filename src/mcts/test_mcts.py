@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 import pytest
 import torch
 from einops import rearrange, repeat
@@ -24,6 +22,7 @@ def models_mockup() -> tuple[Policy, Critic]:
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
+        backbone_type="gnn",
         decoder_layers=1,
         dropout=0.0,
     )
@@ -31,6 +30,7 @@ def models_mockup() -> tuple[Policy, Critic]:
         embedding_dim=20,
         n_heads=1,
         backbone_layers=1,
+        backbone_type="transformer",
         decoder_layers=1,
         dropout=0.0,
     )

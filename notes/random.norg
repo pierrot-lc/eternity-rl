@@ -146,32 +146,31 @@ version: 1.1.1
   A kind of beam search.
 
 * Potentially never-ending episodes
-  A proper way to train the model is to use never-ending episodes. Doing
-  so, the return is impossible to truly compute with MCTS sampling, but it
-  can be estimated with a value network.
+  A proper way to train the model is to use never-ending episodes. Doing so,
+  the return is impossible to truly compute with MCTS sampling, but it can be
+  estimated with a value network.
 
-  But it is hard to train a value network in my environment since the
-  model can kind of go back in time. By switching pieces, it is easy to go
-  to a previously encountered state. The value network has to take into
-  account this fact, and the training becomes harder.
+  But it is hard to train a value network in my environment since the model can
+  kind of go back in time. By switching pieces, it is easy to go to a
+  previously encountered state. The value network has to take into account this
+  fact, and the training becomes harder.
 
-  The reward is also very important. A good reward shaping will make it
-  easier for the model to quickly understand what the goal is.
+  The reward is also very important. A good reward shaping will make it easier
+  for the model to quickly understand what the goal is.
 
-  Hypothesis: this training is very prone to local minimas. Once the board
-  is almost complete, the model is having a really hard time to finish the
-  puzzle because most of the time it means that many pieces have to be
-  swapped around. Doing so is asking for a lot of exploration, arguably
-  too much exploration.
+  Hypothesis: this training is very prone to local minimas. Once the board is
+  almost complete, the model is having a really hard time to finish the puzzle
+  because most of the time it means that many pieces have to be swapped around.
+  Doing so is asking for a lot of exploration, arguably too much exploration.
 
   To avoid local minimas, the model should build the board from scratch
-  everytime and only be given the reward at the end of the episode (like
-  I used to to at the beginning).
+  everytime and only be given the reward at the end of the episode (like I used
+  to to at the beginning).
 
-  It does seem like this hypothesis is not true in the end. The model sees
-  the result of the multiple actions. At least, for my current training
-  setup, havin a never-ending or fixed horizon rollout does not change the
-  local minimas the model is prone to.
+  It does seem like this hypothesis is not true in the end. The model sees the
+  result of the multiple actions. At least, for my current training setup,
+  havin a never-ending or fixed horizon rollout does not change the local
+  minimas the model is prone to.
 
 * About on-policy learning and exploration
   It's harder to implement a forced exploration or exploitation when using
@@ -321,7 +320,6 @@ version: 1.1.1
   but I wanted to try this out.
 
 ** What I learns from the MCTS implementation
-
    It turns out it is not easy to implement a MCTS properly, especially
    with my ideas of doing a partial batched MCTS. The fact that not all
    nodes are sampled and that my env is fully reversible makes the tree
@@ -347,7 +345,6 @@ version: 1.1.1
    some heavy modifications.
 
 * On the difficulty of extrem exploration
-
   Solving the puzzle necessarily requires deep exploration. Even for the
   simple 4x4 puzzle, the model tends to be stuck in a local minimum. This
   is why I use some very aggressive entropy regularization. Along with
@@ -365,3 +362,17 @@ version: 1.1.1
   - Add some noises in the critic and policy weights during training.
   - Add penalization to commonly predicted actions in the rollouts.
   - Use randomly generated problems.
+
+* My SO4-equivariant GNN is performing poorly
+  The non-equivariant transformer is doing better than my GNN. This is sad and
+  I'm not sure how to explain this. It could be because of some shortcomings of
+  the usual GNNs. For example, there may be some information bottleneck in the
+  GNN. Maybe my GNN is also poorly written, this is my first one after all.
+  Finally, it may be because the tile orientation is lost once the mean pooling
+  is done.
+
+* Mixing greedy and normal sampling policy
+  The greedy policy performs actually pretty poorly generally. Maybe it's
+  because it's running into looping actions (a little bit like what we can
+  encounter when using greedy-decoding LLM). I think it is a bad thing to mix
+  those policies as the greedy policy will strongly degrade the environments.
