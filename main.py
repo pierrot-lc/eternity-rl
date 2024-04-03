@@ -6,22 +6,21 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from hydra.utils import to_absolute_path
-from omegaconf import DictConfig, OmegaConf
-from torch.nn.parallel import DistributedDataParallel as DDP
-
 from instantiate import (
     init_env,
+    init_mcts_config,
     init_mcts_loss,
     init_models,
     init_optimizer,
     init_ppo_loss,
     init_replay_buffer,
-    init_mcts_config,
     init_scheduler,
     init_trainer,
     init_trainer_config,
 )
+from omegaconf import DictConfig, OmegaConf
 from src.trainer import Trainer
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 
 def setup_distributed(rank: int, world_size: int):

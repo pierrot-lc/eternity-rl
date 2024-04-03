@@ -377,9 +377,7 @@ class Trainer:
             self.ppo_env, "softmax", disable_logs
         )
         self.ppo_trainer.replay_buffer.extend(samples.clone())
-        metrics |= self.evaluator.rollout_metrics(
-            metrics_, self.ppo_trainer.name
-        )
+        metrics |= self.evaluator.rollout_metrics(metrics_, self.ppo_trainer.name)
         metrics |= self.evaluator.env_metrics(self.ppo_env, self.ppo_trainer.name)
         metrics |= self.evaluator.batch_metrics(
             self.ppo_trainer.replay_buffer.sample(),
@@ -393,9 +391,7 @@ class Trainer:
             self.mcts_env, "softmax", disable_logs
         )
         self.mcts_trainer.replay_buffer.extend(samples.clone())
-        metrics |= self.evaluator.rollout_metrics(
-            metrics_, self.mcts_trainer.name
-        )
+        metrics |= self.evaluator.rollout_metrics(metrics_, self.mcts_trainer.name)
         metrics |= self.evaluator.env_metrics(self.mcts_env, self.mcts_trainer.name)
         metrics |= self.evaluator.batch_metrics(
             self.mcts_trainer.replay_buffer.sample(),
