@@ -1,0 +1,68 @@
+---
+defaults:
+  - _self_
+  - env: complet
+  - model: big
+
+gamma: 0.99
+
+ppo:
+  batch_size: 256
+  epochs: 1
+  rollouts: 128
+  train_policy: true
+  train_critic: true
+
+  loss:
+    gae_lambda: 0.99
+    ppo_clip_ac: 0.20
+    ppo_clip_vf: 0.20
+    value_weight: 1e-5
+    entropy_weight: 1.0e-1
+    entropy_clip: 0.0
+
+mcts:
+  batch_size: 32
+  replay_buffer_factor: 5 # Total replay buffer size is `replay_buffer_factor * rollouts * batch_size`.
+  epochs: 0  # Use `0` to deactivate training.
+  rollouts: 16
+  train_policy: false
+  train_critic: true
+
+  search:
+    c_puct: 0.001
+    simulations: 100
+    childs: 5
+
+  loss:
+    value_weight: 1.0
+    entropy_weight: 0.1
+
+optimizer:
+  optimizer: adamw
+  learning_rate: 1.0e-5
+  weight_decay: 0.0e-2
+
+scheduler:
+  warmup_steps: 0
+  cosine_t0: 0
+  cosine_tmult: 1
+  eta_min: 1.0e-6
+
+trainer:
+  episodes: -1
+  reset_proportion: 0.10
+  clip_value: 1.0
+  eval_every: 5000
+  save_every: 500
+
+checkpoint:
+
+seed: 0
+device: auto
+distributed: []
+mode: online
+
+hydra:
+  job:
+    chdir: true
