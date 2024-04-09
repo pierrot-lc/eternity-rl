@@ -175,8 +175,6 @@ def init_trainer(
     policy_scheduler: optim.lr_scheduler.LRScheduler,
     critic_scheduler: optim.lr_scheduler.LRScheduler,
     ppo_trainer: TrainerConfig,
-    mcts_trainer: TrainerConfig,
-    mcts_config: MCTSConfig,
 ) -> Trainer:
     """Initialize the trainer."""
     trainer = config.trainer
@@ -188,8 +186,6 @@ def init_trainer(
         policy_scheduler,
         critic_scheduler,
         ppo_trainer,
-        mcts_trainer,
-        mcts_config,
         trainer.episodes,
         trainer.clip_value,
         trainer.reset_proportion,

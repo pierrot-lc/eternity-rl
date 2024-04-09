@@ -7,7 +7,7 @@ defaults:
 gamma: 0.99
 
 ppo:
-  batch_size: 256
+  batch_size: 2048
   epochs: 1
   rollouts: 128
   train_policy: true
@@ -40,7 +40,7 @@ mcts:
 
 optimizer:
   optimizer: adamw
-  learning_rate: 1.0e-5
+  learning_rate: 1.0e-4
   weight_decay: 0.0e-2
 
 scheduler:

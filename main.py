@@ -82,21 +82,6 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
     )
     ppo_trainer_config = init_trainer_config(ppo, env, loss, replay_buffer, "PPO")
 
-    # Init MCTS config.
-    mcts = config.mcts
-    env = init_env(config, mcts.batch_size)
-    loss = init_mcts_loss(config)
-    replay_buffer = init_replay_buffer(
-        config,
-        mcts.batch_size,
-        max_size=mcts.batch_size * mcts.rollouts * mcts.replay_buffer_factor,
-    )
-    mcts_trainer_config = init_trainer_config(mcts, env, loss, replay_buffer, "MCTS")
-    mcts_config = init_mcts_config(config)
-
-    # Use the same RNG for both envs.
-    mcts_trainer_config.env.rng = ppo_trainer_config.env.rng
-
     policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
     if use_ddp:
@@ -118,8 +103,6 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
         policy_scheduler,
         critic_scheduler,
         ppo_trainer_config,
-        mcts_trainer_config,
-        mcts_config,
     )
     reload_checkpoint(config, trainer)
 

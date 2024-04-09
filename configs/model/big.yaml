@@ -1,7 +1,7 @@
 ---
-embedding_dim: 32
+embedding_dim: 64
 n_heads: 2
-backbone_layers: 6
+backbone_layers: 4
 backbone_type: transformer
-decoder_layers: 3
+decoder_layers: 2
 dropout: 0.00
