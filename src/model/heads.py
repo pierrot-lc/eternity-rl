@@ -14,7 +14,7 @@ class SelectTile(nn.Module):
             TransformerEncoderLayer(
                 embedding_dim,
                 nhead=n_heads,
-                dim_feedforward=4 * embedding_dim // 3,
+                dim_feedforward=4 * embedding_dim * 2 // 3,
                 dropout=dropout,
                 batch_first=False,
                 norm_first=True,
@@ -100,8 +100,8 @@ class EstimateValue(nn.Module):
     ):
         super().__init__()
 
-        self.decoder = nn.TransformerDecoder(
-            TransformerDecoderLayer(
+        self.decoder = nn.TransformerEncoder(
+            TransformerEncoderLayer(
                 embedding_dim,
                 nhead=n_heads,
                 dim_feedforward=4 * embedding_dim * 2 // 3,
@@ -110,13 +110,14 @@ class EstimateValue(nn.Module):
                 norm_first=True,
             ),
             num_layers=n_layers,
+            enable_nested_tensor=False,
         )
         self.predict_value = nn.Sequential(
             nn.Linear(embedding_dim, 1),
             nn.Tanh(),
         )
 
-    def forward(self, tiles: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
+    def forward(self, tiles: torch.Tensor) -> torch.Tensor:
         """Predict the value of the given state using a cross-attention operation
         between the tiles and some query.
 
@@ -124,17 +125,14 @@ class EstimateValue(nn.Module):
         Args:
             tiles: The tiles, already embedded.
                 Tensor of shape [n_tiles, batch_size, embedding_dim].
-            query: The query.
-                Tensor of shape [batch_size, embedding_dim].
 
         ---
         Returns:
             The predicted value.
                 Tensor of shape [batch_size,].
         """
-        query = query.unsqueeze(0)
-        query = self.decoder(query, tiles)
-        value = self.predict_value(query.squeeze(0))
+        tiles = self.decoder(tiles)
+        value = self.predict_value(tiles.mean(dim=0))
         return value.squeeze(1)
 
 

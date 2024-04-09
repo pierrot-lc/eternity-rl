@@ -33,7 +33,6 @@ class Critic(nn.Module):
         self.estimate_value = EstimateValue(
             embedding_dim, n_heads, decoder_layers, dropout
         )
-        self.value_query = nn.Parameter(torch.randn(embedding_dim))
 
     def dummy_input(
         self, board_height: int, board_width: int, device: str
@@ -71,6 +70,5 @@ class Critic(nn.Module):
         """
         batch_size = tiles.shape[0]
         tiles = self.backbone(tiles)
-        queries = repeat(self.value_query, "e -> b e", b=batch_size)
-        values = self.estimate_value(tiles, queries)
+        values = self.estimate_value(tiles)
         return values
