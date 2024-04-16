@@ -7,17 +7,17 @@ defaults:
 gamma: 0.99
 
 ppo:
-  batch_size: 2048
+  batch_size: 1024
   epochs: 1
   rollouts: 128
   train_policy: true
   train_critic: true
 
   loss:
-    gae_lambda: 0.99
+    gae_lambda: 0.95
     ppo_clip_ac: 0.20
     ppo_clip_vf: 0.20
-    value_weight: 1e-5
+    value_weight: 1e-6
     entropy_weight: 1.0e-1
     entropy_clip: 0.0
 
@@ -53,14 +53,14 @@ trainer:
   episodes: -1
   reset_proportion: 0.10
   clip_value: 1.0
-  eval_every: 5000
-  save_every: 500
+  eval_every: 50
+  save_every: 10
 
 checkpoint:
 
 seed: 0
 device: auto
-distributed: []
+distributed: [cuda:0, cuda:1]
 mode: online
 
 hydra:

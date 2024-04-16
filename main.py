@@ -84,6 +84,12 @@ def run_trainer(rank: int, world_size: int, config: DictConfig):
 
     policy, critic = init_models(config)
     policy, critic = policy.to(config.device), critic.to(config.device)
+
+    # Optimize models runtime.
+    torch.set_float32_matmul_precision('high')
+    policy = torch.compile(policy)
+    critic = torch.compile(critic)
+
     if use_ddp:
         policy = DDP(policy, device_ids=[config.device], output_device=config.device)
         critic = DDP(critic, device_ids=[config.device], output_device=config.device)

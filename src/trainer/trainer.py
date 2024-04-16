@@ -266,9 +266,6 @@ class Trainer:
             for i in tqdm(iter, desc="Episode", disable=disable_logs):
                 metrics = dict()
 
-                if self.ppo_trainer.epochs == 0:
-                    continue  # Ignore the method.
-
                 # Fill the rollout buffer.
                 samples, metrics_ = self.collect_ppo_rollouts(
                     self.ppo_env,

@@ -1,0 +1,51 @@
+---
+defaults:
+  - _self_
+  - env: hard
+  - model: medium
+
+gamma: 0.99
+
+ppo:
+  batch_size: 16384
+  epochs: 1
+  rollouts: 64
+  train_policy: true
+  train_critic: true
+
+  loss:
+    gae_lambda: 0.95
+    ppo_clip_ac: 0.20
+    ppo_clip_vf: 0.20
+    value_weight: 1e-6
+    entropy_weight: 1.0e-1
+    entropy_clip: 0.0
+
+optimizer:
+  optimizer: adamw
+  learning_rate: 1.0e-5
+  weight_decay: 1.0e-2
+
+scheduler:
+  warmup_steps: 0
+  cosine_t0: 0
+  cosine_tmult: 1
+  eta_min: 1.0e-6
+
+trainer:
+  episodes: -1
+  reset_proportion: 0.001
+  clip_value: 1.0
+  eval_every: 100
+  save_every: 100
+
+checkpoint:
+
+seed: 0
+device: auto
+distributed: []
+mode: online
+
+hydra:
+  job:
+    chdir: true
