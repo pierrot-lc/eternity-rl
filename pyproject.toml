@@ -19,6 +19,7 @@ dependencies = [
     "torchrl>=0.1.1",
     "tqdm>=4.65.0",
     "wandb>=0.15.3",
+    "behave @ git+https://github.com/behave/behave.git@v1.2.7.dev5",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
